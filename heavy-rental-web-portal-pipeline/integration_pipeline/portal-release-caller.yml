@@ -1,0 +1,32 @@
+# =============================================================================
+# Install into: heavy-rental-react-web-portal
+# Path:         .github/workflows/release.yml
+# =============================================================================
+# Thin caller so releases on the portal run the reusable release pipeline
+# (integration + quality + security + packaging) defined in:
+#
+#   SA62-team1/heavy-rental-project-pipeline-development
+#     .github/workflows/web-portal-release.yml
+#
+# Triggers: version tags (v*), pushes to master/main, and manual dispatch.
+# =============================================================================
+
+name: Release
+
+on:
+  push:
+    branches: [master, main]
+    tags: ["v*"]
+  workflow_dispatch:
+
+concurrency:
+  group: portal-release-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  release-pipeline:
+    name: Release pipeline
+    uses: SA62-team1/heavy-rental-project-pipeline-development/.github/workflows/web-portal-release.yml@master

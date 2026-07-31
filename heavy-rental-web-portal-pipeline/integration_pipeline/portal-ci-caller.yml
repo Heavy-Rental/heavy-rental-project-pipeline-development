@@ -1,0 +1,47 @@
+# =============================================================================
+# Install into: heavy-rental-react-web-portal
+# Path:         .github/workflows/ci.yml
+# =============================================================================
+# Thin caller so pull requests / pushes on the portal run the reusable
+# integration pipeline defined in:
+#
+#   SA62-team1/heavy-rental-project-pipeline-development
+#     .github/workflows/web-portal-ci.yml
+#
+# Setup
+# -----
+# 1. Push the pipeline-development repo (with web-portal-ci.yml on master).
+# 2. In the portal repo, add this file as .github/workflows/ci.yml and merge.
+# 3. Optional: Settings → Branches → Branch protection on master →
+#    require status checks "Integration", "Quality Control", "Security Testing"
+#    (names appear after the first successful workflow run).
+#
+# Pinning
+# -------
+# Prefer a tag or commit SHA instead of @master for production stability, e.g.:
+#   uses: SA62-team1/heavy-rental-project-pipeline-development/.github/workflows/web-portal-ci.yml@v1
+# =============================================================================
+
+name: CI
+
+on:
+  pull_request:
+    branches: [master, main]
+  push:
+    branches: [master, main]
+  workflow_dispatch:
+
+concurrency:
+  group: portal-ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  # Runs Integration → Quality Control → Security Testing against this PR/push
+  integration-pipeline:
+    name: Integration pipeline
+    uses: SA62-team1/heavy-rental-project-pipeline-development/.github/workflows/web-portal-ci.yml@master
+    # No inputs: the reusable workflow checks out this portal repo at github.sha
+    # (the pull request head / merge commit), which is what you want for PR CI.
