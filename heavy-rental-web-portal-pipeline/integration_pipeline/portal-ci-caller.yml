@@ -25,6 +25,7 @@
 #   1. Integration           ← HIGHEST PRIORITY (required status check)
 #   2. Quality Control       (needs Integration)
 #   2. Security Testing      (needs Integration; parallel with QC)
+#   2. CodeQL Analysis       (needs Integration; JS/TS Code Scanning)
 #   3. REST Endpoint Tests   (needs Integration; when mock scripts exist)
 #
 # Setup
@@ -38,6 +39,7 @@
 #          * Integration              ← require this first / highest priority
 #          * Quality Control
 #          * Security Testing
+#          * CodeQL Analysis
 #      - Do not allow bypassing the above for administrators (recommended)
 # =============================================================================
 
@@ -61,6 +63,9 @@ concurrency:
 permissions:
   contents: read
   pull-requests: read
+  # Forwarded to reusable workflow for CodeQL / Code Scanning
+  security-events: write
+  actions: read
 
 jobs:
   # Integration is the first / highest-priority job inside the reusable workflow
