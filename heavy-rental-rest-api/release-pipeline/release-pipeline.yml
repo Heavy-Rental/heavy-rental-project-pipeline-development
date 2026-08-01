@@ -5,8 +5,10 @@
 #   1. Integration      (HIGHEST) checkout, Java 21 + Maven, resolve deps, layout
 #   2. Quality Control  needs Integration — compile, tests (Postgres), package WAR
 #   3. Security Testing needs Integration — SAST (Semgrep) + SCA/FS (Trivy)
-#      + github/codeql-action/upload-sarif@v2 → GitHub Code Scanning
-#   4. Packaging        needs Integration + QC + Security — versioned WAR +
+#      + github/codeql-action/upload-sarif → GitHub Code Scanning
+#   4. CodeQL Analysis  needs Integration — GitHub CodeQL (Java) security + quality
+#      + github/codeql-action/analyze → GitHub Code Scanning
+#   5. Packaging        needs Integration + QC + Security + CodeQL — versioned WAR +
 #                       Docker image (tar artifact; push to GHCR when not a PR)
 #
 # GitHub Flow (https://docs.github.com/en/get-started/using-github/github-flow)
@@ -645,7 +647,78 @@ jobs:
           if-no-files-found: warn
 
   # ---------------------------------------------------------------------------
-  # 4. Packaging — production WAR + Docker image for deploy pipelines
+  # 4. CodeQL analysis — GitHub CodeQL for Java (security + quality queries)
+  #    Runs after Integration; parallel with QC and Semgrep/Trivy Security.
+  #    Results appear under the repository Security → Code scanning alerts.
+  # ---------------------------------------------------------------------------
+  codeql:
+    name: CodeQL Analysis
+    runs-on: ubuntu-latest
+    needs: [integration]
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      security-events: write
+      actions: read
+    steps:
+      - name: Checkout calling repository (release / push head)
+        if: needs.integration.outputs.checkout_mode == 'caller'
+        uses: actions/checkout@v4
+        with:
+          path: ${{ env.APP_PATH }}
+
+      - name: Checkout remote application repository
+        if: needs.integration.outputs.checkout_mode == 'remote'
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ needs.integration.outputs.app_repository }}
+          ref: ${{ needs.integration.outputs.app_ref }}
+          path: ${{ env.APP_PATH }}
+
+      - name: Initialize CodeQL (Java)
+        uses: github/codeql-action/init@v3
+        with:
+          languages: java-kotlin
+          source-root: ${{ env.APP_PATH }}
+          # security-and-quality: security rules + maintainability / reliability
+          queries: security-and-quality
+
+      - name: Setup Java ${{ env.JAVA_VERSION }}
+        uses: actions/setup-java@v4
+        with:
+          distribution: ${{ env.JAVA_DISTRIBUTION }}
+          java-version: ${{ env.JAVA_VERSION }}
+          cache: maven
+          cache-dependency-path: ${{ env.APP_PATH }}/pom.xml
+
+      - name: Build for CodeQL (Maven; skip tests)
+        working-directory: ${{ env.APP_PATH }}
+        run: |
+          set -euo pipefail
+          chmod +x ./mvnw
+          # CodeQL instruments this compile/package build for analysis
+          ./mvnw -B -ntp -DskipTests package
+
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@v3
+        with:
+          category: "rest-api-release-codeql-java"
+
+      - name: CodeQL summary
+        if: always()
+        run: |
+          {
+            echo "### CodeQL Analysis"
+            echo ""
+            echo "Language: Java/Kotlin"
+            echo "Query suite: security-and-quality"
+            echo "Category: rest-api-release-codeql-java"
+            echo ""
+            echo "View results: repository → Security → Code scanning alerts"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  # ---------------------------------------------------------------------------
+  # 5. Packaging — production WAR + Docker image for deploy pipelines
   # ---------------------------------------------------------------------------
   # Spring Boot WAR deploy model:
   #   - build: ./mvnw -B -ntp -DskipTests package
@@ -660,8 +733,8 @@ jobs:
   packaging:
     name: Packaging
     runs-on: ubuntu-latest
-    # Integration listed first: highest-priority dependency before QC/Security/package
-    needs: [integration, quality-control, security-testing]
+    # Integration first; packaging waits for QC, Security, and CodeQL
+    needs: [integration, quality-control, security-testing, codeql]
     timeout-minutes: 30
     steps:
       - name: Checkout calling repository (release / push head)
