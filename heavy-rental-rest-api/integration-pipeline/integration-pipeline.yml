@@ -5,10 +5,14 @@
 #   1. Integration      (HIGHEST) checkout, Java 21 + Maven, resolve deps, layout
 #   2. Quality Control  needs Integration — compile, tests (Postgres), package WAR
 #   3. Security Testing needs Integration — SAST (Semgrep) + SCA/FS (Trivy)
-#      + github/codeql-action/upload-sarif → GitHub Code Scanning
 #   4. CodeQL Analysis  needs Integration — GitHub CodeQL (Java) security + quality
-#      + github/codeql-action/analyze → GitHub Code Scanning
 #   5. GitHub Flow CI Gate — aggregate: Integration first, then QC + Security + CodeQL
+#
+# Security report format (standard): SARIF 2.1.0
+#   - Semgrep → semgrep.sarif
+#   - Trivy FS → trivy-fs.sarif
+#   - CodeQL → GitHub Code Scanning (native SARIF via analyze)
+# Human-readable console output is for gates/logs only, not the report standard.
 #
 # GitHub Flow (https://docs.github.com/en/get-started/using-github/github-flow)
 # --------------------------------------------------------------------------
@@ -508,7 +512,7 @@ jobs:
       - name: Create security reports directory
         run: mkdir -p "${{ github.workspace }}/security-reports"
 
-      # --- SAST: static analysis of application source (Java / Spring) ---
+      # --- SAST: static analysis (standard report format: SARIF) ---
       - name: Setup Python (Semgrep)
         uses: actions/setup-python@v5
         with:
@@ -517,22 +521,12 @@ jobs:
       - name: Install Semgrep
         run: pip install --quiet semgrep
 
-      - name: SAST — Semgrep (Java / Spring / OWASP)
+      - name: SAST — Semgrep (Java / Spring / OWASP) → SARIF
         working-directory: ${{ env.APP_PATH }}
         run: |
           set -euo pipefail
           REPORT_DIR="${{ github.workspace }}/security-reports"
-          # Human-readable report (always written; does not gate the step alone)
-          semgrep scan \
-            --config=p/java \
-            --config=p/spring \
-            --config=p/owasp-top-ten \
-            --config=p/security-audit \
-            --metrics=off \
-            --text \
-            --output="${REPORT_DIR}/semgrep.txt" \
-            . || true
-          # SARIF for dashboards / code scanning consumers
+          # Standard security report format: SARIF 2.1.0
           semgrep scan \
             --config=p/java \
             --config=p/spring \
@@ -542,7 +536,7 @@ jobs:
             --sarif \
             --output="${REPORT_DIR}/semgrep.sarif" \
             . || true
-          # Gate CI: fail on ERROR findings (WARNING/INFO still reported above)
+          # Gate CI: fail on ERROR findings (console only; report remains SARIF)
           echo "==> SAST gate (ERROR severity)"
           semgrep scan \
             --config=p/java \
@@ -554,13 +548,9 @@ jobs:
             --error \
             --text \
             .
-          echo "SAST (Semgrep) passed — no ERROR-level findings."
-          if [ -f "${REPORT_DIR}/semgrep.txt" ]; then
-            echo "==> Semgrep report (excerpt)"
-            head -n 100 "${REPORT_DIR}/semgrep.txt" || true
-          fi
+          echo "SAST (Semgrep) passed — SARIF report: security-reports/semgrep.sarif"
 
-      # --- SCA + filesystem: dependency and secret/vuln scan via Trivy ---
+      # --- SCA + filesystem: dependency and secret/vuln scan via Trivy (SARIF) ---
       - name: Setup Java ${{ env.JAVA_VERSION }} (for dependency resolution before scan)
         uses: actions/setup-java@v4
         with:
@@ -579,18 +569,18 @@ jobs:
             -DoutputDirectory=target/dependency || \
           ./mvnw -B -ntp -DskipTests dependency:resolve
 
-      - name: Trivy filesystem vulnerability scan (SCA + FS)
+      - name: Trivy filesystem scan (SARIF)
         uses: aquasecurity/trivy-action@0.28.0
         with:
           scan-type: fs
           scan-ref: ${{ env.APP_PATH }}
           severity: HIGH,CRITICAL
           exit-code: "1"
-          format: table
-          output: security-reports/trivy-fs.txt
+          format: sarif
+          output: security-reports/trivy-fs.sarif
           ignore-unfixed: true
 
-      - name: Trivy filesystem scan (SARIF artifact)
+      - name: Trivy filesystem scan (console table)
         if: always()
         uses: aquasecurity/trivy-action@0.28.0
         with:
@@ -598,37 +588,35 @@ jobs:
           scan-ref: ${{ env.APP_PATH }}
           severity: HIGH,CRITICAL
           exit-code: "0"
-          format: sarif
-          output: security-reports/trivy-fs.sarif
+          format: table
           ignore-unfixed: true
 
-      # --- GitHub Code Scanning: publish SARIF (Semgrep + Trivy) ---
+      # --- Publish SARIF security reports to GitHub Code Scanning ---
       - name: Upload Semgrep SARIF to Code Scanning
         if: always() && hashFiles('security-reports/semgrep.sarif') != ''
-        uses: github/codeql-action/upload-sarif@v2
+        uses: github/codeql-action/upload-sarif@v3
         with:
           sarif_file: security-reports/semgrep.sarif
-          # App is checked out under APP_PATH so path mapping matches the scan root
           checkout_path: ${{ env.APP_PATH }}
           category: rest-api-semgrep
-        # Do not fail the Security job if Code Scanning is unavailable (e.g. GHAS off)
         continue-on-error: true
 
       - name: Upload Trivy SARIF to Code Scanning
         if: always() && hashFiles('security-reports/trivy-fs.sarif') != ''
-        uses: github/codeql-action/upload-sarif@v2
+        uses: github/codeql-action/upload-sarif@v3
         with:
           sarif_file: security-reports/trivy-fs.sarif
           checkout_path: ${{ env.APP_PATH }}
           category: rest-api-trivy-fs
         continue-on-error: true
 
-      - name: Upload security reports
+      - name: Upload security reports (SARIF)
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: security-reports
-          path: security-reports/
+          name: security-reports-sarif
+          path: |
+            security-reports/*.sarif
           retention-days: 30
           if-no-files-found: warn
 
