@@ -1,47 +1,72 @@
 # =============================================================================
 # Install into: heavy-rental-react-web-portal
-# Path:         .github/workflows/ci.yml
+# Path:         .github/workflows/portal-ci-caller.yml
 # =============================================================================
-# Thin caller so pull requests / pushes on the portal run the reusable
-# integration pipeline defined in:
+# GitHub Flow CI caller — validates feature-branch pull requests before merge.
 #
-#   SA62-team1/heavy-rental-project-pipeline-development
-#     .github/workflows/web-portal-ci.yml
+# Place both files in the React web portal repository:
+#
+#   .github/workflows/portal-ci-caller.yml       ← this file (triggers)
+#   .github/workflows/integration-pipeline.yml   ← reusable pipeline (called)
+#
+# GitHub Flow
+# -----------
+#   1. Branch from develop
+#   2. Open a pull request into develop → this workflow runs (Integration first)
+#   3. Review + green checks → merge into develop
+#   4. Release packaging → portal-release-caller.yml on GitHub Release
+#                          publish, or on PR develop → master
+#
+# Reusable workflow (same repository):
+#   ./.github/workflows/integration-pipeline.yml
+#
+# Job priority (do not reorder conceptually)
+# -----------------------------------------
+#   1. Integration           ← HIGHEST PRIORITY (required status check)
+#   2. Quality Control       (needs Integration)
+#   2. Security Testing      (needs Integration; parallel with QC)
+#   3. REST Endpoint Tests   (needs Integration; when mock scripts exist)
 #
 # Setup
 # -----
-# 1. Push the pipeline-development repo (with web-portal-ci.yml on master).
-# 2. In the portal repo, add this file as .github/workflows/ci.yml and merge.
-# 3. Optional: Settings → Branches → Branch protection on master →
-#    require status checks "Integration", "Quality Control", "Security Testing"
-#    (names appear after the first successful workflow run).
-#
-# Pinning
-# -------
-# Prefer a tag or commit SHA instead of @master for production stability, e.g.:
-#   uses: SA62-team1/heavy-rental-project-pipeline-development/.github/workflows/web-portal-ci.yml@v1
+# 1. Copy into the portal repo:
+#      .github/workflows/portal-ci-caller.yml
+#      .github/workflows/integration-pipeline.yml
+# 2. Branch protection on develop (Settings → Branches):
+#      - Require a pull request before merging
+#      - Require status checks to pass before merging:
+#          * Integration              ← require this first / highest priority
+#          * Quality Control
+#          * Security Testing
+#      - Do not allow bypassing the above for administrators (recommended)
 # =============================================================================
 
 name: CI
 
 on:
+  # GitHub Flow: every PR targeting develop
   pull_request:
-    branches: [master, main]
+    branches: [develop]
+    types: [opened, synchronize, reopened, ready_for_review]
+  # Re-validate after merge (and direct pushes to develop)
   push:
-    branches: [master, main]
+    branches: [develop]
   workflow_dispatch:
 
+# One run per PR (or branch); cancel superseded commits on the same PR
 concurrency:
-  group: portal-ci-${{ github.workflow }}-${{ github.ref }}
+  group: portal-ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 permissions:
   contents: read
+  pull-requests: read
 
 jobs:
-  # Runs Integration → Quality Control → Security Testing against this PR/push
+  # Integration is the first / highest-priority job inside the reusable workflow
   integration-pipeline:
     name: Integration pipeline
-    uses: SA62-team1/heavy-rental-project-pipeline-development/.github/workflows/web-portal-ci.yml@master
-    # No inputs: the reusable workflow checks out this portal repo at github.sha
-    # (the pull request head / merge commit), which is what you want for PR CI.
+    # Same-repo reusable workflow — both files live under .github/workflows/
+    uses: ./.github/workflows/integration-pipeline.yml
+    # No inputs: checks out this portal repo at github.sha
+    # (PR head merge commit on pull_request — correct for GitHub Flow PR CI).

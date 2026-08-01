@@ -13,35 +13,33 @@
 #   https://github.com/SA62-team1/heavy-rental-react-web-portal
 #   React 19 + TypeScript + Vite 8 (npm)
 #
-# How the portal uses this on pull requests
-# -----------------------------------------
-# GitHub only auto-runs workflows that live under the *application* repo's
-# .github/workflows/. This file is mirrored to:
+# How the portal uses this
+# ------------------------
+# Install both files into the React web portal repository:
 #
-#   .github/workflows/web-portal-ci.yml   (in THIS pipeline-development repo)
+#   .github/workflows/integration-pipeline.yml   ← this file (reusable only)
+#   .github/workflows/portal-ci-caller.yml       ← sole allowed entry point
 #
-# The portal repo should call it as a reusable workflow. Copy:
+# This file exposes only workflow_call (no push / PR / workflow_dispatch).
+# A gate job rejects any caller other than portal-ci-caller.yml.
 #
-#   heavy-rental-web-portal-pipeline/integration_pipeline/portal-ci-caller.yml
+# The caller invokes this workflow with:
+#   uses: ./.github/workflows/integration-pipeline.yml
 #
-# into the portal as:
-#
-#   .github/workflows/ci.yml
-#
-# Then every PR / push on the portal runs this pipeline against the PR head.
+# Also mirrored in the pipeline-development repo for discovery/testing:
+#   .github/workflows/web-portal-ci.yml
+# Keep this file and that mirror in sync when developing here.
 #
 # Local validation (from pipeline-development repo root, in the devcontainer):
 #   actionlint heavy-rental-web-portal-pipeline/integration_pipeline/integration-pipeline.yml
 #   actionlint .github/workflows/web-portal-ci.yml
-#   act -W .github/workflows/web-portal-ci.yml -j integration
-#
-# Keep this file and .github/workflows/web-portal-ci.yml in sync.
 # =============================================================================
 
 name: Web Portal CI
 
+# Reusable only — no push, pull_request, or workflow_dispatch.
+# Sole allowed caller: .github/workflows/portal-ci-caller.yml (enforced below).
 on:
-  # Called by heavy-rental-react-web-portal (PR / push) via portal-ci-caller.yml
   workflow_call:
     inputs:
       app_repository:
@@ -59,44 +57,21 @@ on:
         type: string
         default: ""
 
-  # Manual run from this pipeline-development repository
-  workflow_dispatch:
-    inputs:
-      app_repository:
-        description: GitHub repository of the React web portal (owner/name)
-        required: false
-        default: SA62-team1/heavy-rental-react-web-portal
-        type: string
-      app_ref:
-        description: Branch, tag, or commit SHA of the web portal
-        required: false
-        default: master
-        type: string
-
-  # When the pipeline definition itself changes, run against the portal default branch
-  push:
-    branches: [master, main]
-    paths:
-      - "heavy-rental-web-portal-pipeline/integration_pipeline/**"
-      - ".github/workflows/web-portal-ci.yml"
-  pull_request:
-    branches: [master, main]
-    paths:
-      - "heavy-rental-web-portal-pipeline/integration_pipeline/**"
-      - ".github/workflows/web-portal-ci.yml"
-
+# GitHub Flow: one concurrent run per PR (or branch); newer pushes cancel stale runs
 concurrency:
-  group: web-portal-ci-${{ github.workflow }}-${{ github.repository }}-${{ github.ref }}
+  group: web-portal-ci-${{ github.workflow }}-${{ github.repository }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 permissions:
   contents: read
+  pull-requests: read
 
 env:
   NODE_VERSION: "22"
   APP_PATH: app
   DEFAULT_APP_REPOSITORY: SA62-team1/heavy-rental-react-web-portal
-  DEFAULT_APP_REF: master
+  # Integration CI is develop-only (portal-ci-caller.yml push/PR → develop)
+  DEFAULT_APP_REF: develop
   # Local mock REST server used only by rest-endpoint-tests (no live backend)
   MOCK_API_HOST: "127.0.0.1"
   MOCK_API_PORT: "4010"
@@ -106,11 +81,44 @@ env:
 
 jobs:
   # ---------------------------------------------------------------------------
+  # 0. Caller gate — only portal-ci-caller.yml may invoke this workflow
+  # ---------------------------------------------------------------------------
+  assert-caller:
+    name: Assert caller
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Allow only portal-ci-caller.yml
+        env:
+          # github context is that of the caller workflow for reusable workflows
+          WORKFLOW_REF: ${{ github.workflow_ref }}
+        run: |
+          set -euo pipefail
+          echo "github.workflow_ref=${WORKFLOW_REF}"
+          echo "github.event_name=${{ github.event_name }}"
+          echo "github.workflow=${{ github.workflow }}"
+          case "${WORKFLOW_REF}" in
+            */.github/workflows/portal-ci-caller.yml@*)
+              echo "Allowed caller: portal-ci-caller.yml"
+              {
+                echo "### Caller gate"
+                echo ""
+                echo "Invoked by \`portal-ci-caller.yml\` — OK."
+              } >> "$GITHUB_STEP_SUMMARY"
+              ;;
+            *)
+              echo "::error::integration-pipeline.yml may only be invoked by .github/workflows/portal-ci-caller.yml (got: ${WORKFLOW_REF})"
+              exit 1
+              ;;
+          esac
+
+  # ---------------------------------------------------------------------------
   # 1. Integration — fetch source, install dependencies, verify install health
   # ---------------------------------------------------------------------------
   integration:
     name: Integration
     runs-on: ubuntu-latest
+    needs: [assert-caller]
     timeout-minutes: 15
     outputs:
       app_repository: ${{ steps.meta.outputs.app_repository }}
@@ -118,35 +126,24 @@ jobs:
       checkout_mode: ${{ steps.meta.outputs.checkout_mode }}
       node-modules-cache-hit: ${{ steps.cache-node-modules.outputs.cache-hit }}
     steps:
-      - name: Resolve application source (caller PR vs remote portal)
+      - name: Resolve application source (same-repo caller vs remote override)
         id: meta
         run: |
           set -euo pipefail
+          # This workflow is workflow_call-only; github.* reflects the caller event.
           EVENT="${{ github.event_name }}"
           INPUT_REPO="${{ inputs.app_repository }}"
           INPUT_REF="${{ inputs.app_ref }}"
 
-          # workflow_call from the portal: default to the caller's PR/push commit
-          if [ "$EVENT" = "workflow_call" ]; then
-            if [ -n "$INPUT_REPO" ] && [ "$INPUT_REPO" != "${{ github.repository }}" ]; then
-              APP_REPO="$INPUT_REPO"
-              APP_REF="${INPUT_REF:-${{ env.DEFAULT_APP_REF }}}"
-              MODE=remote
-            else
-              APP_REPO="${{ github.repository }}"
-              APP_REF="${INPUT_REF:-${{ github.sha }}}"
-              MODE=caller
-            fi
-          # Manual run from pipeline-development: check out the portal by input/default
-          elif [ "$EVENT" = "workflow_dispatch" ]; then
-            APP_REPO="${INPUT_REPO:-${{ env.DEFAULT_APP_REPOSITORY }}}"
+          if [ -n "$INPUT_REPO" ] && [ "$INPUT_REPO" != "${{ github.repository }}" ]; then
+            APP_REPO="$INPUT_REPO"
             APP_REF="${INPUT_REF:-${{ env.DEFAULT_APP_REF }}}"
             MODE=remote
-          # push/PR on pipeline-development (pipeline definition changed)
           else
-            APP_REPO="${{ env.DEFAULT_APP_REPOSITORY }}"
-            APP_REF="${{ env.DEFAULT_APP_REF }}"
-            MODE=remote
+            # portal-ci-caller.yml in the same repo: use this commit
+            APP_REPO="${{ github.repository }}"
+            APP_REF="${INPUT_REF:-${{ github.sha }}}"
+            MODE=caller
           fi
 
           echo "app_repository=$APP_REPO" >> "$GITHUB_OUTPUT"
