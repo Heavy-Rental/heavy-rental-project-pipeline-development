@@ -1,0 +1,63 @@
+# =============================================================================
+# Install into: heavy-rental-react-web-portal
+# Path:         .github/workflows/portal-fast-feedback-caller.yml
+# =============================================================================
+# Fast Feedback CI caller — Integration stage only (no QC / Security / API tests).
+# Mirrors the Integration job from integration-pipeline.yml for quick signal.
+#
+# Place both files in the React web portal repository:
+#
+#   .github/workflows/portal-fast-feedback-caller.yml  ← this file (triggers)
+#   .github/workflows/fast-feedback-pipeline.yml       ← reusable pipeline
+#
+# When this runs
+# --------------
+#   Push to any branch EXCEPT master and develop (feature / bugfix / etc.)
+#   Manual workflow_dispatch
+#
+#   Does NOT run on:
+#     - push to master
+#     - push to develop
+#     - pull_request events (full CI: portal-ci-caller.yml owns PR → develop)
+#
+# Reusable workflow (same repository):
+#   ./.github/workflows/fast-feedback-pipeline.yml
+#
+# Job
+# ---
+#   1. Integration only  (checkout, Node 22, npm ci, install health)
+#
+# Setup
+# -----
+# 1. Copy into the portal repo:
+#      .github/workflows/portal-fast-feedback-caller.yml
+#      .github/workflows/fast-feedback-pipeline.yml
+# 2. No secrets required for this pipeline.
+# =============================================================================
+
+name: Fast Feedback CI
+
+on:
+  # Any pushed branch except master and develop (no pull_request trigger)
+  push:
+    branches-ignore:
+      - master
+      - develop
+  workflow_dispatch:
+
+# Cancel superseded fast-feedback runs immediately
+concurrency:
+  group: portal-fast-feedback-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  pull-requests: read
+  actions: read
+
+jobs:
+  fast-feedback-pipeline:
+    name: Fast feedback pipeline
+    # Same-repo reusable workflow — both files live under .github/workflows/
+    uses: ./.github/workflows/fast-feedback-pipeline.yml
+    # No secrets / inputs: checks out this portal repo at github.sha
