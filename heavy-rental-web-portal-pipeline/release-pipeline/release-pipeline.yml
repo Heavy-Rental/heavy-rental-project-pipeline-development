@@ -1,8 +1,17 @@
 # =============================================================================
 # Heavy Rental Web Portal — Release CI Pipeline (reusable)
 # =============================================================================
-# Stages: Integration → Quality Control → Security Testing → Packaging
-#   Security includes: SAST (Semgrep) + SCA (npm audit) + FS scan (Trivy)
+# Stages:
+#   1. Integration       — checkout, Node 22, npm ci, install health
+#   2. Quality Control   — ESLint + TypeScript (needs Integration)
+#   3. Security Testing  — Semgrep + npm audit + Trivy (needs Integration)
+#   4. CodeQL Analysis   — GitHub CodeQL for JavaScript/TypeScript (needs Integration)
+#   5. Packaging         — Vite dist/ zip (needs Integration + QC + Security + CodeQL)
+#   Security report format (standard): SARIF 2.1.0
+#     - Semgrep → semgrep.sarif
+#     - npm audit → npm-audit.sarif (converted from audit JSON)
+#     - Trivy FS → trivy-fs.sarif
+#     - CodeQL → GitHub Code Scanning (native SARIF via analyze)
 #
 # Same gates as integration-pipeline.yml, plus production build + versioned
 # archive artifacts for deploy pipelines to consume.
@@ -71,6 +80,9 @@ concurrency:
 permissions:
   contents: read
   pull-requests: read
+  # Required for github/codeql-action/analyze
+  security-events: write
+  actions: read
 
 env:
   NODE_VERSION: "22"
@@ -306,7 +318,7 @@ jobs:
       - name: Create security reports directory
         run: mkdir -p "${{ github.workspace }}/security-reports"
 
-      # --- SAST: static analysis of application source (TypeScript / React) ---
+      # --- SAST: static analysis (standard report format: SARIF) ---
       - name: Setup Python (Semgrep)
         uses: actions/setup-python@v5
         with:
@@ -315,23 +327,12 @@ jobs:
       - name: Install Semgrep
         run: pip install --quiet semgrep
 
-      - name: SAST — Semgrep (TypeScript / React / OWASP)
+      - name: SAST — Semgrep (TypeScript / React / OWASP) → SARIF
         working-directory: ${{ env.APP_PATH }}
         run: |
           set -euo pipefail
           REPORT_DIR="${{ github.workspace }}/security-reports"
-          # Human-readable report (always written; does not gate the step alone)
-          semgrep scan \
-            --config=p/typescript \
-            --config=p/react \
-            --config=p/javascript \
-            --config=p/owasp-top-ten \
-            --config=p/security-audit \
-            --metrics=off \
-            --text \
-            --output="${REPORT_DIR}/semgrep.txt" \
-            . || true
-          # SARIF for dashboards / code scanning consumers
+          # Standard security report format: SARIF 2.1.0
           semgrep scan \
             --config=p/typescript \
             --config=p/react \
@@ -342,7 +343,7 @@ jobs:
             --sarif \
             --output="${REPORT_DIR}/semgrep.sarif" \
             . || true
-          # Gate CI: fail on ERROR findings (WARNING/INFO still reported above)
+          # Gate CI: fail on ERROR findings (console only; report remains SARIF)
           echo "==> SAST gate (ERROR severity)"
           semgrep scan \
             --config=p/typescript \
@@ -355,13 +356,9 @@ jobs:
             --error \
             --text \
             .
-          echo "SAST (Semgrep) passed — no ERROR-level findings."
-          if [ -f "${REPORT_DIR}/semgrep.txt" ]; then
-            echo "==> Semgrep report (excerpt)"
-            head -n 100 "${REPORT_DIR}/semgrep.txt" || true
-          fi
+          echo "SAST (Semgrep) passed — SARIF report: security-reports/semgrep.sarif"
 
-      # --- SCA: dependency vulnerabilities ---
+      # --- SCA: dependency vulnerabilities (npm audit → SARIF) ---
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
@@ -383,34 +380,118 @@ jobs:
         working-directory: ${{ env.APP_PATH }}
         run: npm ci
 
-      - name: SCA — npm audit (high / critical)
+      - name: SCA — npm audit (high / critical) → SARIF
         working-directory: ${{ env.APP_PATH }}
         run: |
           set -euo pipefail
-          mkdir -p "${{ github.workspace }}/security-reports"
-          npm audit --audit-level=high > "${{ github.workspace }}/security-reports/npm-audit.txt" 2>&1 || AUDIT_EXIT=$?
-          npm audit --json > "${{ github.workspace }}/security-reports/npm-audit.json" 2>/dev/null || true
-          if [ "${AUDIT_EXIT:-0}" -ne 0 ]; then
-            echo "::error::npm audit found high or critical vulnerabilities. See security-reports/npm-audit.txt"
-            cat "${{ github.workspace }}/security-reports/npm-audit.txt"
-            exit "$AUDIT_EXIT"
+          REPORT_DIR="${{ github.workspace }}/security-reports"
+          mkdir -p "${REPORT_DIR}"
+          set +e
+          npm audit --audit-level=high --json > "${REPORT_DIR}/npm-audit.json" 2>"${REPORT_DIR}/npm-audit-stderr.txt"
+          AUDIT_EXIT=$?
+          set -e
+          python3 <<'PY'
+          import json
+          from pathlib import Path
+          report_dir = Path("${{ github.workspace }}/security-reports")
+          src = report_dir / "npm-audit.json"
+          out = report_dir / "npm-audit.sarif"
+          try:
+              data = json.loads(src.read_text(encoding="utf-8") or "{}")
+          except Exception as e:
+              print(f"::warning::Could not parse npm audit JSON: {e}")
+              data = {}
+          results = []
+          vulns = data.get("vulnerabilities") or {}
+          if isinstance(vulns, dict):
+              for name, v in vulns.items():
+                  if not isinstance(v, dict):
+                      continue
+                  severity = (v.get("severity") or "warning").lower()
+                  level = {
+                      "critical": "error", "high": "error",
+                      "moderate": "warning", "medium": "warning",
+                      "low": "note", "info": "note",
+                  }.get(severity, "warning")
+                  via = v.get("via") or []
+                  title = name
+                  help_uri = ""
+                  if via and isinstance(via[0], dict):
+                      title = via[0].get("title") or name
+                      help_uri = via[0].get("url") or ""
+                  msg = f"{name}: {title} (severity={severity}, range={v.get('range', '')})"
+                  results.append({
+                      "ruleId": f"npm-audit/{name}",
+                      "level": level,
+                      "message": {"text": msg},
+                      "locations": [{
+                          "physicalLocation": {
+                              "artifactLocation": {"uri": "package-lock.json"},
+                          }
+                      }],
+                      **({"properties": {"helpUri": help_uri}} if help_uri else {}),
+                  })
+          advisories = data.get("advisories") or {}
+          if isinstance(advisories, dict):
+              for adv_id, a in advisories.items():
+                  if not isinstance(a, dict):
+                      continue
+                  severity = (a.get("severity") or "warning").lower()
+                  level = {
+                      "critical": "error", "high": "error",
+                      "moderate": "warning", "medium": "warning",
+                      "low": "note", "info": "note",
+                  }.get(severity, "warning")
+                  module = a.get("module_name") or "dependency"
+                  title = a.get("title") or module
+                  msg = f"{module}: {title} (severity={severity})"
+                  results.append({
+                      "ruleId": f"npm-audit/{adv_id}",
+                      "level": level,
+                      "message": {"text": msg},
+                      "locations": [{
+                          "physicalLocation": {
+                              "artifactLocation": {"uri": "package-lock.json"},
+                          }
+                      }],
+                  })
+          sarif = {
+              "$schema": "https://json.schemastore.org/sarif-2.1.0.json",
+              "version": "2.1.0",
+              "runs": [{
+                  "tool": {
+                      "driver": {
+                          "name": "npm-audit",
+                          "informationUri": "https://docs.npmjs.com/cli/commands/npm-audit",
+                          "rules": [],
+                      }
+                  },
+                  "results": results,
+              }],
+          }
+          out.write_text(json.dumps(sarif, indent=2), encoding="utf-8")
+          print(f"Wrote SARIF report: {out} ({len(results)} result(s))")
+          PY
+          if [ "${AUDIT_EXIT}" -ne 0 ]; then
+            echo "::error::npm audit found high or critical vulnerabilities. See npm-audit.sarif"
+            npm audit --audit-level=high || true
+            exit "${AUDIT_EXIT}"
           fi
-          echo "npm audit passed (no high/critical issues)."
-          cat "${{ github.workspace }}/security-reports/npm-audit.txt" || true
+          echo "npm audit passed — SARIF report: security-reports/npm-audit.sarif"
 
-      # --- Filesystem / supply-chain scan (lockfiles, secrets, known vulns) ---
-      - name: Trivy filesystem vulnerability scan
+      # --- Filesystem / supply-chain scan (standard report format: SARIF) ---
+      - name: Trivy filesystem scan (SARIF)
         uses: aquasecurity/trivy-action@0.28.0
         with:
           scan-type: fs
           scan-ref: ${{ env.APP_PATH }}
           severity: HIGH,CRITICAL
           exit-code: "1"
-          format: table
-          output: security-reports/trivy-fs.txt
+          format: sarif
+          output: security-reports/trivy-fs.sarif
           ignore-unfixed: true
 
-      - name: Trivy filesystem scan (SARIF artifact)
+      - name: Trivy filesystem scan (console table)
         if: always()
         uses: aquasecurity/trivy-action@0.28.0
         with:
@@ -418,21 +499,140 @@ jobs:
           scan-ref: ${{ env.APP_PATH }}
           severity: HIGH,CRITICAL
           exit-code: "0"
-          format: sarif
-          output: security-reports/trivy-fs.sarif
+          format: table
           ignore-unfixed: true
 
-      - name: Upload security reports
+      # --- Publish SARIF security reports to GitHub Code Scanning ---
+      - name: Upload Semgrep SARIF to Code Scanning
+        if: always() && hashFiles('security-reports/semgrep.sarif') != ''
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: security-reports/semgrep.sarif
+          checkout_path: ${{ env.APP_PATH }}
+          category: web-portal-release-semgrep
+        continue-on-error: true
+
+      - name: Upload npm audit SARIF to Code Scanning
+        if: always() && hashFiles('security-reports/npm-audit.sarif') != ''
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: security-reports/npm-audit.sarif
+          checkout_path: ${{ env.APP_PATH }}
+          category: web-portal-release-npm-audit
+        continue-on-error: true
+
+      - name: Upload Trivy SARIF to Code Scanning
+        if: always() && hashFiles('security-reports/trivy-fs.sarif') != ''
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: security-reports/trivy-fs.sarif
+          checkout_path: ${{ env.APP_PATH }}
+          category: web-portal-release-trivy-fs
+        continue-on-error: true
+
+      - name: Upload security reports (SARIF)
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: release-security-reports
-          path: security-reports/
+          name: release-security-reports-sarif
+          path: |
+            security-reports/*.sarif
           retention-days: 30
           if-no-files-found: warn
 
   # ---------------------------------------------------------------------------
-  # 4. Packaging — Vite production build + versioned .zip for static web deploy
+  # 4. CodeQL analysis — GitHub CodeQL for JavaScript / TypeScript
+  #    Runs after Integration; parallel with QC and Security.
+  #    Packaging waits for CodeQL (and QC + Security) to succeed.
+  #    Results appear under the repository Security → Code scanning alerts.
+  # ---------------------------------------------------------------------------
+  codeql:
+    name: CodeQL Analysis
+    runs-on: ubuntu-latest
+    needs: [integration]
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      security-events: write
+      actions: read
+    steps:
+      - name: Checkout calling repository (release / push head)
+        if: needs.integration.outputs.checkout_mode == 'caller'
+        uses: actions/checkout@v4
+        with:
+          path: ${{ env.APP_PATH }}
+
+      - name: Checkout remote application repository
+        if: needs.integration.outputs.checkout_mode == 'remote'
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ needs.integration.outputs.app_repository }}
+          ref: ${{ needs.integration.outputs.app_ref }}
+          path: ${{ env.APP_PATH }}
+
+      - name: Initialize CodeQL (JavaScript / TypeScript)
+        uses: github/codeql-action/init@v3
+        with:
+          languages: javascript-typescript
+          source-root: ${{ env.APP_PATH }}
+          # security-and-quality: security rules + maintainability / reliability
+          queries: security-and-quality
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: ${{ env.APP_PATH }}/package-lock.json
+
+      - name: Cache node_modules
+        id: cache-node-modules
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.APP_PATH }}/node_modules
+          key: node-modules-${{ runner.os }}-node${{ env.NODE_VERSION }}-${{ hashFiles(format('{0}/package-lock.json', env.APP_PATH)) }}
+          restore-keys: |
+            node-modules-${{ runner.os }}-node${{ env.NODE_VERSION }}-
+
+      - name: Install dependencies for CodeQL (npm ci)
+        if: steps.cache-node-modules.outputs.cache-hit != 'true'
+        working-directory: ${{ env.APP_PATH }}
+        run: npm ci
+
+      # Optional build improves extraction for TypeScript projects that emit JS
+      - name: Build for CodeQL (TypeScript project build)
+        working-directory: ${{ env.APP_PATH }}
+        run: |
+          set -euo pipefail
+          # Prefer tsc project build; fall back to vite build if no tsc -b setup
+          if npx tsc -b --pretty false 2>/dev/null; then
+            echo "TypeScript project build completed for CodeQL."
+          elif npm run build --if-present; then
+            echo "npm run build completed for CodeQL."
+          else
+            echo "No build step available; CodeQL will analyze sources as-is."
+          fi
+
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@v3
+        with:
+          category: "web-portal-release-codeql-js"
+
+      - name: CodeQL summary
+        if: always()
+        run: |
+          {
+            echo "### CodeQL Analysis"
+            echo ""
+            echo "Language: JavaScript / TypeScript"
+            echo "Query suite: security-and-quality"
+            echo "Category: web-portal-release-codeql-js"
+            echo ""
+            echo "View results: repository → Security → Code scanning alerts"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  # ---------------------------------------------------------------------------
+  # 5. Packaging — Vite production build + versioned .zip for static web deploy
   # ---------------------------------------------------------------------------
   # Vite SPA deploy model:
   #   - build output dir: dist/ (default; index.html is the document root)
@@ -443,7 +643,8 @@ jobs:
   packaging:
     name: Packaging
     runs-on: ubuntu-latest
-    needs: [integration, quality-control, security-testing]
+    # Integration first; packaging waits for QC, Security, and CodeQL
+    needs: [integration, quality-control, security-testing, codeql]
     timeout-minutes: 20
     env:
       # Vite default outDir — change only if portal vite.config sets build.outDir
