@@ -2,11 +2,12 @@
 # Heavy Rental Web Portal — Integration CI Pipeline (reusable)
 # =============================================================================
 # Stages:
-#   1. Integration       — checkout, Node 22, npm ci, install health
-#   2. Quality Control   — ESLint + TypeScript (needs Integration)
-#   3. Security Testing  — Semgrep + npm audit + Trivy (needs Integration)
-#   4. CodeQL Analysis   — GitHub CodeQL for JavaScript/TypeScript (needs Integration)
+#   1. Integration         — checkout, Node 22, npm ci, install health
+#   2. Quality Control     — ESLint + TypeScript (needs Integration)
+#   3. Security Testing    — Semgrep + npm audit + Trivy (needs Integration)
+#   4. CodeQL Analysis     — GitHub CodeQL for JavaScript/TypeScript (needs Integration)
 #   5. REST Endpoint Tests — mock server HTTP tests (needs Integration)
+#   6. GitHub Flow CI Gate — aggregate: Integration first, then QC + Security + CodeQL + REST
 #   Security report format (standard): SARIF 2.1.0
 #     - Semgrep → semgrep.sarif
 #     - npm audit → npm-audit.sarif (converted from audit JSON)
@@ -102,11 +103,13 @@ jobs:
         env:
           # github context is that of the caller workflow for reusable workflows
           WORKFLOW_REF: ${{ github.workflow_ref }}
+          EVENT_NAME: ${{ github.event_name }}
+          WORKFLOW_NAME: ${{ github.workflow }}
         run: |
           set -euo pipefail
           echo "github.workflow_ref=${WORKFLOW_REF}"
-          echo "github.event_name=${{ github.event_name }}"
-          echo "github.workflow=${{ github.workflow }}"
+          echo "github.event_name=${EVENT_NAME}"
+          echo "github.workflow=${WORKFLOW_NAME}"
           case "${WORKFLOW_REF}" in
             */.github/workflows/portal-ci-caller.yml@*)
               echo "Allowed caller: portal-ci-caller.yml"
@@ -138,21 +141,29 @@ jobs:
     steps:
       - name: Resolve application source (same-repo caller vs remote override)
         id: meta
+        env:
+          # Bind contexts here — never interpolate github/inputs directly in run: scripts
+          # (avoids Semgrep run-shell-injection).
+          EVENT_NAME: ${{ github.event_name }}
+          INPUT_REPO: ${{ inputs.app_repository }}
+          INPUT_REF: ${{ inputs.app_ref }}
+          GH_REPOSITORY: ${{ github.repository }}
+          GH_SHA: ${{ github.sha }}
+          DEFAULT_APP_REF_VALUE: ${{ env.DEFAULT_APP_REF }}
         run: |
           set -euo pipefail
-          # This workflow is workflow_call-only; github.* reflects the caller event.
-          EVENT="${{ github.event_name }}"
-          INPUT_REPO="${{ inputs.app_repository }}"
-          INPUT_REF="${{ inputs.app_ref }}"
+          EVENT="${EVENT_NAME}"
+          INPUT_REPO="${INPUT_REPO}"
+          INPUT_REF="${INPUT_REF}"
 
-          if [ -n "$INPUT_REPO" ] && [ "$INPUT_REPO" != "${{ github.repository }}" ]; then
-            APP_REPO="$INPUT_REPO"
-            APP_REF="${INPUT_REF:-${{ env.DEFAULT_APP_REF }}}"
+          if [ -n "${INPUT_REPO}" ] && [ "${INPUT_REPO}" != "${GH_REPOSITORY}" ]; then
+            APP_REPO="${INPUT_REPO}"
+            APP_REF="${INPUT_REF:-${DEFAULT_APP_REF_VALUE}}"
             MODE=remote
           else
             # portal-ci-caller.yml in the same repo: use this commit
-            APP_REPO="${{ github.repository }}"
-            APP_REF="${INPUT_REF:-${{ github.sha }}}"
+            APP_REPO="${GH_REPOSITORY}"
+            APP_REF="${INPUT_REF:-${GH_SHA}}"
             MODE=caller
           fi
 
@@ -320,7 +331,7 @@ jobs:
           path: ${{ env.APP_PATH }}
 
       - name: Create security reports directory
-        run: mkdir -p "${{ github.workspace }}/security-reports"
+        run: mkdir -p "${GITHUB_WORKSPACE}/security-reports"
 
       # --- SAST: static analysis (standard report format: SARIF) ---
       - name: Setup Python (Semgrep)
@@ -335,32 +346,51 @@ jobs:
         working-directory: ${{ env.APP_PATH }}
         run: |
           set -euo pipefail
-          REPORT_DIR="${{ github.workspace }}/security-reports"
-          # Standard security report format: SARIF 2.1.0
-          semgrep scan \
-            --config=p/typescript \
-            --config=p/react \
-            --config=p/javascript \
-            --config=p/owasp-top-ten \
-            --config=p/security-audit \
-            --metrics=off \
+          REPORT_DIR="${GITHUB_WORKSPACE}/security-reports"
+          SEMGREP_COMMON=(
+            --config=p/typescript
+            --config=p/react
+            --config=p/javascript
+            --config=p/owasp-top-ten
+            --config=p/security-audit
+            --config=p/secrets
+            --metrics=off
+          )
+
+          # --- Pass 1: always write SARIF (standard report). Does not fail the step. ---
+          echo "==> Semgrep report (SARIF 2.1.0)"
+          set +e
+          semgrep scan "${SEMGREP_COMMON[@]}" \
             --sarif \
             --output="${REPORT_DIR}/semgrep.sarif" \
-            . || true
-          # Gate CI: fail on ERROR findings (console only; report remains SARIF)
-          echo "==> SAST gate (ERROR severity)"
-          semgrep scan \
-            --config=p/typescript \
-            --config=p/react \
-            --config=p/javascript \
-            --config=p/owasp-top-ten \
-            --config=p/security-audit \
-            --metrics=off \
+            .
+          SARIF_RC=$?
+          set -e
+          if [ -f "${REPORT_DIR}/semgrep.sarif" ]; then
+            echo "SARIF written: ${REPORT_DIR}/semgrep.sarif (semgrep exit=${SARIF_RC}; non-zero is OK for report pass)"
+          else
+            echo "::warning::semgrep.sarif was not produced (exit=${SARIF_RC})"
+          fi
+
+          # --- Pass 2: CI gate — fail only if ERROR-severity findings exist. ---
+          echo "==> SAST gate (ERROR severity only; exit 1 if findings)"
+          set +e
+          semgrep scan "${SEMGREP_COMMON[@]}" \
             --severity=ERROR \
             --error \
             --text \
             .
-          echo "SAST (Semgrep) passed — SARIF report: security-reports/semgrep.sarif"
+          GATE_RC=$?
+          set -e
+          if [ "${GATE_RC}" -ne 0 ]; then
+            echo "::error::Semgrep SAST gate failed (exit=${GATE_RC})."
+            echo "The SARIF report may still have been written successfully."
+            echo "This step fails because --severity=ERROR --error found ERROR-level issues"
+            echo "(or Semgrep could not complete the gate scan)."
+            echo "Open security-reports/semgrep.sarif or the text findings above."
+            exit "${GATE_RC}"
+          fi
+          echo "SAST (Semgrep) gate passed — no ERROR-level findings. SARIF: security-reports/semgrep.sarif"
 
       # --- SCA: dependency vulnerabilities (npm audit → SARIF) ---
       - name: Setup Node.js
@@ -388,18 +418,21 @@ jobs:
         working-directory: ${{ env.APP_PATH }}
         run: |
           set -euo pipefail
-          REPORT_DIR="${{ github.workspace }}/security-reports"
+          REPORT_DIR="${GITHUB_WORKSPACE}/security-reports"
           mkdir -p "${REPORT_DIR}"
           # Gate + intermediate JSON; SARIF is the standard report artifact
           set +e
           npm audit --audit-level=high --json > "${REPORT_DIR}/npm-audit.json" 2>"${REPORT_DIR}/npm-audit-stderr.txt"
           AUDIT_EXIT=$?
           set -e
-          # Convert npm audit JSON → SARIF 2.1.0 (standard security report format)
+          # Convert npm audit JSON → SARIF 2.1.0 (standard security report format).
+          # <<'PY' is unexpanded — read paths from the environment, not shell ${VAR}.
           python3 <<'PY'
-          import json, sys
+          import json
+          import os
           from pathlib import Path
-          report_dir = Path("${{ github.workspace }}/security-reports")
+          report_dir = Path(os.environ["GITHUB_WORKSPACE"]) / "security-reports"
+          report_dir.mkdir(parents=True, exist_ok=True)
           src = report_dir / "npm-audit.json"
           out = report_dir / "npm-audit.sarif"
           try:
@@ -488,20 +521,41 @@ jobs:
           echo "npm audit passed — SARIF report: security-reports/npm-audit.sarif"
 
       # --- Filesystem / supply-chain scan (standard report format: SARIF) ---
-      - name: Trivy filesystem scan (SARIF)
-        uses: aquasecurity/trivy-action@0.28.0
+      # One shared Actions cache for vuln DB (avoids ~100MB re-download per step).
+      # Weekly key; restore-keys fall back to any prior OS cache. Per-step trivy cache is off.
+      - name: Trivy cache key
+        id: trivy-cache-meta
+        run: echo "week=$(date -u +%Y-W%V)" >> "$GITHUB_OUTPUT"
+
+      - name: Cache Trivy DBs
+        uses: actions/cache@v4
+        with:
+          path: ${{ github.workspace }}/.cache/trivy
+          key: trivy-db-${{ runner.os }}-${{ steps.trivy-cache-meta.outputs.week }}
+          restore-keys: |
+            trivy-db-${{ runner.os }}-
+
+      # Pass 1: always write SARIF (standard report). Do not fail the step on findings —
+      # otherwise SARIF mode hides the vulns in the log and only shows exit code 1.
+      - name: Trivy filesystem scan (SARIF report)
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           scan-type: fs
           scan-ref: ${{ env.APP_PATH }}
           severity: HIGH,CRITICAL
-          exit-code: "1"
+          exit-code: "0"
           format: sarif
           output: security-reports/trivy-fs.sarif
           ignore-unfixed: true
+          scanners: vuln
+          # Shared job-level cache above; disable nested restore/save per scan
+          cache: "false"
+          cache-dir: ${{ github.workspace }}/.cache/trivy
 
+      # Pass 2: human-readable findings in the job log (never blocks).
       - name: Trivy filesystem scan (console table)
         if: always()
-        uses: aquasecurity/trivy-action@0.28.0
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           scan-type: fs
           scan-ref: ${{ env.APP_PATH }}
@@ -509,6 +563,23 @@ jobs:
           exit-code: "0"
           format: table
           ignore-unfixed: true
+          scanners: vuln
+          cache: "false"
+          cache-dir: ${{ github.workspace }}/.cache/trivy
+
+      # Pass 3: CI gate — fail only on CRITICAL, unfixed vulns (mirrors Semgrep ERROR gate).
+      - name: Trivy SCA gate (CRITICAL)
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          scan-type: fs
+          scan-ref: ${{ env.APP_PATH }}
+          severity: CRITICAL
+          exit-code: "1"
+          format: table
+          ignore-unfixed: true
+          scanners: vuln
+          cache: "false"
+          cache-dir: ${{ github.workspace }}/.cache/trivy
 
       # --- Publish SARIF security reports to GitHub Code Scanning ---
       - name: Upload Semgrep SARIF to Code Scanning
@@ -794,7 +865,7 @@ jobs:
         working-directory: ${{ env.APP_PATH }}
         run: |
           set -euo pipefail
-          REPORT_DIR="${{ github.workspace }}/test-reports"
+          REPORT_DIR="${GITHUB_WORKSPACE}/test-reports"
           mkdir -p "$REPORT_DIR"
 
           MOCK_SCRIPT="${{ steps.detect.outputs.mock_script }}"
@@ -855,7 +926,7 @@ jobs:
           VITE_API_BASE_URL: ${{ env.MOCK_API_BASE_URL }}
         run: |
           set -euo pipefail
-          REPORT_DIR="${{ github.workspace }}/test-reports"
+          REPORT_DIR="${GITHUB_WORKSPACE}/test-reports"
           mkdir -p "$REPORT_DIR"
           TEST_SCRIPT="${{ steps.detect.outputs.test_script }}"
 
@@ -884,7 +955,7 @@ jobs:
         if: always() && steps.detect.outputs.ready == 'true' && steps.mock-server.outputs.started == 'true'
         run: |
           set -euo pipefail
-          PID_FILE="${{ github.workspace }}/test-reports/mock-server.pid"
+          PID_FILE="${GITHUB_WORKSPACE}/test-reports/mock-server.pid"
           if [ -f "$PID_FILE" ]; then
             PID="$(cat "$PID_FILE")"
             echo "Stopping mock server PID $PID"
@@ -909,3 +980,73 @@ jobs:
           path: test-reports/
           retention-days: 14
           if-no-files-found: warn
+
+  # ---------------------------------------------------------------------------
+  # 6. GitHub Flow CI gate — aggregate status for branch protection
+  #    Integration is evaluated first (highest priority); then QC, Security,
+  #    CodeQL, and REST Endpoint Tests.
+  # ---------------------------------------------------------------------------
+  github-flow-gate:
+    name: GitHub Flow CI Gate
+    runs-on: ubuntu-latest
+    # Always run so a failed Integration still produces a red gate check
+    if: always()
+    needs:
+      - integration
+      - quality-control
+      - security-testing
+      - codeql
+      - rest-endpoint-tests
+    timeout-minutes: 5
+    steps:
+      - name: Enforce Integration priority and full CI green
+        env:
+          INTEGRATION: ${{ needs.integration.result }}
+          QUALITY: ${{ needs.quality-control.result }}
+          SECURITY: ${{ needs.security-testing.result }}
+          CODEQL: ${{ needs.codeql.result }}
+          REST_TESTS: ${{ needs.rest-endpoint-tests.result }}
+        run: |
+          set -euo pipefail
+
+          {
+            echo "### GitHub Flow CI gate (web portal)"
+            echo ""
+            echo "| Job | Result | Priority |"
+            echo "| --- | --- | --- |"
+            echo "| Integration | \`${INTEGRATION}\` | **1 (highest)** |"
+            echo "| Quality Control | \`${QUALITY}\` | 2 |"
+            echo "| Security Testing | \`${SECURITY}\` | 2 |"
+            echo "| CodeQL Analysis | \`${CODEQL}\` | 2 |"
+            echo "| REST Endpoint Tests | \`${REST_TESTS}\` | 3 |"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          echo "Integration (priority 1): ${INTEGRATION}"
+          echo "Quality Control (priority 2): ${QUALITY}"
+          echo "Security Testing (priority 2): ${SECURITY}"
+          echo "CodeQL Analysis (priority 2): ${CODEQL}"
+          echo "REST Endpoint Tests (priority 3): ${REST_TESTS}"
+
+          if [ "${INTEGRATION}" != "success" ]; then
+            echo "::error::Integration is the highest-priority gate and did not succeed (result=${INTEGRATION})."
+            echo "Fix Integration before Quality Control / Security / CodeQL / REST tests can proceed."
+            exit 1
+          fi
+          if [ "${QUALITY}" != "success" ]; then
+            echo "::error::Quality Control did not succeed (result=${QUALITY})."
+            exit 1
+          fi
+          if [ "${SECURITY}" != "success" ]; then
+            echo "::error::Security Testing did not succeed (result=${SECURITY})."
+            exit 1
+          fi
+          if [ "${CODEQL}" != "success" ]; then
+            echo "::error::CodeQL Analysis did not succeed (result=${CODEQL})."
+            exit 1
+          fi
+          if [ "${REST_TESTS}" != "success" ]; then
+            echo "::error::REST Endpoint Tests did not succeed (result=${REST_TESTS})."
+            exit 1
+          fi
+
+          echo "GitHub Flow CI gate passed: Integration first, then QC + Security + CodeQL + REST Endpoint Tests."

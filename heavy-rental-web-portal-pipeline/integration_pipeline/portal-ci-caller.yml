@@ -27,6 +27,7 @@
 #   2. Security Testing      (needs Integration; parallel with QC)
 #   2. CodeQL Analysis       (needs Integration; JS/TS Code Scanning)
 #   3. REST Endpoint Tests   (needs Integration; when mock scripts exist)
+#   4. GitHub Flow CI Gate   (aggregate of the above — optional single check)
 #
 # Setup
 # -----
@@ -40,6 +41,7 @@
 #          * Quality Control
 #          * Security Testing
 #          * CodeQL Analysis
+#          * GitHub Flow CI Gate      ← optional single aggregate check
 #      - Do not allow bypassing the above for administrators (recommended)
 # =============================================================================
 
