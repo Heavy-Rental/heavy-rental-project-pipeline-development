@@ -43,7 +43,7 @@
 #   2. Security Testing      (needs Integration)
 #   2. CodeQL Analysis       (needs Integration; JS/TS Code Scanning)
 #   3. Packaging             (needs Integration + QC + Security + CodeQL)
-#      → Vite dist/ archive for deploy
+#      → Vite dist/ .zip + Docker (nginx) image → GHCR on release
 #
 # Setup
 # -----
@@ -74,6 +74,8 @@ permissions:
   # Forwarded to reusable workflow for CodeQL / Code Scanning
   security-events: write
   actions: read
+  # Forwarded for GHCR image push on published releases
+  packages: write
 
 jobs:
   release-pipeline:
