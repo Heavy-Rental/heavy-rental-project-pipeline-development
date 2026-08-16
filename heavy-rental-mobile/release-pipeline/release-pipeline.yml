@@ -1,0 +1,697 @@
+# =============================================================================
+# Heavy Rental Mobile — Release CI Pipeline (reusable)
+# =============================================================================
+# Stages (priority order — Integration is highest priority):
+#   1. Integration      (HIGHEST) checkout, JDK 17, Android SDK, Gradle, layout
+#   2. Quality Control  needs Integration — lintDebug, testDebugUnitTest, assembleDebug
+#   3. Security Testing needs Integration — SAST (Semgrep) + SCA/FS (Trivy)
+#   4. CodeQL Analysis  needs Integration — GitHub CodeQL (Java/Kotlin)
+#   5. Packaging        needs Integration + QC + Security + CodeQL — unsigned APK
+#
+# Security report format (standard): SARIF 2.1.0
+#   - Semgrep → semgrep.sarif
+#   - Trivy FS → trivy-fs.sarif
+#   - CodeQL → GitHub Code Scanning (native SARIF via analyze)
+#
+# GitHub Flow (https://docs.github.com/en/get-started/using-github/github-flow)
+# --------------------------------------------------------------------------
+# Invoked via mobile-release-caller.yml when:
+#   - a GitHub Release is published, or
+#   - a pull request is opened/updated from develop → master
+# Feature-branch PR validation remains mobile-ci-caller.yml (Integration first).
+#
+#   feature → develop (CI) → PR develop→master and/or publish GitHub Release
+#     → this pipeline
+#
+# Same gates as integration-pipeline.yml (no mock contract job), plus
+# unsigned assembleRelease APK artifacts. No Play signing and no GHCR in v1.
+#
+# Application:
+#   https://github.com/Heavy-Rental/heavy-rental-mobile
+#   Android · Kotlin JVM 17 · Compose · Gradle wrapper
+#
+# How the mobile app uses this on release
+# ---------------------------------------
+# Install both files into the Android application repository:
+#
+#   .github/workflows/release-pipeline.yml         ← this file (reusable only)
+#   .github/workflows/mobile-release-caller.yml    ← sole allowed entry point
+#
+# Also mirrored in the pipeline-development repo for discovery/testing:
+#   .github/workflows/mobile-release.yml
+#
+# Local validation (pipeline-development repo root, in the devcontainer):
+#   actionlint heavy-rental-mobile/release-pipeline/release-pipeline.yml
+#   act — see heavy-rental-mobile/act/README.md
+#
+# No GitHub Actions secrets required for v1 (unsigned APK only).
+# =============================================================================
+
+name: Mobile Release CI
+
+on:
+  workflow_call:
+    inputs:
+      app_repository:
+        description: >
+          Override application repository (owner/name). Leave empty to use the
+          calling repository.
+        required: false
+        type: string
+        default: ""
+      app_ref:
+        description: >
+          Override git ref (branch/tag/SHA). Leave empty to use the calling
+          workflow's commit (github.sha).
+        required: false
+        type: string
+        default: ""
+
+concurrency:
+  group: mobile-release-${{ github.workflow }}-${{ github.repository }}-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  security-events: write
+  actions: read
+
+env:
+  JAVA_VERSION: "17"
+  JAVA_DISTRIBUTION: temurin
+  ANDROID_COMPILE_SDK: "35"
+  ANDROID_BUILD_TOOLS: "35.0.0"
+  APP_PATH: app
+  DEFAULT_APP_REPOSITORY: Heavy-Rental/heavy-rental-mobile
+  DEFAULT_APP_REF: master
+
+jobs:
+  assert-caller:
+    name: Assert caller
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Allow only mobile-release-caller.yml
+        env:
+          WORKFLOW_REF: ${{ github.workflow_ref }}
+          EVENT_NAME: ${{ github.event_name }}
+          WORKFLOW_NAME: ${{ github.workflow }}
+        run: |
+          set -euo pipefail
+          echo "github.workflow_ref=${WORKFLOW_REF}"
+          echo "github.event_name=${EVENT_NAME}"
+          echo "github.workflow=${WORKFLOW_NAME}"
+          # nektos/act does not populate github.workflow_ref. ACT=true is set by
+          # act and is unset on GitHub-hosted runners — do not weaken the gate there.
+          if [ "${ACT:-}" = "true" ] && [ -z "${WORKFLOW_REF}" ]; then
+            echo "act local run: caller gate skipped (github.workflow_ref unset)"
+            {
+              echo "### Caller gate"
+              echo ""
+              echo "nektos/act — \`github.workflow_ref\` is empty; filename gate skipped."
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          case "${WORKFLOW_REF}" in
+            */.github/workflows/mobile-release-caller.yml@*)
+              echo "Allowed caller: mobile-release-caller.yml"
+              {
+                echo "### Caller gate"
+                echo ""
+                echo "Invoked by \`mobile-release-caller.yml\` — OK."
+              } >> "$GITHUB_STEP_SUMMARY"
+              ;;
+            *)
+              echo "::error::release-pipeline.yml may only be invoked by .github/workflows/mobile-release-caller.yml (got: ${WORKFLOW_REF})"
+              exit 1
+              ;;
+          esac
+
+  integration:
+    name: Integration
+    runs-on: ubuntu-latest
+    needs: [assert-caller]
+    timeout-minutes: 25
+    outputs:
+      app_repository: ${{ steps.meta.outputs.app_repository }}
+      app_ref: ${{ steps.meta.outputs.app_ref }}
+      checkout_mode: ${{ steps.meta.outputs.checkout_mode }}
+    steps:
+      - name: Resolve application source (same-repo caller vs remote override)
+        id: meta
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          INPUT_REPO: ${{ inputs.app_repository }}
+          INPUT_REF: ${{ inputs.app_ref }}
+          GH_REPOSITORY: ${{ github.repository }}
+          GH_SHA: ${{ github.sha }}
+          DEFAULT_APP_REF_VALUE: ${{ env.DEFAULT_APP_REF }}
+        run: |
+          set -euo pipefail
+          EVENT="${EVENT_NAME}"
+          INPUT_REPO="${INPUT_REPO}"
+          INPUT_REF="${INPUT_REF}"
+
+          if [ -n "${INPUT_REPO}" ] && [ "${INPUT_REPO}" != "${GH_REPOSITORY}" ]; then
+            APP_REPO="${INPUT_REPO}"
+            APP_REF="${INPUT_REF:-${DEFAULT_APP_REF_VALUE}}"
+            MODE=remote
+          else
+            APP_REPO="${GH_REPOSITORY}"
+            APP_REF="${INPUT_REF:-${GH_SHA}}"
+            MODE=caller
+          fi
+
+          echo "app_repository=$APP_REPO" >> "$GITHUB_OUTPUT"
+          echo "app_ref=$APP_REF" >> "$GITHUB_OUTPUT"
+          echo "checkout_mode=$MODE" >> "$GITHUB_OUTPUT"
+          {
+            echo "### Source resolution"
+            echo ""
+            echo "| Field | Value |"
+            echo "| --- | --- |"
+            echo "| Event | \`$EVENT\` |"
+            echo "| Mode | \`$MODE\` |"
+            echo "| Repository | \`$APP_REPO\` |"
+            echo "| Ref | \`$APP_REF\` |"
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "Integrating application: $APP_REPO @ $APP_REF (mode=$MODE)"
+
+      - name: Checkout calling repository (release / push head)
+        if: steps.meta.outputs.checkout_mode == 'caller'
+        uses: actions/checkout@v4
+        with:
+          path: ${{ env.APP_PATH }}
+
+      - name: Checkout remote application repository
+        if: steps.meta.outputs.checkout_mode == 'remote'
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ steps.meta.outputs.app_repository }}
+          ref: ${{ steps.meta.outputs.app_ref }}
+          path: ${{ env.APP_PATH }}
+
+      - name: Setup Java ${{ env.JAVA_VERSION }}
+        uses: actions/setup-java@v4
+        with:
+          distribution: ${{ env.JAVA_DISTRIBUTION }}
+          java-version: ${{ env.JAVA_VERSION }}
+          cache: gradle
+          cache-dependency-path: |
+            ${{ env.APP_PATH }}/settings.gradle.kts
+            ${{ env.APP_PATH }}/build.gradle.kts
+            ${{ env.APP_PATH }}/app/build.gradle.kts
+            ${{ env.APP_PATH }}/gradle/libs.versions.toml
+            ${{ env.APP_PATH }}/gradle/wrapper/gradle-wrapper.properties
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+        with:
+          packages: >
+            tools
+            platform-tools
+            platforms;android-${{ env.ANDROID_COMPILE_SDK }}
+            build-tools;${{ env.ANDROID_BUILD_TOOLS }}
+
+      - name: Ensure Gradle Wrapper is executable
+        working-directory: ${{ env.APP_PATH }}
+        run: |
+          set -euo pipefail
+          if [ -f ./gradlew ]; then
+            chmod +x ./gradlew
+            echo "Using Gradle Wrapper (./gradlew)"
+          else
+            echo "::error::gradlew not found — this pipeline expects the Gradle Wrapper in the mobile repo."
+            exit 1
+          fi
+
+      - name: Resolve Gradle project (preBuild)
+        working-directory: ${{ env.APP_PATH }}
+        run: |
+          set -euo pipefail
+          ./gradlew --no-daemon --version
+          ./gradlew --no-daemon :app:preBuild
+
+      - name: Verify project layout and toolchain
+        working-directory: ${{ env.APP_PATH }}
+        run: |
+          set -euo pipefail
+          echo "==> Java / Gradle versions"
+          java -version
+          ./gradlew --no-daemon --version
+          echo "==> Required files"
+          test -f settings.gradle.kts
+          test -f build.gradle.kts
+          test -f gradlew
+          test -f app/build.gradle.kts
+          test -d specification
+          test -f package.json
+          {
+            echo "### Integration checks"
+            echo ""
+            echo "| Field | Value |"
+            echo "| --- | --- |"
+            echo "| Runner Java | \`${{ env.JAVA_VERSION }}\` (${{ env.JAVA_DISTRIBUTION }}) |"
+            echo "| compileSdk | \`${{ env.ANDROID_COMPILE_SDK }}\` |"
+            echo "| build-tools | \`${{ env.ANDROID_BUILD_TOOLS }}\` |"
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "Integration checks passed."
+
+      - name: Upload Gradle project fingerprint
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-integration-metadata
+          path: |
+            ${{ env.APP_PATH }}/settings.gradle.kts
+            ${{ env.APP_PATH }}/gradle/libs.versions.toml
+          retention-days: 7
+          if-no-files-found: warn
+
+  quality-control:
+    name: Quality Control
+    runs-on: ubuntu-latest
+    needs: [integration]
+    timeout-minutes: 40
+    steps:
+      - name: Checkout calling repository (release / push head)
+        if: needs.integration.outputs.checkout_mode == 'caller'
+        uses: actions/checkout@v4
+        with:
+          path: ${{ env.APP_PATH }}
+
+      - name: Checkout remote application repository
+        if: needs.integration.outputs.checkout_mode == 'remote'
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ needs.integration.outputs.app_repository }}
+          ref: ${{ needs.integration.outputs.app_ref }}
+          path: ${{ env.APP_PATH }}
+
+      - name: Setup Java ${{ env.JAVA_VERSION }}
+        uses: actions/setup-java@v4
+        with:
+          distribution: ${{ env.JAVA_DISTRIBUTION }}
+          java-version: ${{ env.JAVA_VERSION }}
+          cache: gradle
+          cache-dependency-path: |
+            ${{ env.APP_PATH }}/settings.gradle.kts
+            ${{ env.APP_PATH }}/build.gradle.kts
+            ${{ env.APP_PATH }}/app/build.gradle.kts
+            ${{ env.APP_PATH }}/gradle/libs.versions.toml
+            ${{ env.APP_PATH }}/gradle/wrapper/gradle-wrapper.properties
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+        with:
+          packages: >
+            tools
+            platform-tools
+            platforms;android-${{ env.ANDROID_COMPILE_SDK }}
+            build-tools;${{ env.ANDROID_BUILD_TOOLS }}
+
+      - name: Ensure Gradle Wrapper is executable
+        working-directory: ${{ env.APP_PATH }}
+        run: chmod +x ./gradlew
+
+      - name: Lint, JVM unit tests, assembleDebug
+        working-directory: ${{ env.APP_PATH }}
+        run: |
+          set -euo pipefail
+          ./gradlew --no-daemon :app:lintDebug :app:testDebugUnitTest :app:assembleDebug
+          {
+            echo "### Quality control"
+            echo ""
+            echo "lintDebug, testDebugUnitTest, and assembleDebug completed successfully."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload lint and unit-test reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-quality-test-reports
+          path: |
+            ${{ env.APP_PATH }}/app/build/reports/
+            ${{ env.APP_PATH }}/app/build/test-results/
+          retention-days: 14
+          if-no-files-found: warn
+
+      - name: Upload debug APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: mobile-release-debug-apk
+          path: ${{ env.APP_PATH }}/app/build/outputs/apk/debug/*.apk
+          retention-days: 7
+          if-no-files-found: warn
+
+  security-testing:
+    name: Security Testing
+    runs-on: ubuntu-latest
+    needs: [integration]
+    timeout-minutes: 25
+    steps:
+      - name: Checkout calling repository (release / push head)
+        if: needs.integration.outputs.checkout_mode == 'caller'
+        uses: actions/checkout@v4
+        with:
+          path: ${{ env.APP_PATH }}
+
+      - name: Checkout remote application repository
+        if: needs.integration.outputs.checkout_mode == 'remote'
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ needs.integration.outputs.app_repository }}
+          ref: ${{ needs.integration.outputs.app_ref }}
+          path: ${{ env.APP_PATH }}
+
+      - name: Create security reports directory
+        run: mkdir -p "${GITHUB_WORKSPACE}/security-reports"
+
+      - name: Setup Python (Semgrep)
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Semgrep
+        run: pip install --quiet semgrep
+
+      - name: SAST — Semgrep (Kotlin / Java / OWASP) → SARIF
+        working-directory: ${{ env.APP_PATH }}
+        run: |
+          set -euo pipefail
+          REPORT_DIR="${GITHUB_WORKSPACE}/security-reports"
+          SEMGREP_COMMON=(
+            --config=p/kotlin
+            --config=p/java
+            --config=p/owasp-top-ten
+            --config=p/security-audit
+            --config=p/secrets
+            --metrics=off
+          )
+
+          echo "==> Semgrep report (SARIF 2.1.0)"
+          set +e
+          semgrep scan "${SEMGREP_COMMON[@]}" \
+            --sarif \
+            --output="${REPORT_DIR}/semgrep.sarif" \
+            .
+          SARIF_RC=$?
+          set -e
+          if [ -f "${REPORT_DIR}/semgrep.sarif" ]; then
+            echo "SARIF written: ${REPORT_DIR}/semgrep.sarif (semgrep exit=${SARIF_RC}; non-zero is OK for report pass)"
+          else
+            echo "::warning::semgrep.sarif was not produced (exit=${SARIF_RC})"
+          fi
+
+          echo "==> SAST gate (ERROR severity only; exit 1 if findings)"
+          set +e
+          semgrep scan "${SEMGREP_COMMON[@]}" \
+            --severity=ERROR \
+            --error \
+            --text \
+            .
+          GATE_RC=$?
+          set -e
+          if [ "${GATE_RC}" -ne 0 ]; then
+            echo "::error::Semgrep SAST gate failed (exit=${GATE_RC})."
+            echo "The SARIF report may still have been written successfully."
+            echo "This step fails because --severity=ERROR --error found ERROR-level issues"
+            echo "(or Semgrep could not complete the gate scan)."
+            echo "Open security-reports/semgrep.sarif or the text findings above."
+            exit "${GATE_RC}"
+          fi
+          echo "SAST (Semgrep) gate passed — no ERROR-level findings. SARIF: security-reports/semgrep.sarif"
+
+      - name: Trivy cache key
+        id: trivy-cache-meta
+        run: echo "week=$(date -u +%Y-W%V)" >> "$GITHUB_OUTPUT"
+
+      - name: Cache Trivy DBs
+        uses: actions/cache@v4
+        with:
+          path: ${{ github.workspace }}/.cache/trivy
+          key: trivy-db-${{ runner.os }}-${{ steps.trivy-cache-meta.outputs.week }}
+          restore-keys: |
+            trivy-db-${{ runner.os }}-
+
+      - name: Trivy filesystem scan (SARIF report)
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          scan-type: fs
+          scan-ref: ${{ env.APP_PATH }}
+          severity: HIGH,CRITICAL
+          exit-code: "0"
+          format: sarif
+          output: security-reports/trivy-fs.sarif
+          ignore-unfixed: true
+          scanners: vuln
+          cache: "false"
+          cache-dir: ${{ github.workspace }}/.cache/trivy
+
+      - name: Trivy filesystem scan (console table)
+        if: always()
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          scan-type: fs
+          scan-ref: ${{ env.APP_PATH }}
+          severity: HIGH,CRITICAL
+          exit-code: "0"
+          format: table
+          ignore-unfixed: true
+          scanners: vuln
+          cache: "false"
+          cache-dir: ${{ github.workspace }}/.cache/trivy
+
+      - name: Trivy SCA gate (CRITICAL)
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          scan-type: fs
+          scan-ref: ${{ env.APP_PATH }}
+          severity: CRITICAL
+          exit-code: "1"
+          format: table
+          ignore-unfixed: true
+          scanners: vuln
+          cache: "false"
+          cache-dir: ${{ github.workspace }}/.cache/trivy
+
+      - name: Upload Semgrep SARIF to Code Scanning
+        if: always() && hashFiles('security-reports/semgrep.sarif') != ''
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: security-reports/semgrep.sarif
+          checkout_path: ${{ env.APP_PATH }}
+          category: mobile-release-semgrep
+        continue-on-error: true
+
+      - name: Upload Trivy SARIF to Code Scanning
+        if: always() && hashFiles('security-reports/trivy-fs.sarif') != ''
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: security-reports/trivy-fs.sarif
+          checkout_path: ${{ env.APP_PATH }}
+          category: mobile-release-trivy-fs
+        continue-on-error: true
+
+      - name: Upload security reports (SARIF)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-security-reports-sarif
+          path: |
+            security-reports/*.sarif
+          retention-days: 30
+          if-no-files-found: warn
+
+  codeql:
+    name: CodeQL Analysis
+    runs-on: ubuntu-latest
+    needs: [integration]
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      security-events: write
+      actions: read
+    steps:
+      - name: Checkout calling repository (release / push head)
+        if: needs.integration.outputs.checkout_mode == 'caller'
+        uses: actions/checkout@v4
+        with:
+          path: ${{ env.APP_PATH }}
+
+      - name: Checkout remote application repository
+        if: needs.integration.outputs.checkout_mode == 'remote'
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ needs.integration.outputs.app_repository }}
+          ref: ${{ needs.integration.outputs.app_ref }}
+          path: ${{ env.APP_PATH }}
+
+      - name: Initialize CodeQL (Java / Kotlin)
+        uses: github/codeql-action/init@v3
+        with:
+          languages: java-kotlin
+          source-root: ${{ env.APP_PATH }}
+          queries: security-and-quality
+
+      - name: Setup Java ${{ env.JAVA_VERSION }}
+        uses: actions/setup-java@v4
+        with:
+          distribution: ${{ env.JAVA_DISTRIBUTION }}
+          java-version: ${{ env.JAVA_VERSION }}
+          cache: gradle
+          cache-dependency-path: |
+            ${{ env.APP_PATH }}/settings.gradle.kts
+            ${{ env.APP_PATH }}/build.gradle.kts
+            ${{ env.APP_PATH }}/app/build.gradle.kts
+            ${{ env.APP_PATH }}/gradle/libs.versions.toml
+            ${{ env.APP_PATH }}/gradle/wrapper/gradle-wrapper.properties
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+        with:
+          packages: >
+            tools
+            platform-tools
+            platforms;android-${{ env.ANDROID_COMPILE_SDK }}
+            build-tools;${{ env.ANDROID_BUILD_TOOLS }}
+
+      - name: Build for CodeQL (Gradle assembleDebug)
+        working-directory: ${{ env.APP_PATH }}
+        run: |
+          set -euo pipefail
+          chmod +x ./gradlew
+          ./gradlew --no-daemon :app:assembleDebug
+
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@v3
+        with:
+          category: "mobile-release-codeql-java"
+
+      - name: CodeQL summary
+        if: always()
+        run: |
+          {
+            echo "### CodeQL Analysis"
+            echo ""
+            echo "Language: Java/Kotlin"
+            echo "Query suite: security-and-quality"
+            echo "Category: mobile-release-codeql-java"
+            echo ""
+            echo "View results: repository → Security → Code scanning alerts"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  packaging:
+    name: Packaging
+    runs-on: ubuntu-latest
+    needs: [integration, quality-control, security-testing, codeql]
+    timeout-minutes: 40
+    steps:
+      - name: Checkout calling repository (release / push head)
+        if: needs.integration.outputs.checkout_mode == 'caller'
+        uses: actions/checkout@v4
+        with:
+          path: ${{ env.APP_PATH }}
+
+      - name: Checkout remote application repository
+        if: needs.integration.outputs.checkout_mode == 'remote'
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ needs.integration.outputs.app_repository }}
+          ref: ${{ needs.integration.outputs.app_ref }}
+          path: ${{ env.APP_PATH }}
+
+      - name: Setup Java ${{ env.JAVA_VERSION }}
+        uses: actions/setup-java@v4
+        with:
+          distribution: ${{ env.JAVA_DISTRIBUTION }}
+          java-version: ${{ env.JAVA_VERSION }}
+          cache: gradle
+          cache-dependency-path: |
+            ${{ env.APP_PATH }}/settings.gradle.kts
+            ${{ env.APP_PATH }}/build.gradle.kts
+            ${{ env.APP_PATH }}/app/build.gradle.kts
+            ${{ env.APP_PATH }}/gradle/libs.versions.toml
+            ${{ env.APP_PATH }}/gradle/wrapper/gradle-wrapper.properties
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+        with:
+          packages: >
+            tools
+            platform-tools
+            platforms;android-${{ env.ANDROID_COMPILE_SDK }}
+            build-tools;${{ env.ANDROID_BUILD_TOOLS }}
+
+      - name: Ensure Gradle Wrapper is executable
+        working-directory: ${{ env.APP_PATH }}
+        run: chmod +x ./gradlew
+
+      - name: Assemble unsigned release APK
+        working-directory: ${{ env.APP_PATH }}
+        run: |
+          set -euo pipefail
+          ./gradlew --no-daemon :app:assembleRelease
+          echo "==> release outputs"
+          find app/build/outputs -type f \( -name '*.apk' -o -name '*.aab' \) -print || true
+
+      - name: Stage versioned and stable APK
+        id: package
+        working-directory: ${{ env.APP_PATH }}
+        env:
+          GH_RUN_NUMBER: ${{ github.run_number }}
+        run: |
+          set -euo pipefail
+          BUILD_FILE="$(find app/build/outputs/apk/release -maxdepth 1 -type f -name '*.apk' | head -n 1 || true)"
+          if [ -z "${BUILD_FILE}" ] || [ ! -f "${BUILD_FILE}" ]; then
+            echo "::error::No APK produced under app/build/outputs/apk/release/ after assembleRelease"
+            find app/build/outputs -type f -print || true
+            exit 1
+          fi
+
+          VERSION="$(sed -n 's/.*versionName[[:space:]]*=[[:space:]]*"\([^"]*\)".*/\1/p' app/build.gradle.kts | head -n 1 || true)"
+          VERSION="${VERSION:-0.0.0}"
+          SHORT_SHA="$(git rev-parse --short HEAD 2>/dev/null || echo unknown)"
+          RUN_ID="${GH_RUN_NUMBER}"
+
+          VERSIONED_NAME="heavy-rental-mobile-v${VERSION}-build${RUN_ID}-${SHORT_SHA}.apk"
+          STABLE_NAME="heavy-rental-mobile.apk"
+          VERSIONED_PATH="${GITHUB_WORKSPACE}/${VERSIONED_NAME}"
+          STABLE_PATH="${GITHUB_WORKSPACE}/${STABLE_NAME}"
+
+          cp "${BUILD_FILE}" "${VERSIONED_PATH}"
+          cp "${BUILD_FILE}" "${STABLE_PATH}"
+
+          if [ ! -s "${VERSIONED_PATH}" ] || [ ! -s "${STABLE_PATH}" ]; then
+            echo "::error::Staged APK is empty or missing."
+            ls -lah "${VERSIONED_PATH}" "${STABLE_PATH}" || true
+            exit 1
+          fi
+
+          {
+            echo "versioned_name=${VERSIONED_NAME}"
+            echo "stable_name=${STABLE_NAME}"
+            echo "version=${VERSION}"
+            echo "short_sha=${SHORT_SHA}"
+          } >> "$GITHUB_OUTPUT"
+
+          {
+            echo "### Packaging"
+            echo ""
+            echo "| Field | Value |"
+            echo "| --- | --- |"
+            echo "| versionName | \`${VERSION}\` |"
+            echo "| Versioned APK | \`${VERSIONED_NAME}\` |"
+            echo "| Stable APK | \`${STABLE_NAME}\` |"
+            echo "| Source | \`${BUILD_FILE}\` |"
+            echo "| Signing | unsigned (v1) |"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload release APKs
+        uses: actions/upload-artifact@v4
+        with:
+          name: mobile-release-apk
+          path: |
+            ${{ github.workspace }}/${{ steps.package.outputs.versioned_name }}
+            ${{ github.workspace }}/${{ steps.package.outputs.stable_name }}
+          retention-days: 14
+          if-no-files-found: error
