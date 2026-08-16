@@ -1,0 +1,6 @@
+{
+  "inputs": {
+    "app_repository": "Heavy-Rental/haystack-fast-api",
+    "app_ref": "develop"
+  }
+}

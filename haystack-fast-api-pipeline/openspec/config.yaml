@@ -1,0 +1,10 @@
+# OpenSpec project config for the Heavy Rental haystack-fast-api CI family.
+# Specs live next to the workflows they describe.
+schema: spec-driven
+context: |
+  This folder specifies GitHub Actions CI pipelines for Heavy-Rental/haystack-fast-api.
+  The family is Fast Feedback, Integration CI, and Release packaging only.
+  Product behaviour for the FastAPI / Haystack service is NOT specified here —
+  that lives in the application repository under openspec/.
+  Infrastructure setup, project deployment, and operate workflows are NOT
+  specified here — they belong to another project.

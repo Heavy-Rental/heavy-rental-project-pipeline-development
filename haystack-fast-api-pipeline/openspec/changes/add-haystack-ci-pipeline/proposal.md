@@ -1,0 +1,38 @@
+# Proposal: Add haystack-fast-api GitHub Actions CI family
+
+## Why
+
+[Heavy-Rental/haystack-fast-api](https://github.com/Heavy-Rental/haystack-fast-api) has no GitHub Actions workflows. The REST API, web portal, and mobile app already share a reusable-caller GitHub Flow family (fast feedback, integration CI, release). The FastAPI + Haystack service needs the same gates so feature branches, PRs into `develop`, and `develop` → `master` / published releases are validated consistently.
+
+Copy-pasting those YAML files unchanged would install the **wrong toolchain** (Java 21 + Maven + Postgres, Android/Gradle, or Node 22 + Vite). This change uses **Python 3.12, uv, Ruff, pytest, and Haystack pipeline smoke** — the tools the application already declares in `pyproject.toml` / `QUICKSTART.md`.
+
+## What Changes
+
+- Add three reusable workflows plus three sole-allowed callers, authored in this pipeline-development repo under `haystack-fast-api-pipeline/`.
+- Integration CI is the merge gate: Integration first, then Quality Control, Security Testing, and CodeQL in parallel, then an aggregate GitHub Flow CI Gate.
+- Fast feedback runs Integration only on feature-branch pushes.
+- Release runs the same gates plus `uv build` wheel/sdist packaging and a Docker image (gzipped tar artifact; GHCR push outside pull requests).
+- Specify the pipelines with OpenSpec (behavior) and OpenSPDD (REASONS Canvas implementation contract).
+- Bound the family to CI and packaging. Infrastructure, deploy, and operate are another project.
+
+## Capabilities
+
+### New Capabilities
+
+- `haystack-ci-orchestration`: callers, triggers, concurrency, caller gate, checkout modes
+- `haystack-ci-integration`: Python 3.12, uv lock/sync, Haystack + FastAPI import smoke, layout checks
+- `haystack-ci-quality`: Ruff, pytest (Haystack pipeline + FastAPI TestClient, CI-safe backends)
+- `haystack-ci-security`: Semgrep `p/python` + pip-audit report + Trivy + SARIF
+- `haystack-ci-codeql`: CodeQL python
+- `haystack-ci-release`: `uv build` versioned wheel/sdist plus Docker image tar and GHCR push (off PR)
+- `haystack-ci-scope`: this family stops at packaging; it does not provision infrastructure, deploy, or operate
+
+### Modified Capabilities
+
+- None (greenfield for this repo’s haystack pipelines).
+
+## Impact
+
+- **Application repo:** operators copy the six YAML files into `Heavy-Rental/haystack-fast-api` `.github/workflows/`.
+- **This repo:** new `haystack-fast-api-pipeline/` tree (specs + workflows). No change to REST API, portal, or mobile pipelines.
+- **Not in this change:** live pgvector/Neo4j/LLM CI, scheduled model retrain, committing a Dockerfile to the application repo, edits to the application product OpenSpec, or infrastructure / deploy / operate workflows (another project).

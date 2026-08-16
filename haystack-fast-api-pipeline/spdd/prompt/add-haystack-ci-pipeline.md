@@ -1,0 +1,160 @@
+# REASONS Canvas: add-haystack-ci-pipeline
+
+**Input analysis:** [add-haystack-ci-pipeline.md](../analysis/add-haystack-ci-pipeline.md)  
+**Behavior contract:** [OpenSpec change](../../openspec/changes/add-haystack-ci-pipeline/)
+
+When reality diverges, fix this prompt first — then update the YAML.
+
+---
+
+## R — Requirements
+
+- Provide the same three-pipeline GitHub Flow family used by REST API, portal, and mobile, adapted for Heavy Rental haystack-fast-api (`Heavy-Rental/haystack-fast-api`).
+- Fast Feedback: Integration only, feature-branch pushes (ignore `master`/`develop`).
+- Integration CI: PR/push `develop` + `workflow_dispatch`. Jobs: Assert caller → Integration → (QC ∥ Security ∥ CodeQL) → GitHub Flow CI Gate.
+- Release: published GitHub Release **or** PR `develop` → `master`. Same gates + `uv build` Packaging + Docker image (tar always; GHCR push off PR).
+- Use **Python/Haystack tools only**: CPython 3.12, uv, Ruff, pytest, Haystack `Pipeline` constructors, Semgrep `p/python`, pip-audit report, CodeQL `python`.
+- Specs (OpenSpec + this canvas) and YAML all live under `haystack-fast-api-pipeline/`.
+- Install story: copy each caller + reusable pair into the application repo `.github/workflows/`.
+- This family stops at packaging. Infrastructure, deploy, and operate belong to another project.
+
+## E — Entities
+
+```mermaid
+classDiagram
+    class CallerWorkflow {
+      +on push|pull_request|release|workflow_dispatch
+      +uses reusable
+    }
+    class ReusableWorkflow {
+      +on workflow_call
+      +inputs app_repository app_ref
+      +assert-caller
+    }
+    class IntegrationJob {
+      +checkout_mode
+      +app_repository
+      +app_ref
+    }
+    class QualityControlJob
+    class SecurityTestingJob
+    class CodeQLJob
+    class PackagingJob
+    class GitHubFlowGateJob
+    CallerWorkflow --> ReusableWorkflow : uses
+    ReusableWorkflow --> IntegrationJob : needs assert-caller
+    IntegrationJob --> QualityControlJob
+    IntegrationJob --> SecurityTestingJob
+    IntegrationJob --> CodeQLJob
+    IntegrationJob --> PackagingJob
+    QualityControlJob --> PackagingJob
+    SecurityTestingJob --> PackagingJob
+    CodeQLJob --> PackagingJob
+    QualityControlJob --> GitHubFlowGateJob
+    SecurityTestingJob --> GitHubFlowGateJob
+    CodeQLJob --> GitHubFlowGateJob
+```
+
+Artifacts:
+
+| Name | Source |
+| --- | --- |
+| uv fingerprint | `uv.lock`, `pyproject.toml` |
+| Pytest HTML | `reports/pytest-report.html` |
+| SARIF | `security-reports/semgrep.sarif`, `security-reports/trivy-fs.sarif` |
+| pip-audit | `security-reports/pip-audit.json` |
+| Release wheel | `haystack-fast-api-v{version}-build{run}-{sha}.whl`, `haystack-fast-api.whl` |
+| Release sdist | matching `.tar.gz` names |
+| Release image tar | `haystack-fast-api-v{version}-build{run}-{sha}.tar.gz` |
+| GHCR | `ghcr.io/{owner}/haystack-fast-api:{tag}` and `:latest` (not on pull_request) |
+
+## A — Approach
+
+- Clone REST/mobile **orchestration** (header comments, `assert-caller` case on `github.workflow_ref`, Semgrep-safe source resolver, `APP_PATH: app`, artifact names).
+- Replace toolchain: `actions/setup-python@v5` **3.12** + `astral-sh/setup-uv@v5` (cache on `uv.lock`).
+- Integration resolve: `uv lock --check` then `uv sync --frozen --all-groups`, then a Haystack/FastAPI smoke (`create_app`, `build_indexing_pipeline`, `build_intake_front_pipeline`).
+- QC: `uv run ruff check app tests` then `uv run pytest tests/` with CI-safe Haystack env.
+- Security: Semgrep `p/python` `p/owasp-top-ten` `p/security-audit` `p/secrets`; `uvx pip-audit` report-only; Trivy FS two-pass + CRITICAL gate; CodeQL `python`.
+- Release: `uv build`, then Docker (app Dockerfile or generated Python 3.12 + uv + uvicorn), `docker save | gzip`, GHCR push when not a pull request.
+
+## S — Structure
+
+```
+haystack-fast-api-pipeline/
+  specification/                 # human index
+  openspec/                      # behavior
+  spdd/                          # this canvas
+  fast-feedback-ci-pipeline/
+    fast-feedback-pipeline.yml
+    haystack-fast-feedback-caller.yml
+  integration-pipeline/
+    integration-pipeline.yml
+    haystack-ci-caller.yml
+  release-pipeline/
+    release-pipeline.yml
+    haystack-release-caller.yml
+```
+
+Install names (application repo):
+
+| This repo | `.github/workflows/` |
+| --- | --- |
+| `haystack-*-caller.yml` | same filename |
+| `*-pipeline.yml` | same filename (`fast-feedback-pipeline.yml`, `integration-pipeline.yml`, `release-pipeline.yml`) |
+
+`DEFAULT_APP_REPOSITORY`: `Heavy-Rental/haystack-fast-api`.  
+`DEFAULT_APP_REF`: `develop` (fast feedback + CI), `master` (release).
+
+Job `name:` values (branch protection):
+
+- `Assert caller`
+- `Integration`
+- `Quality Control`
+- `Security Testing`
+- `CodeQL Analysis`
+- `GitHub Flow CI Gate`
+- `Packaging` (release only)
+
+## O — Operations
+
+1. Write OpenSpec + OpenSPDD + `specification/` (this change; already required before YAML).
+2. Write `integration-pipeline.yml` with jobs in this order: `assert-caller`, `integration`, `quality-control`, `security-testing`, `codeql`, `github-flow-gate`.
+3. Write `haystack-ci-caller.yml` (`name: CI`, PR/push `develop`, `workflow_dispatch`, `security-events: write`).
+4. Write fast-feedback pair (Integration only, `branches-ignore: [master, develop]`).
+5. Write release pair (`release: published` or PR `develop`→`master`; `cancel-in-progress: false`; Packaging job).
+6. Header-comment each file with install path, triggers, and local `actionlint` command under `haystack-fast-api-pipeline/`.
+7. Bind every `github.*` / `inputs.*` / `needs.*.outputs.*` used in `run:` through `env:` (except GitHub-native `if:` expressions, which are not shell).
+8. `actionlint` all six files.
+
+## N — Norms
+
+- `# ====...====` header block copied in spirit from REST/mobile (purpose, stages, install, secrets = none).
+- `set -euo pipefail` on every multi-line `run:`.
+- No `secrets: inherit`.
+- No `environment:` on caller `uses:` jobs (invalid) and none on haystack QC.
+- `actions/checkout@v4`, `actions/setup-python@v5`, `astral-sh/setup-uv@v5`, `actions/cache@v4`, `actions/upload-artifact@v4`, `aquasecurity/trivy-action@v0.36.0`, `github/codeql-action/*@v3`.
+- uv invocations always `--frozen` for install (`uv sync --frozen --all-groups`).
+- Write `$GITHUB_STEP_SUMMARY` tables for source resolution, Integration, QC, gate, packaging.
+- SARIF is the security report standard; pip-audit JSON is a Python extra report; console tables are logs only.
+
+## S — Safeguards (negative space)
+
+- **DO NOT** start Postgres, pgvector, or Neo4j; **DO NOT** set `RUN_PGVECTOR_TESTS` or `RUN_NEO4J_TESTS`.
+- **DO NOT** set `LLM_API_KEY` or call DigitalOcean Inference.
+- **DO NOT** `uv sync --extra neo4j`.
+- **DO NOT** add Docker build or `packages: write` on Fast Feedback or Integration CI.
+- **DO NOT** commit a Dockerfile into this repo or the application product tree; generate one at Release packaging time only if the app checkout has none.
+- **DO NOT** start Postgres, Neo4j, or call an LLM during `docker build`.
+- **DO NOT** `docker push` on pull_request events.
+- **DO NOT** add a Mock Contract Tests / Prism / Node job.
+- **DO NOT** add a fourth pipeline (including scheduled model retrain — product OpenSpec, not this family).
+- **DO NOT** provision infrastructure, apply IaC, or create cloud resources in this family.
+- **DO NOT** deploy packaged artifacts onto a runtime in this family.
+- **DO NOT** add operate jobs (monitor, page, remediate production) in this family.
+- **DO NOT** implement infrastructure, deploy, or operate workflows in this change — they belong to another project.
+- **DO NOT** put `on: push` / `pull_request` / `workflow_dispatch` on reusable files.
+- **DO NOT** interpolate `${{ github.* }}` or `${{ inputs.* }}` inside `run:` script bodies.
+- **DO NOT** change REST API, portal, mobile, or the application product `openspec/`.
+- **DO NOT** cancel in-progress Release runs.
+- **DO NOT** require GitHub Environments or repository secrets in v1.
+- **DO NOT** use Java, Maven, Gradle, npm, or Android SDK actions.
