@@ -1,0 +1,254 @@
+# =============================================================================
+# Heavy Rental Mobile — Fast Feedback CI Pipeline (reusable)
+# =============================================================================
+# Purpose: quick Integration-only check (same steps as the Integration stage of
+# integration-pipeline.yml). No Quality Control, Security, CodeQL, or mocks.
+#
+# Stages:
+#   1. Integration only — checkout, JDK 17, Android SDK, Gradle, layout
+#
+# Use this for early signal on feature-branch pushes. Full gates remain in:
+#   integration-pipeline.yml  (mobile-ci-caller.yml)
+#   release-pipeline.yml      (mobile-release-caller.yml)
+#
+# How the mobile app uses this
+# ----------------------------
+# Install both files into the Android application repository:
+#
+#   .github/workflows/fast-feedback-pipeline.yml          ← this file (reusable only)
+#   .github/workflows/mobile-fast-feedback-caller.yml     ← sole allowed entry point
+#
+# This file exposes only workflow_call (no push / PR / workflow_dispatch).
+# A gate job rejects any caller other than mobile-fast-feedback-caller.yml.
+#
+# Also mirrored in the pipeline-development repo for discovery/testing:
+#   .github/workflows/mobile-fast-feedback.yml
+#
+# Local validation (pipeline-development repo root, in the devcontainer):
+#   actionlint heavy-rental-mobile/fast-feedback-ci-pipeline/fast-feedback-pipeline.yml
+#   act — see heavy-rental-mobile/act/README.md
+#
+# No secrets required.
+# =============================================================================
+
+name: Mobile Fast Feedback CI
+
+on:
+  workflow_call:
+    inputs:
+      app_repository:
+        description: >
+          Override application repository (owner/name). Leave empty to use the
+          calling repository.
+        required: false
+        type: string
+        default: ""
+      app_ref:
+        description: >
+          Override git ref (branch/tag/SHA). Leave empty to use the calling
+          workflow's commit (github.sha).
+        required: false
+        type: string
+        default: ""
+
+concurrency:
+  group: mobile-fast-feedback-${{ github.workflow }}-${{ github.repository }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  pull-requests: read
+  actions: read
+
+env:
+  JAVA_VERSION: "17"
+  JAVA_DISTRIBUTION: temurin
+  ANDROID_COMPILE_SDK: "35"
+  ANDROID_BUILD_TOOLS: "35.0.0"
+  APP_PATH: app
+  DEFAULT_APP_REPOSITORY: Heavy-Rental/heavy-rental-mobile
+  DEFAULT_APP_REF: develop
+
+jobs:
+  assert-caller:
+    name: Assert caller
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Allow only mobile-fast-feedback-caller.yml
+        env:
+          WORKFLOW_REF: ${{ github.workflow_ref }}
+          EVENT_NAME: ${{ github.event_name }}
+          WORKFLOW_NAME: ${{ github.workflow }}
+        run: |
+          set -euo pipefail
+          echo "github.workflow_ref=${WORKFLOW_REF}"
+          echo "github.event_name=${EVENT_NAME}"
+          echo "github.workflow=${WORKFLOW_NAME}"
+          # nektos/act does not populate github.workflow_ref. ACT=true is set by
+          # act and is unset on GitHub-hosted runners — do not weaken the gate there.
+          if [ "${ACT:-}" = "true" ] && [ -z "${WORKFLOW_REF}" ]; then
+            echo "act local run: caller gate skipped (github.workflow_ref unset)"
+            {
+              echo "### Caller gate"
+              echo ""
+              echo "nektos/act — \`github.workflow_ref\` is empty; filename gate skipped."
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          case "${WORKFLOW_REF}" in
+            */.github/workflows/mobile-fast-feedback-caller.yml@*)
+              echo "Allowed caller: mobile-fast-feedback-caller.yml"
+              {
+                echo "### Caller gate"
+                echo ""
+                echo "Invoked by \`mobile-fast-feedback-caller.yml\` — OK."
+              } >> "$GITHUB_STEP_SUMMARY"
+              ;;
+            *)
+              echo "::error::fast-feedback-pipeline.yml may only be invoked by .github/workflows/mobile-fast-feedback-caller.yml (got: ${WORKFLOW_REF})"
+              exit 1
+              ;;
+          esac
+
+  integration:
+    name: Integration
+    runs-on: ubuntu-latest
+    needs: [assert-caller]
+    timeout-minutes: 25
+    outputs:
+      app_repository: ${{ steps.meta.outputs.app_repository }}
+      app_ref: ${{ steps.meta.outputs.app_ref }}
+      checkout_mode: ${{ steps.meta.outputs.checkout_mode }}
+    steps:
+      - name: Resolve application source (same-repo caller vs remote override)
+        id: meta
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          INPUT_REPO: ${{ inputs.app_repository }}
+          INPUT_REF: ${{ inputs.app_ref }}
+          GH_REPOSITORY: ${{ github.repository }}
+          GH_SHA: ${{ github.sha }}
+          DEFAULT_APP_REF_VALUE: ${{ env.DEFAULT_APP_REF }}
+        run: |
+          set -euo pipefail
+          EVENT="${EVENT_NAME}"
+          INPUT_REPO="${INPUT_REPO}"
+          INPUT_REF="${INPUT_REF}"
+
+          if [ -n "${INPUT_REPO}" ] && [ "${INPUT_REPO}" != "${GH_REPOSITORY}" ]; then
+            APP_REPO="${INPUT_REPO}"
+            APP_REF="${INPUT_REF:-${DEFAULT_APP_REF_VALUE}}"
+            MODE=remote
+          else
+            APP_REPO="${GH_REPOSITORY}"
+            APP_REF="${INPUT_REF:-${GH_SHA}}"
+            MODE=caller
+          fi
+
+          echo "app_repository=$APP_REPO" >> "$GITHUB_OUTPUT"
+          echo "app_ref=$APP_REF" >> "$GITHUB_OUTPUT"
+          echo "checkout_mode=$MODE" >> "$GITHUB_OUTPUT"
+          {
+            echo "### Source resolution (fast feedback)"
+            echo ""
+            echo "| Field | Value |"
+            echo "| --- | --- |"
+            echo "| Event | \`$EVENT\` |"
+            echo "| Mode | \`$MODE\` |"
+            echo "| Repository | \`$APP_REPO\` |"
+            echo "| Ref | \`$APP_REF\` |"
+            echo "| Scope | Integration stage only |"
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "Fast feedback integrating: $APP_REPO @ $APP_REF (mode=$MODE)"
+
+      - name: Checkout calling repository (PR / push head)
+        if: steps.meta.outputs.checkout_mode == 'caller'
+        uses: actions/checkout@v4
+        with:
+          path: ${{ env.APP_PATH }}
+
+      - name: Checkout remote application repository
+        if: steps.meta.outputs.checkout_mode == 'remote'
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ steps.meta.outputs.app_repository }}
+          ref: ${{ steps.meta.outputs.app_ref }}
+          path: ${{ env.APP_PATH }}
+
+      - name: Setup Java ${{ env.JAVA_VERSION }}
+        uses: actions/setup-java@v4
+        with:
+          distribution: ${{ env.JAVA_DISTRIBUTION }}
+          java-version: ${{ env.JAVA_VERSION }}
+          cache: gradle
+          cache-dependency-path: |
+            ${{ env.APP_PATH }}/settings.gradle.kts
+            ${{ env.APP_PATH }}/build.gradle.kts
+            ${{ env.APP_PATH }}/app/build.gradle.kts
+            ${{ env.APP_PATH }}/gradle/libs.versions.toml
+            ${{ env.APP_PATH }}/gradle/wrapper/gradle-wrapper.properties
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+        with:
+          packages: >
+            tools
+            platform-tools
+            platforms;android-${{ env.ANDROID_COMPILE_SDK }}
+            build-tools;${{ env.ANDROID_BUILD_TOOLS }}
+
+      - name: Ensure Gradle Wrapper is executable
+        working-directory: ${{ env.APP_PATH }}
+        run: |
+          set -euo pipefail
+          if [ -f ./gradlew ]; then
+            chmod +x ./gradlew
+            echo "Using Gradle Wrapper (./gradlew)"
+          else
+            echo "::error::gradlew not found — this pipeline expects the Gradle Wrapper in the mobile repo."
+            exit 1
+          fi
+
+      - name: Resolve Gradle project (preBuild)
+        working-directory: ${{ env.APP_PATH }}
+        run: |
+          set -euo pipefail
+          ./gradlew --no-daemon --version
+          ./gradlew --no-daemon :app:preBuild
+
+      - name: Verify project layout and toolchain
+        working-directory: ${{ env.APP_PATH }}
+        run: |
+          set -euo pipefail
+          echo "==> Java / Gradle versions"
+          java -version
+          ./gradlew --no-daemon --version
+          echo "==> Required files"
+          test -f settings.gradle.kts
+          test -f build.gradle.kts
+          test -f gradlew
+          test -f app/build.gradle.kts
+          test -d specification
+          test -f package.json
+          {
+            echo "### Integration checks (fast feedback)"
+            echo ""
+            echo "| Field | Value |"
+            echo "| --- | --- |"
+            echo "| Runner Java | \`${{ env.JAVA_VERSION }}\` (${{ env.JAVA_DISTRIBUTION }}) |"
+            echo "| compileSdk | \`${{ env.ANDROID_COMPILE_SDK }}\` |"
+            echo "| build-tools | \`${{ env.ANDROID_BUILD_TOOLS }}\` |"
+            echo "| Scope | Integration stage only |"
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "Fast feedback integration checks passed."
+
+      - name: Upload Gradle project fingerprint
+        uses: actions/upload-artifact@v4
+        with:
+          name: fast-feedback-integration-metadata
+          path: |
+            ${{ env.APP_PATH }}/settings.gradle.kts
+            ${{ env.APP_PATH }}/gradle/libs.versions.toml
+          retention-days: 3
+          if-no-files-found: warn

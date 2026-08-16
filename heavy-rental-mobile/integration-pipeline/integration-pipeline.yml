@@ -1,0 +1,875 @@
+# =============================================================================
+# Heavy Rental Mobile — Integration CI Pipeline (reusable)
+# =============================================================================
+# Stages (priority order — Integration is highest priority):
+#   1. Integration           (HIGHEST) checkout, JDK 17, Android SDK, Gradle, layout
+#   2. Quality Control       needs Integration — lintDebug, testDebugUnitTest, assembleDebug
+#   3. Security Testing      needs Integration — SAST (Semgrep) + SCA/FS (Trivy)
+#   4. CodeQL Analysis       needs Integration — GitHub CodeQL (Java/Kotlin)
+#   5. Mock Contract Tests   needs Integration — Prism + npm run mock:verify
+#   6. GitHub Flow CI Gate   aggregate: Integration first, then QC + Security + CodeQL + Mocks
+#
+# Security report format (standard): SARIF 2.1.0
+#   - Semgrep → semgrep.sarif
+#   - Trivy FS → trivy-fs.sarif
+#   - CodeQL → GitHub Code Scanning (native SARIF via analyze)
+# Human-readable console output is for gates/logs only, not the report standard.
+#
+# GitHub Flow for develop (validate only — NEVER packages a release APK)
+# --------------------------------------------------------------------------
+# This pipeline is CI only: merge-into-develop validation. It does not
+# assembleRelease, sign, or upload store artifacts.
+#
+#   1. Branch from develop
+#   2. Open PR → develop (or push to develop) → mobile-ci-caller → this workflow
+#   3. Branch protection on develop should require:
+#        - "Integration"              ← highest priority / must pass first
+#        - "Quality Control"
+#        - "Security Testing"
+#        - "CodeQL Analysis"
+#        - "Mock Contract Tests"
+#        - "GitHub Flow CI Gate"       ← optional single aggregate check
+#   4. Merge when green → develop is integration-tested, not store-published
+#   5. Unsigned APK packaging lives only in release-pipeline.yml
+#
+# Application:
+#   https://github.com/Heavy-Rental/heavy-rental-mobile
+#   Android · Kotlin JVM 17 · Compose · Gradle wrapper · OpenAPI mocks on :8081
+#
+# How the mobile app uses this
+# ----------------------------
+# Install both files into the Android application repository:
+#
+#   .github/workflows/integration-pipeline.yml   ← this file (reusable only)
+#   .github/workflows/mobile-ci-caller.yml       ← sole allowed entry point
+#
+# This file exposes only workflow_call (no push / PR / workflow_dispatch).
+# A gate job rejects any caller other than mobile-ci-caller.yml.
+#
+# Also mirrored in the pipeline-development repo for discovery/testing:
+#   .github/workflows/mobile-ci.yml
+#
+# Local validation (pipeline-development repo root, in the devcontainer):
+#   actionlint heavy-rental-mobile/integration-pipeline/integration-pipeline.yml
+#   act — see heavy-rental-mobile/act/README.md
+#
+# No GitHub Actions secrets required for v1.
+# =============================================================================
+
+name: Mobile CI
+
+on:
+  workflow_call:
+    inputs:
+      app_repository:
+        description: >
+          Override application repository (owner/name). Leave empty to use the
+          calling repository (required for PR checks on the mobile app).
+        required: false
+        type: string
+        default: ""
+      app_ref:
+        description: >
+          Override git ref (branch/tag/SHA). Leave empty to use the calling
+          workflow's commit (github.sha) — correct for pull_request events.
+        required: false
+        type: string
+        default: ""
+
+concurrency:
+  group: mobile-ci-${{ github.workflow }}-${{ github.repository }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  pull-requests: read
+  security-events: write
+  actions: read
+
+env:
+  JAVA_VERSION: "17"
+  JAVA_DISTRIBUTION: temurin
+  ANDROID_COMPILE_SDK: "35"
+  ANDROID_BUILD_TOOLS: "35.0.0"
+  NODE_VERSION: "22"
+  APP_PATH: app
+  DEFAULT_APP_REPOSITORY: Heavy-Rental/heavy-rental-mobile
+  DEFAULT_APP_REF: develop
+  MOCK_API_HOST: "127.0.0.1"
+  MOCK_API_PORT: "8081"
+  MOCK_API_BASE_URL: "http://127.0.0.1:8081"
+  MOCK_API_READY_TIMEOUT_SECONDS: "60"
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # 0. Caller gate — only mobile-ci-caller.yml may invoke this workflow
+  # ---------------------------------------------------------------------------
+  assert-caller:
+    name: Assert caller
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Allow only mobile-ci-caller.yml
+        env:
+          WORKFLOW_REF: ${{ github.workflow_ref }}
+          EVENT_NAME: ${{ github.event_name }}
+          WORKFLOW_NAME: ${{ github.workflow }}
+        run: |
+          set -euo pipefail
+          echo "github.workflow_ref=${WORKFLOW_REF}"
+          echo "github.event_name=${EVENT_NAME}"
+          echo "github.workflow=${WORKFLOW_NAME}"
+          # nektos/act does not populate github.workflow_ref. ACT=true is set by
+          # act and is unset on GitHub-hosted runners — do not weaken the gate there.
+          if [ "${ACT:-}" = "true" ] && [ -z "${WORKFLOW_REF}" ]; then
+            echo "act local run: caller gate skipped (github.workflow_ref unset)"
+            {
+              echo "### Caller gate"
+              echo ""
+              echo "nektos/act — \`github.workflow_ref\` is empty; filename gate skipped."
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          case "${WORKFLOW_REF}" in
+            */.github/workflows/mobile-ci-caller.yml@*)
+              echo "Allowed caller: mobile-ci-caller.yml"
+              {
+                echo "### Caller gate"
+                echo ""
+                echo "Invoked by \`mobile-ci-caller.yml\` — OK."
+              } >> "$GITHUB_STEP_SUMMARY"
+              ;;
+            *)
+              echo "::error::integration-pipeline.yml may only be invoked by .github/workflows/mobile-ci-caller.yml (got: ${WORKFLOW_REF})"
+              exit 1
+              ;;
+          esac
+
+  # ---------------------------------------------------------------------------
+  # 1. Integration — HIGHEST PRIORITY
+  # ---------------------------------------------------------------------------
+  integration:
+    name: Integration
+    runs-on: ubuntu-latest
+    needs: [assert-caller]
+    timeout-minutes: 25
+    outputs:
+      app_repository: ${{ steps.meta.outputs.app_repository }}
+      app_ref: ${{ steps.meta.outputs.app_ref }}
+      checkout_mode: ${{ steps.meta.outputs.checkout_mode }}
+    steps:
+      - name: Resolve application source (same-repo caller vs remote override)
+        id: meta
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          INPUT_REPO: ${{ inputs.app_repository }}
+          INPUT_REF: ${{ inputs.app_ref }}
+          GH_REPOSITORY: ${{ github.repository }}
+          GH_SHA: ${{ github.sha }}
+          DEFAULT_APP_REF_VALUE: ${{ env.DEFAULT_APP_REF }}
+        run: |
+          set -euo pipefail
+          EVENT="${EVENT_NAME}"
+          INPUT_REPO="${INPUT_REPO}"
+          INPUT_REF="${INPUT_REF}"
+
+          if [ -n "${INPUT_REPO}" ] && [ "${INPUT_REPO}" != "${GH_REPOSITORY}" ]; then
+            APP_REPO="${INPUT_REPO}"
+            APP_REF="${INPUT_REF:-${DEFAULT_APP_REF_VALUE}}"
+            MODE=remote
+          else
+            APP_REPO="${GH_REPOSITORY}"
+            APP_REF="${INPUT_REF:-${GH_SHA}}"
+            MODE=caller
+          fi
+
+          echo "app_repository=$APP_REPO" >> "$GITHUB_OUTPUT"
+          echo "app_ref=$APP_REF" >> "$GITHUB_OUTPUT"
+          echo "checkout_mode=$MODE" >> "$GITHUB_OUTPUT"
+          {
+            echo "### Source resolution"
+            echo ""
+            echo "| Field | Value |"
+            echo "| --- | --- |"
+            echo "| Event | \`$EVENT\` |"
+            echo "| Mode | \`$MODE\` |"
+            echo "| Repository | \`$APP_REPO\` |"
+            echo "| Ref | \`$APP_REF\` |"
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "Integrating application: $APP_REPO @ $APP_REF (mode=$MODE)"
+
+      - name: Checkout calling repository (PR / push head)
+        if: steps.meta.outputs.checkout_mode == 'caller'
+        uses: actions/checkout@v4
+        with:
+          path: ${{ env.APP_PATH }}
+
+      - name: Checkout remote application repository
+        if: steps.meta.outputs.checkout_mode == 'remote'
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ steps.meta.outputs.app_repository }}
+          ref: ${{ steps.meta.outputs.app_ref }}
+          path: ${{ env.APP_PATH }}
+
+      - name: Setup Java ${{ env.JAVA_VERSION }}
+        uses: actions/setup-java@v4
+        with:
+          distribution: ${{ env.JAVA_DISTRIBUTION }}
+          java-version: ${{ env.JAVA_VERSION }}
+          cache: gradle
+          cache-dependency-path: |
+            ${{ env.APP_PATH }}/settings.gradle.kts
+            ${{ env.APP_PATH }}/build.gradle.kts
+            ${{ env.APP_PATH }}/app/build.gradle.kts
+            ${{ env.APP_PATH }}/gradle/libs.versions.toml
+            ${{ env.APP_PATH }}/gradle/wrapper/gradle-wrapper.properties
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+        with:
+          packages: >
+            tools
+            platform-tools
+            platforms;android-${{ env.ANDROID_COMPILE_SDK }}
+            build-tools;${{ env.ANDROID_BUILD_TOOLS }}
+
+      - name: Ensure Gradle Wrapper is executable
+        working-directory: ${{ env.APP_PATH }}
+        run: |
+          set -euo pipefail
+          if [ -f ./gradlew ]; then
+            chmod +x ./gradlew
+            echo "Using Gradle Wrapper (./gradlew)"
+          else
+            echo "::error::gradlew not found — this pipeline expects the Gradle Wrapper in the mobile repo."
+            exit 1
+          fi
+
+      - name: Resolve Gradle project (preBuild)
+        working-directory: ${{ env.APP_PATH }}
+        run: |
+          set -euo pipefail
+          ./gradlew --no-daemon --version
+          ./gradlew --no-daemon :app:preBuild
+
+      - name: Verify project layout and toolchain
+        working-directory: ${{ env.APP_PATH }}
+        run: |
+          set -euo pipefail
+          echo "==> Java / Gradle versions"
+          java -version
+          ./gradlew --no-daemon --version
+          echo "==> Required files"
+          test -f settings.gradle.kts
+          test -f build.gradle.kts
+          test -f gradlew
+          test -f app/build.gradle.kts
+          test -d specification
+          test -f package.json
+          {
+            echo "### Integration checks"
+            echo ""
+            echo "| Field | Value |"
+            echo "| --- | --- |"
+            echo "| Runner Java | \`${{ env.JAVA_VERSION }}\` (${{ env.JAVA_DISTRIBUTION }}) |"
+            echo "| compileSdk | \`${{ env.ANDROID_COMPILE_SDK }}\` |"
+            echo "| build-tools | \`${{ env.ANDROID_BUILD_TOOLS }}\` |"
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "Integration checks passed."
+
+      - name: Upload Gradle project fingerprint
+        uses: actions/upload-artifact@v4
+        with:
+          name: integration-metadata
+          path: |
+            ${{ env.APP_PATH }}/settings.gradle.kts
+            ${{ env.APP_PATH }}/gradle/libs.versions.toml
+          retention-days: 7
+          if-no-files-found: warn
+
+  # ---------------------------------------------------------------------------
+  # 2. Quality control — lint + JVM unit tests + debug APK
+  # ---------------------------------------------------------------------------
+  quality-control:
+    name: Quality Control
+    runs-on: ubuntu-latest
+    needs: [integration]
+    timeout-minutes: 40
+    steps:
+      - name: Checkout calling repository (PR / push head)
+        if: needs.integration.outputs.checkout_mode == 'caller'
+        uses: actions/checkout@v4
+        with:
+          path: ${{ env.APP_PATH }}
+
+      - name: Checkout remote application repository
+        if: needs.integration.outputs.checkout_mode == 'remote'
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ needs.integration.outputs.app_repository }}
+          ref: ${{ needs.integration.outputs.app_ref }}
+          path: ${{ env.APP_PATH }}
+
+      - name: Setup Java ${{ env.JAVA_VERSION }}
+        uses: actions/setup-java@v4
+        with:
+          distribution: ${{ env.JAVA_DISTRIBUTION }}
+          java-version: ${{ env.JAVA_VERSION }}
+          cache: gradle
+          cache-dependency-path: |
+            ${{ env.APP_PATH }}/settings.gradle.kts
+            ${{ env.APP_PATH }}/build.gradle.kts
+            ${{ env.APP_PATH }}/app/build.gradle.kts
+            ${{ env.APP_PATH }}/gradle/libs.versions.toml
+            ${{ env.APP_PATH }}/gradle/wrapper/gradle-wrapper.properties
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+        with:
+          packages: >
+            tools
+            platform-tools
+            platforms;android-${{ env.ANDROID_COMPILE_SDK }}
+            build-tools;${{ env.ANDROID_BUILD_TOOLS }}
+
+      - name: Ensure Gradle Wrapper is executable
+        working-directory: ${{ env.APP_PATH }}
+        run: chmod +x ./gradlew
+
+      - name: Lint, JVM unit tests, assembleDebug
+        working-directory: ${{ env.APP_PATH }}
+        run: |
+          set -euo pipefail
+          ./gradlew --no-daemon :app:lintDebug :app:testDebugUnitTest :app:assembleDebug
+          {
+            echo "### Quality control"
+            echo ""
+            echo "lintDebug, testDebugUnitTest, and assembleDebug completed successfully."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload lint and unit-test reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: quality-test-reports
+          path: |
+            ${{ env.APP_PATH }}/app/build/reports/
+            ${{ env.APP_PATH }}/app/build/test-results/
+          retention-days: 14
+          if-no-files-found: warn
+
+      - name: Upload debug APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: mobile-debug-apk
+          path: ${{ env.APP_PATH }}/app/build/outputs/apk/debug/*.apk
+          retention-days: 7
+          if-no-files-found: warn
+
+  # ---------------------------------------------------------------------------
+  # 3. Security testing — Semgrep + Trivy
+  # ---------------------------------------------------------------------------
+  security-testing:
+    name: Security Testing
+    runs-on: ubuntu-latest
+    needs: [integration]
+    timeout-minutes: 25
+    steps:
+      - name: Checkout calling repository (PR / push head)
+        if: needs.integration.outputs.checkout_mode == 'caller'
+        uses: actions/checkout@v4
+        with:
+          path: ${{ env.APP_PATH }}
+
+      - name: Checkout remote application repository
+        if: needs.integration.outputs.checkout_mode == 'remote'
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ needs.integration.outputs.app_repository }}
+          ref: ${{ needs.integration.outputs.app_ref }}
+          path: ${{ env.APP_PATH }}
+
+      - name: Create security reports directory
+        run: mkdir -p "${GITHUB_WORKSPACE}/security-reports"
+
+      - name: Setup Python (Semgrep)
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Semgrep
+        run: pip install --quiet semgrep
+
+      - name: SAST — Semgrep (Kotlin / Java / OWASP) → SARIF
+        working-directory: ${{ env.APP_PATH }}
+        run: |
+          set -euo pipefail
+          REPORT_DIR="${GITHUB_WORKSPACE}/security-reports"
+          SEMGREP_COMMON=(
+            --config=p/kotlin
+            --config=p/java
+            --config=p/owasp-top-ten
+            --config=p/security-audit
+            --config=p/secrets
+            --metrics=off
+          )
+
+          echo "==> Semgrep report (SARIF 2.1.0)"
+          set +e
+          semgrep scan "${SEMGREP_COMMON[@]}" \
+            --sarif \
+            --output="${REPORT_DIR}/semgrep.sarif" \
+            .
+          SARIF_RC=$?
+          set -e
+          if [ -f "${REPORT_DIR}/semgrep.sarif" ]; then
+            echo "SARIF written: ${REPORT_DIR}/semgrep.sarif (semgrep exit=${SARIF_RC}; non-zero is OK for report pass)"
+          else
+            echo "::warning::semgrep.sarif was not produced (exit=${SARIF_RC})"
+          fi
+
+          echo "==> SAST gate (ERROR severity only; exit 1 if findings)"
+          set +e
+          semgrep scan "${SEMGREP_COMMON[@]}" \
+            --severity=ERROR \
+            --error \
+            --text \
+            .
+          GATE_RC=$?
+          set -e
+          if [ "${GATE_RC}" -ne 0 ]; then
+            echo "::error::Semgrep SAST gate failed (exit=${GATE_RC})."
+            echo "The SARIF report may still have been written successfully."
+            echo "This step fails because --severity=ERROR --error found ERROR-level issues"
+            echo "(or Semgrep could not complete the gate scan)."
+            echo "Open security-reports/semgrep.sarif or the text findings above."
+            exit "${GATE_RC}"
+          fi
+          echo "SAST (Semgrep) gate passed — no ERROR-level findings. SARIF: security-reports/semgrep.sarif"
+
+      - name: Trivy cache key
+        id: trivy-cache-meta
+        run: echo "week=$(date -u +%Y-W%V)" >> "$GITHUB_OUTPUT"
+
+      - name: Cache Trivy DBs
+        uses: actions/cache@v4
+        with:
+          path: ${{ github.workspace }}/.cache/trivy
+          key: trivy-db-${{ runner.os }}-${{ steps.trivy-cache-meta.outputs.week }}
+          restore-keys: |
+            trivy-db-${{ runner.os }}-
+
+      - name: Trivy filesystem scan (SARIF report)
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          scan-type: fs
+          scan-ref: ${{ env.APP_PATH }}
+          severity: HIGH,CRITICAL
+          exit-code: "0"
+          format: sarif
+          output: security-reports/trivy-fs.sarif
+          ignore-unfixed: true
+          scanners: vuln
+          cache: "false"
+          cache-dir: ${{ github.workspace }}/.cache/trivy
+
+      - name: Trivy filesystem scan (console table)
+        if: always()
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          scan-type: fs
+          scan-ref: ${{ env.APP_PATH }}
+          severity: HIGH,CRITICAL
+          exit-code: "0"
+          format: table
+          ignore-unfixed: true
+          scanners: vuln
+          cache: "false"
+          cache-dir: ${{ github.workspace }}/.cache/trivy
+
+      - name: Trivy SCA gate (CRITICAL)
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          scan-type: fs
+          scan-ref: ${{ env.APP_PATH }}
+          severity: CRITICAL
+          exit-code: "1"
+          format: table
+          ignore-unfixed: true
+          scanners: vuln
+          cache: "false"
+          cache-dir: ${{ github.workspace }}/.cache/trivy
+
+      - name: Upload Semgrep SARIF to Code Scanning
+        if: always() && hashFiles('security-reports/semgrep.sarif') != ''
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: security-reports/semgrep.sarif
+          checkout_path: ${{ env.APP_PATH }}
+          category: mobile-ci-semgrep
+        continue-on-error: true
+
+      - name: Upload Trivy SARIF to Code Scanning
+        if: always() && hashFiles('security-reports/trivy-fs.sarif') != ''
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: security-reports/trivy-fs.sarif
+          checkout_path: ${{ env.APP_PATH }}
+          category: mobile-ci-trivy-fs
+        continue-on-error: true
+
+      - name: Upload security reports (SARIF)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: security-reports-sarif
+          path: |
+            security-reports/*.sarif
+          retention-days: 30
+          if-no-files-found: warn
+
+  # ---------------------------------------------------------------------------
+  # 4. CodeQL analysis — Java / Kotlin
+  # ---------------------------------------------------------------------------
+  codeql:
+    name: CodeQL Analysis
+    runs-on: ubuntu-latest
+    needs: [integration]
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      security-events: write
+      actions: read
+    steps:
+      - name: Checkout calling repository (PR / push head)
+        if: needs.integration.outputs.checkout_mode == 'caller'
+        uses: actions/checkout@v4
+        with:
+          path: ${{ env.APP_PATH }}
+
+      - name: Checkout remote application repository
+        if: needs.integration.outputs.checkout_mode == 'remote'
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ needs.integration.outputs.app_repository }}
+          ref: ${{ needs.integration.outputs.app_ref }}
+          path: ${{ env.APP_PATH }}
+
+      - name: Initialize CodeQL (Java / Kotlin)
+        uses: github/codeql-action/init@v3
+        with:
+          languages: java-kotlin
+          source-root: ${{ env.APP_PATH }}
+          queries: security-and-quality
+
+      - name: Setup Java ${{ env.JAVA_VERSION }}
+        uses: actions/setup-java@v4
+        with:
+          distribution: ${{ env.JAVA_DISTRIBUTION }}
+          java-version: ${{ env.JAVA_VERSION }}
+          cache: gradle
+          cache-dependency-path: |
+            ${{ env.APP_PATH }}/settings.gradle.kts
+            ${{ env.APP_PATH }}/build.gradle.kts
+            ${{ env.APP_PATH }}/app/build.gradle.kts
+            ${{ env.APP_PATH }}/gradle/libs.versions.toml
+            ${{ env.APP_PATH }}/gradle/wrapper/gradle-wrapper.properties
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+        with:
+          packages: >
+            tools
+            platform-tools
+            platforms;android-${{ env.ANDROID_COMPILE_SDK }}
+            build-tools;${{ env.ANDROID_BUILD_TOOLS }}
+
+      - name: Build for CodeQL (Gradle assembleDebug)
+        working-directory: ${{ env.APP_PATH }}
+        run: |
+          set -euo pipefail
+          chmod +x ./gradlew
+          ./gradlew --no-daemon :app:assembleDebug
+
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@v3
+        with:
+          category: "mobile-ci-codeql-java"
+
+      - name: CodeQL summary
+        if: always()
+        run: |
+          {
+            echo "### CodeQL Analysis"
+            echo ""
+            echo "Language: Java/Kotlin"
+            echo "Query suite: security-and-quality"
+            echo "Category: mobile-ci-codeql-java"
+            echo ""
+            echo "View results: repository → Security → Code scanning alerts"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  # ---------------------------------------------------------------------------
+  # 5. Mock contract tests — OpenAPI Prism + mock:verify
+  # ---------------------------------------------------------------------------
+  mock-contract-tests:
+    name: Mock Contract Tests
+    runs-on: ubuntu-latest
+    needs: [integration]
+    timeout-minutes: 20
+    steps:
+      - name: Checkout calling repository (PR / push head)
+        if: needs.integration.outputs.checkout_mode == 'caller'
+        uses: actions/checkout@v4
+        with:
+          path: ${{ env.APP_PATH }}
+
+      - name: Checkout remote application repository
+        if: needs.integration.outputs.checkout_mode == 'remote'
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ needs.integration.outputs.app_repository }}
+          ref: ${{ needs.integration.outputs.app_ref }}
+          path: ${{ env.APP_PATH }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: ${{ env.APP_PATH }}/package-lock.json
+
+      - name: Cache node_modules
+        id: cache-node-modules
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.APP_PATH }}/node_modules
+          key: node-modules-${{ runner.os }}-node${{ env.NODE_VERSION }}-${{ hashFiles(format('{0}/package-lock.json', env.APP_PATH)) }}
+          restore-keys: |
+            node-modules-${{ runner.os }}-node${{ env.NODE_VERSION }}-
+
+      - name: Install dependencies (npm ci)
+        if: steps.cache-node-modules.outputs.cache-hit != 'true'
+        working-directory: ${{ env.APP_PATH }}
+        run: npm ci
+
+      - name: Detect mock server and verify scripts
+        id: detect
+        working-directory: ${{ env.APP_PATH }}
+        run: |
+          set -euo pipefail
+
+          has_script() {
+            local name="$1"
+            node -e "
+              const fs = require('fs');
+              const p = JSON.parse(fs.readFileSync('package.json', 'utf8'));
+              process.exit(p.scripts && p.scripts[process.argv[1]] ? 0 : 1);
+            " "$name"
+          }
+
+          MOCK_SCRIPT=""
+          for script in mock:prism mock:mockoon; do
+            if has_script "$script"; then
+              MOCK_SCRIPT="$script"
+              break
+            fi
+          done
+
+          VERIFY_SCRIPT=""
+          if has_script mock:verify; then
+            VERIFY_SCRIPT="mock:verify"
+          fi
+
+          echo "mock_script=${MOCK_SCRIPT}" >> "$GITHUB_OUTPUT"
+          echo "verify_script=${VERIFY_SCRIPT}" >> "$GITHUB_OUTPUT"
+
+          if [ -n "$MOCK_SCRIPT" ] && [ -n "$VERIFY_SCRIPT" ]; then
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+            echo "Detected mock server: npm run $MOCK_SCRIPT"
+            echo "Detected verify:      npm run $VERIFY_SCRIPT"
+          else
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            echo "Mock script found: ${MOCK_SCRIPT:-<none>}"
+            echo "Verify script found: ${VERIFY_SCRIPT:-<none>}"
+          fi
+
+      - name: Mock contract tests (placeholder — scripts not defined)
+        if: steps.detect.outputs.ready != 'true'
+        run: |
+          set -euo pipefail
+          {
+            echo "### Mock contract tests"
+            echo ""
+            echo "Status: **skipped (placeholder)** — \`mock:prism\`/\`mock:mockoon\` and/or \`mock:verify\` not defined."
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "Mock contract tests not defined yet — placeholder step passed."
+
+      - name: Prepare mock assets
+        if: steps.detect.outputs.ready == 'true'
+        working-directory: ${{ env.APP_PATH }}
+        run: |
+          set -euo pipefail
+          if node -e "const p=require('./package.json'); process.exit(p.scripts && p.scripts['mock:prepare'] ? 0 : 1)"; then
+            npm run mock:prepare
+          else
+            echo "mock:prepare not defined — skipping prepare."
+          fi
+
+      - name: Start mock server
+        id: mock-server
+        if: steps.detect.outputs.ready == 'true'
+        working-directory: ${{ env.APP_PATH }}
+        env:
+          MOCK_SCRIPT: ${{ steps.detect.outputs.mock_script }}
+          MOCK_API_BASE_URL: ${{ env.MOCK_API_BASE_URL }}
+          MOCK_API_READY_TIMEOUT_SECONDS: ${{ env.MOCK_API_READY_TIMEOUT_SECONDS }}
+        run: |
+          set -euo pipefail
+          REPORT_DIR="${GITHUB_WORKSPACE}/test-reports"
+          mkdir -p "$REPORT_DIR"
+          LOG_FILE="${REPORT_DIR}/mock-server.log"
+          PID_FILE="${REPORT_DIR}/mock-server.pid"
+
+          echo "==> Starting mock server: npm run ${MOCK_SCRIPT}"
+          nohup npm run "${MOCK_SCRIPT}" >"$LOG_FILE" 2>&1 &
+          echo $! >"$PID_FILE"
+          echo "Mock server PID $(cat "$PID_FILE")"
+
+          READY_URLS=(
+            "${MOCK_API_BASE_URL}/api/deliveries"
+            "${MOCK_API_BASE_URL}/"
+            "${MOCK_API_BASE_URL}"
+          )
+          deadline=$((SECONDS + MOCK_API_READY_TIMEOUT_SECONDS))
+          ready=false
+          while [ "$SECONDS" -lt "$deadline" ]; do
+            if ! kill -0 "$(cat "$PID_FILE")" 2>/dev/null; then
+              echo "::error::Mock server process exited before becoming ready. Log:"
+              cat "$LOG_FILE" || true
+              exit 1
+            fi
+            for url in "${READY_URLS[@]}"; do
+              if curl -sS -o /dev/null -w "%{http_code}" --max-time 2 "$url" | grep -Eq '^[0-9]{3}$'; then
+                echo "Mock server is accepting requests at $url"
+                ready=true
+                break 2
+              fi
+            done
+            sleep 1
+          done
+
+          if [ "$ready" != "true" ]; then
+            echo "::error::Timed out after ${MOCK_API_READY_TIMEOUT_SECONDS}s waiting for mock server at ${MOCK_API_BASE_URL}"
+            echo "--- mock server log ---"
+            cat "$LOG_FILE" || true
+            kill "$(cat "$PID_FILE")" 2>/dev/null || true
+            exit 1
+          fi
+
+          echo "started=true" >> "$GITHUB_OUTPUT"
+
+      - name: Run mock:verify
+        if: steps.detect.outputs.ready == 'true'
+        working-directory: ${{ env.APP_PATH }}
+        env:
+          VERIFY_SCRIPT: ${{ steps.detect.outputs.verify_script }}
+          MOCK_API_BASE_URL: ${{ env.MOCK_API_BASE_URL }}
+        run: |
+          set -euo pipefail
+          REPORT_DIR="${GITHUB_WORKSPACE}/test-reports"
+          mkdir -p "$REPORT_DIR"
+          set -o pipefail
+          npm run "${VERIFY_SCRIPT}" 2>&1 | tee "${REPORT_DIR}/mock-verify.txt"
+          {
+            echo "### Mock contract tests"
+            echo ""
+            echo "Status: **passed**"
+            echo ""
+            echo "| Field | Value |"
+            echo "| --- | --- |"
+            echo "| Verify script | \`npm run ${VERIFY_SCRIPT}\` |"
+            echo "| Base URL | \`${MOCK_API_BASE_URL}\` |"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Stop mock server
+        if: always() && steps.detect.outputs.ready == 'true' && steps.mock-server.outputs.started == 'true'
+        run: |
+          set -euo pipefail
+          PID_FILE="${GITHUB_WORKSPACE}/test-reports/mock-server.pid"
+          if [ -f "$PID_FILE" ]; then
+            kill "$(cat "$PID_FILE")" 2>/dev/null || true
+          fi
+          echo "Mock server stopped."
+
+      - name: Upload mock verify logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mock-contract-reports
+          path: test-reports/
+          retention-days: 7
+          if-no-files-found: ignore
+
+  # ---------------------------------------------------------------------------
+  # 6. GitHub Flow CI gate — aggregate status for branch protection
+  # ---------------------------------------------------------------------------
+  github-flow-gate:
+    name: GitHub Flow CI Gate
+    runs-on: ubuntu-latest
+    if: always()
+    needs: [integration, quality-control, security-testing, codeql, mock-contract-tests]
+    timeout-minutes: 5
+    steps:
+      - name: Enforce Integration priority and full CI green
+        env:
+          INTEGRATION: ${{ needs.integration.result }}
+          QUALITY: ${{ needs.quality-control.result }}
+          SECURITY: ${{ needs.security-testing.result }}
+          CODEQL: ${{ needs.codeql.result }}
+          MOCKS: ${{ needs.mock-contract-tests.result }}
+        run: |
+          set -euo pipefail
+
+          {
+            echo "### GitHub Flow CI gate"
+            echo ""
+            echo "| Job | Result | Priority |"
+            echo "| --- | --- | --- |"
+            echo "| Integration | \`${INTEGRATION}\` | **1 (highest)** |"
+            echo "| Quality Control | \`${QUALITY}\` | 2 |"
+            echo "| Security Testing | \`${SECURITY}\` | 2 |"
+            echo "| CodeQL Analysis | \`${CODEQL}\` | 2 |"
+            echo "| Mock Contract Tests | \`${MOCKS}\` | 2 |"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          echo "Integration (priority 1): ${INTEGRATION}"
+          echo "Quality Control (priority 2): ${QUALITY}"
+          echo "Security Testing (priority 2): ${SECURITY}"
+          echo "CodeQL Analysis (priority 2): ${CODEQL}"
+          echo "Mock Contract Tests (priority 2): ${MOCKS}"
+
+          if [ "${INTEGRATION}" != "success" ]; then
+            echo "::error::Integration is the highest-priority gate and did not succeed (result=${INTEGRATION})."
+            echo "Fix Integration before Quality Control / Security Testing / CodeQL / Mocks can proceed."
+            exit 1
+          fi
+          if [ "${QUALITY}" != "success" ]; then
+            echo "::error::Quality Control did not succeed (result=${QUALITY})."
+            exit 1
+          fi
+          if [ "${SECURITY}" != "success" ]; then
+            echo "::error::Security Testing did not succeed (result=${SECURITY})."
+            exit 1
+          fi
+          if [ "${CODEQL}" != "success" ]; then
+            echo "::error::CodeQL Analysis did not succeed (result=${CODEQL})."
+            exit 1
+          fi
+          if [ "${MOCKS}" != "success" ]; then
+            echo "::error::Mock Contract Tests did not succeed (result=${MOCKS})."
+            exit 1
+          fi
+
+          echo "GitHub Flow CI gate passed: Integration first, then Quality Control + Security Testing + CodeQL + Mock Contract Tests."

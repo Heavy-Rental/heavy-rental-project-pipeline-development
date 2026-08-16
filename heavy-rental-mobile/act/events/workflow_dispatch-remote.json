@@ -1,0 +1,6 @@
+{
+  "inputs": {
+    "app_repository": "Heavy-Rental/heavy-rental-mobile",
+    "app_ref": "develop"
+  }
+}
