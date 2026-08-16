@@ -1,0 +1,279 @@
+# REST app CD (Academy). Not CI. Not terraform apply.
+# Copy to: .github/workflows/rest-api-cd-academy.yml
+# Order: infra Terraform creates EC2 → infra Ansible first compose
+#        → THIS workflow re-runs compose on asg-rest with a new CI Tomcat image.
+# Vocareum-only. Paid is rest-api-cd-paid (OIDC — no key fields).
+# Paste aws_access_key_id / secret / session_token on Run workflow (they change every Start Lab)
+# or leave empty and use Environment academy. Do not put instance IDs on the form.
+
+name: REST API CD (Academy)
+
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: deploy image, reconfigure same image, or health only
+        required: true
+        type: choice
+        default: deploy
+        options:
+          - deploy
+          - configure-only
+          - verify
+      aws_environment:
+        description: Must be academy
+        required: true
+        type: environment
+        default: academy
+      image_ref:
+        description: Optional GHCR/ECR tag or https tar URL (empty = latest Release tar or :latest)
+        required: false
+        type: string
+        default: ""
+      image_http_url:
+        description: HTTPS URL of the CI image tar.gz (empty = vars.IMAGE_HTTP_URL)
+        required: false
+        type: string
+        default: ""
+      aws_access_key_id:
+        description: Vocareum AWS Details (changes every Start Lab). Empty = Environment academy
+        required: false
+        type: string
+        default: ""
+      aws_secret_access_key:
+        required: false
+        type: string
+        default: ""
+      aws_session_token:
+        required: false
+        type: string
+        default: ""
+
+concurrency:
+  group: rest-api-cd-academy-${{ github.repository }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  assert-lab:
+    name: Assert Vocareum session
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.aws_environment }}
+    timeout-minutes: 5
+    steps:
+      - name: Resolve Vocareum credentials
+        env:
+          FORM_KEY: ${{ inputs.aws_access_key_id }}
+          FORM_SECRET: ${{ inputs.aws_secret_access_key }}
+          FORM_TOKEN: ${{ inputs.aws_session_token }}
+          ENV_KEY: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          ENV_SECRET: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          ENV_TOKEN: ${{ secrets.AWS_SESSION_TOKEN }}
+        run: |
+          set +x
+          KEY="${FORM_KEY:-${ENV_KEY}}"
+          SECRET="${FORM_SECRET:-${ENV_SECRET}}"
+          TOKEN="${FORM_TOKEN:-${ENV_TOKEN}}"
+          if [ -z "${KEY}" ] || [ -z "${SECRET}" ] || [ -z "${TOKEN}" ]; then
+            echo "::error::Start Lab. Paste AWS Details on the form or set Environment academy secrets."
+            exit 1
+          fi
+          echo "::add-mask::${KEY}"
+          echo "::add-mask::${SECRET}"
+          echo "::add-mask::${TOKEN}"
+          {
+            echo "AWS_ACCESS_KEY_ID=${KEY}"
+            echo "AWS_SECRET_ACCESS_KEY=${SECRET}"
+            echo "AWS_SESSION_TOKEN=${TOKEN}"
+          } >> "$GITHUB_ENV"
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ env.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ env.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ env.AWS_SESSION_TOKEN }}
+          aws-region: ${{ vars.AWS_REGION || 'us-east-1' }}
+      - name: sts
+        run: aws sts get-caller-identity
+
+  discover-targets:
+    name: Discover asg-rest
+    needs: [assert-lab]
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.aws_environment }}
+    timeout-minutes: 5
+    steps:
+      - name: Resolve Vocareum credentials
+        env:
+          FORM_KEY: ${{ inputs.aws_access_key_id }}
+          FORM_SECRET: ${{ inputs.aws_secret_access_key }}
+          FORM_TOKEN: ${{ inputs.aws_session_token }}
+          ENV_KEY: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          ENV_SECRET: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          ENV_TOKEN: ${{ secrets.AWS_SESSION_TOKEN }}
+        run: |
+          set +x
+          KEY="${FORM_KEY:-${ENV_KEY}}"
+          SECRET="${FORM_SECRET:-${ENV_SECRET}}"
+          TOKEN="${FORM_TOKEN:-${ENV_TOKEN}}"
+          if [ -z "${KEY}" ] || [ -z "${SECRET}" ] || [ -z "${TOKEN}" ]; then
+            echo "::error::Start Lab. Paste AWS Details on the form or set Environment academy secrets."
+            exit 1
+          fi
+          echo "::add-mask::${KEY}"
+          echo "::add-mask::${SECRET}"
+          echo "::add-mask::${TOKEN}"
+          {
+            echo "AWS_ACCESS_KEY_ID=${KEY}"
+            echo "AWS_SECRET_ACCESS_KEY=${SECRET}"
+            echo "AWS_SESSION_TOKEN=${TOKEN}"
+          } >> "$GITHUB_ENV"
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ env.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ env.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ env.AWS_SESSION_TOKEN }}
+          aws-region: ${{ vars.AWS_REGION || 'us-east-1' }}
+      - name: ASG InService + SSM Online
+        run: |
+          set -euo pipefail
+          set +x
+          ASG=asg-rest
+          if ! aws autoscaling describe-auto-scaling-groups \
+            --auto-scaling-group-names "$ASG" \
+            --query 'AutoScalingGroups[0].AutoScalingGroupName' \
+            --output text | grep -qx "$ASG"; then
+            echo "::error::ASG ${ASG} missing. Run infra CD action=apply first."
+            exit 1
+          fi
+          IDS=$(aws autoscaling describe-auto-scaling-groups \
+            --auto-scaling-group-names "$ASG" \
+            --query 'AutoScalingGroups[0].Instances[?LifecycleState==`InService`].InstanceId' \
+            --output text)
+          if [ -z "${IDS}" ] || [ "${IDS}" = "None" ]; then
+            echo "::error::No InService instance in ${ASG}. Start Lab or infra configure-only."
+            exit 1
+          fi
+          ONLINE=""
+          for id in ${IDS}; do
+            ping=$(aws ssm describe-instance-information \
+              --filters "Key=InstanceIds,Values=${id}" \
+              --query 'InstanceInformationList[?PingStatus==`Online`].InstanceId' \
+              --output text)
+            if [ -n "${ping}" ] && [ "${ping}" != "None" ]; then
+              ONLINE="${ONLINE} ${ping}"
+            fi
+          done
+          if [ -z "${ONLINE// }" ]; then
+            echo "::error::No SSM Online instance. NAT/endpoints or Start Lab."
+            exit 1
+          fi
+          echo "REST_INSTANCE_IDS=${ONLINE}" >> "$GITHUB_ENV"
+          echo "Discovered InService+SSM hosts (ids only, no public IPs)."
+
+  resolve-image:
+    name: Resolve CI image
+    needs: [assert-lab]
+    if: inputs.action == 'deploy'
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.aws_environment }}
+    timeout-minutes: 10
+    steps:
+      - name: Image placeholder
+        run: |
+          echo "image_ref='${{ inputs.image_ref }}'"
+          echo "Download REST Release tar or GHCR Tomcat image. Do not mvn package / docker build."
+          echo "::error::Stub. Other project: resolve CI tar/GHCR Tomcat image."
+          exit 1
+
+  ansible-rest:
+    name: Compose playbook on asg-rest
+    needs: [assert-lab, discover-targets, resolve-image]
+    if: always() && needs.assert-lab.result == 'success' && needs.discover-targets.result == 'success' && (inputs.action == 'deploy' || inputs.action == 'configure-only') && (needs.resolve-image.result == 'success' || needs.resolve-image.result == 'skipped')
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.aws_environment }}
+    timeout-minutes: 30
+    steps:
+      - name: Resolve Vocareum credentials
+        env:
+          FORM_KEY: ${{ inputs.aws_access_key_id }}
+          FORM_SECRET: ${{ inputs.aws_secret_access_key }}
+          FORM_TOKEN: ${{ inputs.aws_session_token }}
+          ENV_KEY: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          ENV_SECRET: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          ENV_TOKEN: ${{ secrets.AWS_SESSION_TOKEN }}
+        run: |
+          set +x
+          KEY="${FORM_KEY:-${ENV_KEY}}"
+          SECRET="${FORM_SECRET:-${ENV_SECRET}}"
+          TOKEN="${FORM_TOKEN:-${ENV_TOKEN}}"
+          if [ -z "${KEY}" ] || [ -z "${SECRET}" ] || [ -z "${TOKEN}" ]; then
+            echo "::error::Start Lab. Paste AWS Details on the form or set Environment academy secrets."
+            exit 1
+          fi
+          echo "::add-mask::${KEY}"
+          echo "::add-mask::${SECRET}"
+          echo "::add-mask::${TOKEN}"
+          {
+            echo "AWS_ACCESS_KEY_ID=${KEY}"
+            echo "AWS_SECRET_ACCESS_KEY=${SECRET}"
+            echo "AWS_SESSION_TOKEN=${TOKEN}"
+          } >> "$GITHUB_ENV"
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ env.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ env.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ env.AWS_SESSION_TOKEN }}
+          aws-region: ${{ vars.AWS_REGION || 'us-east-1' }}
+      - name: Compose placeholder
+        run: |
+          echo "SSM to REST_INSTANCE_IDS. get-secret-value heavy-rental/rest."
+          echo "compose Tomcat :8080 mem_limit 1g cpus 1.0. Leave 256-512m for OS/SSM/Docker."
+          echo "::error::Stub. Other project: SSM compose on asg-rest."
+          exit 1
+
+  verify:
+    name: Health
+    needs: [assert-lab, discover-targets, ansible-rest]
+    if: always() && needs.assert-lab.result == 'success' && needs.discover-targets.result == 'success' && (needs.ansible-rest.result == 'success' || needs.ansible-rest.result == 'skipped' || inputs.action == 'verify')
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.aws_environment }}
+    timeout-minutes: 10
+    steps:
+      - name: Resolve Vocareum credentials
+        env:
+          FORM_KEY: ${{ inputs.aws_access_key_id }}
+          FORM_SECRET: ${{ inputs.aws_secret_access_key }}
+          FORM_TOKEN: ${{ inputs.aws_session_token }}
+          ENV_KEY: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          ENV_SECRET: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          ENV_TOKEN: ${{ secrets.AWS_SESSION_TOKEN }}
+        run: |
+          set +x
+          KEY="${FORM_KEY:-${ENV_KEY}}"
+          SECRET="${FORM_SECRET:-${ENV_SECRET}}"
+          TOKEN="${FORM_TOKEN:-${ENV_TOKEN}}"
+          if [ -z "${KEY}" ] || [ -z "${SECRET}" ] || [ -z "${TOKEN}" ]; then
+            echo "::error::Start Lab. Paste AWS Details on the form or set Environment academy secrets."
+            exit 1
+          fi
+          echo "::add-mask::${KEY}"
+          echo "::add-mask::${SECRET}"
+          echo "::add-mask::${TOKEN}"
+          {
+            echo "AWS_ACCESS_KEY_ID=${KEY}"
+            echo "AWS_SECRET_ACCESS_KEY=${SECRET}"
+            echo "AWS_SESSION_TOKEN=${TOKEN}"
+          } >> "$GITHUB_ENV"
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ env.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ env.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ env.AWS_SESSION_TOKEN }}
+          aws-region: ${{ vars.AWS_REGION || 'us-east-1' }}
+      - name: Verify placeholder
+        run: |
+          echo "SSM curl 127.0.0.1:8080/actuator/health. Do not print a public REST URL."
+          echo "::error::Stub. Other project: SSM health on :8080."
+          exit 1

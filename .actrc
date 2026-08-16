@@ -1,0 +1,4 @@
+# Non-interactive default for nektos/act (devcontainer has this image).
+# Avoids the first-run "Please choose the default image" prompt.
+-P ubuntu-latest=catthehacker/ubuntu:act-latest
+--pull=false
