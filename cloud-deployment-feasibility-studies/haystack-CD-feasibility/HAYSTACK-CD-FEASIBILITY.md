@@ -137,9 +137,11 @@ Gives `NEO4J_URI`, Postgres, optional LLM. It does **not** replace ASG discovery
 | --- | --- | --- |
 | `action` | Yes | `deploy` / `configure-only` / `verify` |
 | `aws_environment` | Yes | `academy` or `paid` |
-| `image_ref` | Optional | GHCR tag or `latest`. Empty = latest Release tar / `:latest` |
+| `image_ref` | Optional | GHCR/ECR tag, or an `https://…` tar URL. Empty = latest Release tar / `:latest` |
+| `image_http_url` | Optional | HTTPS URL of the CI `.tar.gz`. Empty = Environment `IMAGE_HTTP_URL`. Ansible `get_url` + `docker load` on the guest |
+| `aws_access_key_id` / `aws_secret_access_key` / `aws_session_token` | Academy only | Vocareum AWS Details (change every Start Lab). Empty = Environment `academy`. **Do not add these on paid.** |
 
-**Do not** add inputs for instance ID, private IP, SSH host, or AWS keys.
+**Do not** add inputs for instance ID, private IP, or SSH host. Image source is a **pipeline** input/variable. Academy: prefer S3 HTTPS + `LabRole` GetObject. See [`../ANSIBLE-PROCESS.md`](../ANSIBLE-PROCESS.md) §3.1.
 
 ### 5.4 Ansible inventory
 
@@ -154,7 +156,7 @@ SSH PEM (`heavy-rental/ssh/haystack`) is **break-glass** only, and only after in
 
 ### 5.5 AWS CLI on the Actions runner
 
-Credentials come from Environment **`academy`** (Vocareum three keys) or **`paid`** (OIDC). **Never** from `workflow_dispatch`. Region: `vars.AWS_REGION` or `us-east-1`. **CDK is not used.**
+Credentials: **Academy / Vocareum** — paste the three keys on Run workflow (they change every Start Lab) or use Environment `academy`. **Paid** — OIDC only; **no** key fields. Region: `vars.AWS_REGION` or `us-east-1`. **CDK is not used.**
 
 ```bash
 # 1. Prove the session (assert-lab / assert-account)
@@ -217,12 +219,20 @@ Leave ~256–512 MiB for OS + SSM + Docker. `restart: unless-stopped`.
 
 | Store | Haystack CD |
 | --- | --- |
-| GitHub Environment `academy` / `paid` | **Runner** AWS auth only (Vocareum keys vs OIDC). Optional `LLM_API_KEY` if infra did not sync it yet |
-| AWS `heavy-rental/haystack` | What the **instance** reads: Postgres host/port/db/user/password/URL, `NEO4J_URI`/`USER`/`PASSWORD`, optional `LLM_API_KEY` |
+| GitHub Environment `academy` | **Runner only:** `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_SESSION_TOKEN` (+ `AWS_REGION`). Same names as infra CD. Not Stripe/DB unless infra has not synced yet |
+| GitHub Environment `paid` | **Runner only:** OIDC `AWS_ROLE_TO_ASSUME`. **Fail** if `AWS_ACCESS_KEY_ID` is set |
+| AWS `heavy-rental/haystack` | What the **instance** (`LabRole`) reads: Postgres host/port/db/user/password/URL, `NEO4J_URI`/`USER`/`PASSWORD`, optional `LLM_API_KEY` |
+
+```
+Runner (academy three keys) → sts, describe-asg, ssm, describe-secret, optional ECR push
+Guest (LabRole)             → get-secret-value + docker load / ecr pull / HTTPS tar
+```
+
+AWS keys **do not** push GHCR (`GITHUB_TOKEN` / CI). On **Academy**, the three keys may be pasted on the form; **never** on paid, on the EC2, or in Secrets Manager. Infra Terraform **creates** the `heavy-rental/haystack` shell; `sync-secrets` **must** write the fields above before this CD runs. Fail if `describe-secret` misses the id.
 
 Haystack **CI** must keep `LLM_API_KEY` unset. CD may write it to Secrets Manager; it must **not** bake it into the image.
 
-Inventory of all Environment names: AWS study **§6.0c**. Haystack CI uses **no** `academy`/`paid` secrets.
+Inventory: AWS study **§6.0c** and **§8.7**. Haystack CI uses **no** `academy`/`paid` secrets.
 
 ---
 

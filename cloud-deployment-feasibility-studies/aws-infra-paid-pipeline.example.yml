@@ -8,6 +8,8 @@
 #   2. Environment "paid" variables: AWS_ROLE_TO_ASSUME, AWS_REGION
 #   3. Actions → this workflow → Run workflow → choose action only
 #
+# Vocareum form keys (aws_access_key_id / secret / session_token) are Academy-only.
+# Do NOT add those workflow_dispatch inputs here.
 # Do NOT set AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY / AWS_SESSION_TOKEN
 # on Environment paid. Those names are Vocareum-only (academy pipeline).
 #

@@ -109,16 +109,30 @@ aws secretsmanager describe-secret --secret-id heavy-rental/rest
 
 Optional read-only `terraform output` from **infra** state. Never `terraform apply`.
 
+### 5.1 Runner vs instance (Academy three keys)
+
+Credentials: **Academy / Vocareum** — paste the three keys on Run workflow (they change every Start Lab) or use Environment `academy`. **Paid** — OIDC only; **no** key fields. Region: `vars.AWS_REGION` or `us-east-1`. **CDK is not used.**
+
+```
+Runner (academy): AWS_ACCESS_KEY_ID + SECRET + SESSION_TOKEN
+  → sts, describe-asg, ssm, describe-secret heavy-rental/rest, optional ECR push
+Guest (LabRole): get-secret-value + docker load / ecr pull / HTTPS tar
+Paid runner: OIDC only — fail if AWS_ACCESS_KEY_ID is set
+```
+
+AWS keys **do not** push GHCR (CI `GITHUB_TOKEN`). On **Academy**, paste the three keys on the form (or Environment fallback). **Never** on paid, on the EC2, or in Secrets Manager. Infra must have created `heavy-rental/rest` and filled `POSTGRES_*`, `HAYSTACK_URL`, and Stripe fields — this CD only reads them.
+
 ---
 
 ## 6. Secrets
 
 | Store | REST app CD |
 | --- | --- |
-| GitHub `academy` / `paid` | Runner AWS auth only |
-| AWS `heavy-rental/rest` | Instance: `POSTGRES_*` / `SPRING_DATASOURCE_*`, `HAYSTACK_URL`, `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `STRIPE_PUBLISHABLE_KEY` |
+| GitHub `academy` | **Runner only:** three Vocareum keys + `AWS_REGION`. App passwords optional if SM is already filled |
+| GitHub `paid` | **Runner only:** OIDC. No access keys |
+| AWS `heavy-rental/rest` | **Instance (`LabRole`):** `POSTGRES_*` / `SPRING_DATASOURCE_*`, `HAYSTACK_URL`, `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `STRIPE_PUBLISHABLE_KEY` |
 
-Do not put `sk_` in the image. Do not use CI `REST_API_CLOUD_DB_*` as the RDS hostname — `sync-secrets` **builds** JDBC from Terraform + CD password.
+Do not put `sk_` in the image. Do not use CI `REST_API_CLOUD_DB_*` as the RDS hostname — `sync-secrets` **builds** JDBC from Terraform + CD password. Fail deploy if `describe-secret` for `heavy-rental/rest` fails. See AWS study **§8.2** and **§8.7**.
 
 ---
 
@@ -137,7 +151,9 @@ Do not put `sk_` in the image. Do not use CI `REST_API_CLOUD_DB_*` as the RDS ho
 
 `action`: `deploy` | `configure-only` | `verify`
 
-assert → discover (`asg-rest`) → resolve-image (CI tar/GHCR) → compose/ansible rest group → verify `:8080`. **No terraform.** `stop` / `destroy` stay on infra CD.
+assert → discover (`asg-rest`) → resolve-image (CI tar / GHCR / **HTTPS tar URL**) → compose/ansible rest group → verify `:8080`. **No terraform.** `stop` / `destroy` stay on infra CD.
+
+Image source is configured on the **GitHub Actions** form (`image_ref`, optional `image_http_url`) or Environment variable `IMAGE_HTTP_URL` — not hard-coded in Ansible. See [`../ANSIBLE-PROCESS.md`](../ANSIBLE-PROCESS.md) §3.1.
 
 ---
 

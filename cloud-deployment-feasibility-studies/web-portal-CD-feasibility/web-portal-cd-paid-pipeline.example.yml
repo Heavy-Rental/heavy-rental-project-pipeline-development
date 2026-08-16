@@ -23,6 +23,11 @@ on:
         required: false
         type: string
         default: ""
+      image_http_url:
+        description: HTTPS URL of the CI image tar.gz (empty = vars.IMAGE_HTTP_URL)
+        required: false
+        type: string
+        default: ""
 
 concurrency:
   group: web-portal-cd-paid-${{ github.repository }}

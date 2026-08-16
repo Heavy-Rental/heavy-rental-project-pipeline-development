@@ -339,7 +339,7 @@ Never put Vocareum `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` / `AWS_SESSION_
 | `heavy-rental/haystack` | `asg-haystack` | Same Postgres **field set** for the Haystack DB (same RDS host/port on Academy; `POSTGRES_DATABASE` may be the Haystack db name). `DATABASE_URL` (`postgresql://user:pass@host:port/db`). `NEO4J_URI` (from `asg-neo4j` private IP, e.g. `bolt://10.0.20.x:7687` — not localhost), `NEO4J_USER`, `NEO4J_PASSWORD`, `LLM_API_KEY` if used. No Stripe. |
 | `heavy-rental/neo4j` | `asg-neo4j` | `NEO4J_USER`, `NEO4J_PASSWORD`. No Postgres password dump, no Stripe, no LLM key. |
 
-Terraform **creates** the secret shells. It does not need password or Stripe values in `.tf`. `sync-secrets` fills them after apply: GitHub Environment values + RDS hostname/port/db name + JDBC/URI strings it **builds** from those parts.
+Terraform **must create** these secret **shells** on `apply` (empty JSON is fine). It does not put passwords or Stripe values in `.tf`. **`sync-secrets` must then write every field in the table** (GitHub Environment values + RDS hostname/port/db name + JDBC/URI strings it **builds**). App CD **fails** if the shell is missing or a required field is empty (`describe-secret` / compose `get-secret-value`). Infra `apply` is not done until those parameters exist.
 
 #### Postgres fields (required in `heavy-rental/rest` and `heavy-rental/haystack`)
 
@@ -436,8 +436,10 @@ GitHub Environments are **per repository**. They are **not** defined the same wa
 | Haystack CI (Fast Feedback, Integration, Release) | **None** | No DB / Neo4j / LLM secrets | Workflows **fail** if `LLM_API_KEY` is set |
 | Portal CI | **None** for app config | `GITHUB_TOKEN` for GHCR | No Stripe in CI |
 | Mobile CI | **None** for AWS | APK only | Not deployed to the VPC |
-| **CD Academy** (this study) | **`academy`** | Secrets: `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_SESSION_TOKEN`, `SPRING_DATASOURCE_PASSWORD`, `NEO4J_PASSWORD`, `STRIPE_PUBLISHABLE_KEY`, `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`. Variable: `AWS_REGION` | Vocareum keys for the **runner** only. Example workflow in this folder |
-| **CD Paid** | **`paid`** | Variables: `AWS_ROLE_TO_ASSUME`, `AWS_REGION`. Same **app** secrets as academy (Postgres password, Neo4j, Stripe). **No** Vocareum access keys | OIDC only |
+| **Infra CD Academy** (this study) | **`academy`** | Secrets: `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_SESSION_TOKEN`, `SPRING_DATASOURCE_PASSWORD`, `NEO4J_PASSWORD`, `STRIPE_PUBLISHABLE_KEY`, `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`. Variable: `AWS_REGION` | Vocareum keys for the **runner** only. App passwords feed `sync-secrets`. Example: `aws-infra-pipeline.example.yml` |
+| **Infra CD Paid** | **`paid`** | Variables: `AWS_ROLE_TO_ASSUME`, `AWS_REGION`. Same **app** secrets as academy (Postgres password, Neo4j, Stripe). **No** Vocareum access keys | OIDC only |
+| **Portal / REST / Haystack app CD (Academy)** | **`academy`** (same **names** as infra; copy onto each app-CD repo) | Secrets (fallback): **`AWS_ACCESS_KEY_ID`**, **`AWS_SECRET_ACCESS_KEY`**, **`AWS_SESSION_TOKEN`**. Variable: `AWS_REGION`. Optional `IMAGE_HTTP_URL` | **Vocareum only.** Runner may paste the three keys on Run workflow (they change every Start Lab) or use Environment fallback. Never on paid. Never in SM / on EC2 |
+| **Portal / REST / Haystack app CD (Paid)** | **`paid`** | Variables: `AWS_ROLE_TO_ASSUME`, `AWS_REGION`. Optional `IMAGE_HTTP_URL`. **No** `AWS_ACCESS_KEY_ID` | OIDC only. Paid YAML **fails** if an access key is set |
 
 **Name mismatch:** REST CI `REST_API_CLOUD_DB_*` is **not** automatically the same as CD `SPRING_DATASOURCE_PASSWORD` or Secrets Manager `POSTGRES_*`. `sync-secrets` **builds** host/port/database/URL from Terraform + the CD Environment password. Do not assume one GitHub secret feeds both CI QC and AWS RDS.
 
@@ -1167,7 +1169,7 @@ Same example CIDRs as §6.2 (`10.0.0.0/24` public … `10.0.20.0/24` data). Diff
 | **Ansible** | On each ASG: Docker + `get-secret-value` → `.env` + compose up; RDS `CREATE EXTENSION` |
 | AWS CLI | Called by Actions (`configure-aws-credentials`, ECR login, optional stop/start). CloudShell is break-glass only. |
 | **CI** (app Release) | Build, test, **create Docker images**, push GHCR / upload image tar. Does **not** apply Terraform. |
-| **CD** (this study) | Consume those images; Terraform + sync-secrets + Ansible. Uses the **same GitHub Environment names and secret keys** the maintainer configured (copied onto the CD repo). |
+| **CD** (this study) | Consume those images; Terraform + sync-secrets + Ansible. Uses the **same GitHub Environment names and secret keys** the maintainer configured (copied onto the CD repo). Full walkthrough: **§8**. |
 
 ### 7.0a CI builds the image; CD uses the maintainer’s Environment copy
 
@@ -1194,6 +1196,8 @@ Ansible is **not** an AWS service. Vocareum does not need to list it. The infra 
 
 ### 7.1 Terraform — primary IaC
 
+Step-by-step of the GitHub Actions Terraform job (`plan` / `apply` / `destroy`, remote state, outputs): [`TERRAFORM-PROCESS.md`](TERRAFORM-PROCESS.md).
+
 This pipeline-authoring devcontainer already installs Terraform, tflint, tfsec, and terraform-docs.
 
 Terraform should own: VPC, **public + private-app + private-data** subnets, route tables, SGs, launch templates + **ASGs** (`asg-portal`, `asg-rest`, `asg-haystack` in app subnets; **`asg-neo4j` in data subnets**) with `LabInstanceProfile` (preferred: **no** `key_name` — PEMs come **after** InService), public ALB + `tg-portal`, **dedicated internal ALB** + `tg-rest`, **dedicated internal ALB** + `tg-haystack`, RDS in the **data subnet group only** (`publicly_accessible = false`), ECR, **`aws_secretsmanager_secret` shells** for `heavy-rental/{portal,rest,haystack,neo4j}` and `heavy-rental/ssh/*` (no plaintext passwords, Stripe secrets, or PEMs in `.tf` or state). Never a lone `aws_instance` outside an ASG (the NAT instance, if used, is the one documented exception — or wrap it in a 1-instance ASG). Never register REST or Haystack on the public listener. Never place RDS or `asg-neo4j` in the app or public subnets.
@@ -1217,6 +1221,8 @@ Apply **only from GitHub Actions** while a Vocareum session is started. CloudShe
 ### 7.1a Ansible — configure EC2 and sync RDS (yes)
 
 **Yes, include Ansible.** It is the right tool to keep the EC2 guest and the RDS *contents* aligned after Terraform has created both.
+
+Step-by-step inventory (when it runs, shared guest steps, per-group compose, RDS logical, app CD): [`ANSIBLE-PROCESS.md`](ANSIBLE-PROCESS.md).
 
 What Ansible should do:
 
@@ -1302,13 +1308,13 @@ Copy-ready Academy workflow: [`aws-infra-pipeline.example.yml`](aws-infra-pipeli
 | Stale credentials | Possible if you forget to update secrets | Always “fresh” if the operator pastes this session’s Details |
 | Fit for Academy | Extra Settings click once per session | Matches “paste and go” but is the weaker security design |
 
-**Decision:** use a GitHub Environment named **`academy`**. The operator still *keys in* Vocareum AWS Details — in **Environment secrets**, not on the pipeline form. `workflow_dispatch` only asks for `action` (and optionally which environment).
+**Decision:** GitHub Environment **`academy`** plus **optional Run-workflow fields** for the three Vocareum values. Those tokens **change every Start Lab**, so the operator may paste them on the form instead of editing Environment secrets each session. **Paid must not have these fields** (OIDC only).
 
-OIDC remains impossible (cannot create an identity provider or deploy role). Environment secrets are the least-bad credential store GitHub offers for Vocareum.
+OIDC remains impossible on Academy (cannot create an identity provider). GitHub cannot secret-type dispatch inputs — they may appear on the run **Inputs** page. Mask in logs (`::add-mask::`), `set +x`, private repo, Environment reviewers.
 
-#### Authentication (Environment `academy`)
+#### Authentication (Vocareum / Academy only)
 
-Create **Settings → Environments → `academy`**. Add secrets (update after every Start Lab):
+Create **Settings → Environments → `academy`**. Optional fallback secrets (if the form is left empty):
 
 | Secret | Source |
 | --- | --- |
@@ -1316,16 +1322,15 @@ Create **Settings → Environments → `academy`**. Add secrets (update after ev
 | `AWS_SECRET_ACCESS_KEY` | same |
 | `AWS_SESSION_TOKEN` | same (almost always present) |
 
-Optional Environment **variable** (not a secret): `AWS_REGION=us-east-1`.
+Optional Environment **variable**: `AWS_REGION=us-east-1`.
 
-**Retrieval contract** — every job that calls AWS MUST:
+**Resolve order** (every Academy AWS job):
 
-1. Set `environment: ${{ inputs.aws_environment }}` (default `academy`).
-2. Read credentials **only** as `secrets.AWS_ACCESS_KEY_ID`, `secrets.AWS_SECRET_ACCESS_KEY`, and `secrets.AWS_SESSION_TOKEN`.
-3. Read region as `vars.AWS_REGION` (fallback `us-east-1`).
-4. **Never** declare `workflow_dispatch` inputs for those three names, and never use `secrets.*` from repository (non-Environment) secrets for them.
+1. If `inputs.aws_access_key_id`, `aws_secret_access_key`, and `aws_session_token` are all set → use the form; `::add-mask::` each.
+2. Else use Environment `secrets.AWS_*`.
+3. Else fail: “Start Lab. Paste AWS Details on the form or set Environment academy.”
 
-Without `environment:` on the job, GitHub will not inject the `academy` secrets and the run must fail in `assert-lab`.
+Also: `environment: academy` on every AWS job (reviewers + fallback + `AWS_REGION`). Never store the three Vocareum values in Secrets Manager or on the guest. Never add these inputs to **paid** workflows.
 
 ```yaml
 on:
@@ -1337,21 +1342,14 @@ on:
       aws_environment:
         type: environment
         default: academy
-
-jobs:
-  assert-lab:
-    environment: ${{ inputs.aws_environment }}
-    steps:
-      - uses: aws-actions/configure-aws-credentials@v4
-        with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
-          aws-region: ${{ vars.AWS_REGION || 'us-east-1' }}
-      - run: aws sts get-caller-identity
+      aws_access_key_id: { type: string, required: false }
+      aws_secret_access_key: { type: string, required: false }
+      aws_session_token: { type: string, required: false }
 ```
 
-**Session rule:** Start Lab → update Environment `academy` secrets → Run workflow. If `ExpiredToken`, update secrets and re-run. Do not apply.
+Resolve form → else Environment `secrets.AWS_*` → `::add-mask::` → `configure-aws-credentials`. **Paid YAML must not declare these three inputs.**
+
+**Session rule:** Start Lab → Run workflow → paste AWS Details on the form (or refresh Environment `academy`). If `ExpiredToken`, paste a fresh token. Do not apply on a dead session.
 
 Enable Environment protection (required reviewers) if more than one person can apply.
 
@@ -1384,7 +1382,7 @@ App **CI** Release workflows stay as they are (package + GHCR). They do not appl
 
 - Create IAM roles or an OIDC provider
 - `terraform apply` when the lab session is down or Environment secrets are missing
-- Put AWS keys on `workflow_dispatch` inputs (they are not secret)
+- Put AWS keys on **paid** `workflow_dispatch` (Vocareum form keys are Academy-only; mask them; never write them to SM)
 - Commit Vocareum keys or store them as **repository** secrets (use Environment `academy` only)
 - Mix CDK apply into the same workflow
 - Recreate RDS on every image deploy (that is `configure-only`)
@@ -1615,36 +1613,274 @@ Given this repo’s Terraform toolchain, **do not introduce CDK** unless the oth
 
 ## 8. End-to-end flow (CI then CD)
 
-Still implemented in the other project. **CI first (image), then CD (this study).** Pick one CD pipeline per account.
+Still implemented in the other project. **CI first (image), then one infra CD per account.** Example workflows are fail-closed stubs.
 
-0. **CI:** app Release pipeline creates the Docker image (GHCR and/or tar). Maintainer has already configured Environments **`academy`** / **`paid`** and copied them onto the **CD** repo.
+This section is the single walkthrough. Terraform job detail is **first** (from [`TERRAFORM-PROCESS.md`](TERRAFORM-PROCESS.md)), then guest compose (from [`ANSIBLE-PROCESS.md`](ANSIBLE-PROCESS.md)).
 
-### 8.1 Academy (`aws-infra-academy.yml`)
+```
+CI Release (already exists)
+    → images: portal :80 · REST :8080 · Haystack :8000
 
-1. Human **Start Lab** in Vocareum and opens **AWS Details**.
-2. Human sets/updates Environment **`academy`** secrets (`AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_SESSION_TOKEN`).
-3. Human **Run workflow** on the **Academy** workflow and chooses `action` only. Actions reads `secrets.*` and runs `sts get-caller-identity`.
-4. **Terraform apply** creates VPC, **three subnet tiers**, four ASGs (`asg-neo4j` in data subnets), ALBs, RDS in the **data subnet group**, ECR, and Secrets Manager **secret resources**.
-5. **sync-secrets** writes Postgres fields, Stripe, internal ALB DNS, RDS hostname/port, and Neo4j Bolt URI into `heavy-rental/{portal,rest,haystack,neo4j}`.
-6. **Wait** until ASG instances are InService. **`sync-ssh-keys`** writes PEMs to `heavy-rental/ssh/*` and installs public keys via SSM.
-7. **Ansible** on each ASG runs `get-secret-value` (app secret) and starts containers. Haystack does **not** start Neo4j. Public ALB health-checks portal only.
+One-time: Environments + remote state + copy YAML   (§8.0)
 
-Image-only: `action=configure-only`. Lab-day pause: `action=stop`. Wipe: `action=destroy` (`confirm_destroy=destroy`) — `terraform destroy` of the Academy state (§7.2d). Next estate is a new `apply`.
+Infra CD  action=apply
+    assert-lab / assert-account
+    terraform     init → plan → apply               (§8.1)
+    sync-secrets  +  sync-ssh-keys                  (§8.2)
+    ansible       four groups, SSM                  (§8.3)
 
-Vocareum keys live only in Environment `academy` and are replaced after each Start Lab.
+Runtime: Browser → public portal ALB → …            (§8.4)
+Later: plan / configure-only / stop / destroy / app CD  (§8.5)
+Paid: same jobs, OIDC, different state              (§8.6)
+App CD auth: academy three keys on Environment only (§8.7)
+```
 
-### 8.2 Paid (`aws-infra-paid.yml`)
+### 8.0 One-time setup (human, before any run)
 
-1. Admin has already created the GitHub OIDC provider and `github-actions-infra` role. Environment **`paid`** holds `AWS_ROLE_TO_ASSUME` and `AWS_REGION`.
-2. Human **Run workflow** on the **paid** workflow (`action` only). No Vocareum keys.
-3. Actions assumes the role via OIDC, `sts get-caller-identity` (must be the paid account).
-4. **Terraform apply** (paid state) — same three-tier VPC; secret shells + ASGs/ALBs; may include Multi-AZ, NAT Gateway, ACM, extra IAM, second RDS. RDS and Neo4j stay in the **data** subnets.
-5. **sync-secrets** — `put-secret-value` in the **paid** account from Environment `paid` app secrets (never Vocareum keys).
-6. **Ansible** — `get-secret-value` on paid ASGs only.
+**GitHub (CD repo)**
 
-Wipe: `action=destroy` on **this** workflow only (`confirm_destroy=destroy`) — paid state, paid account. Never run Academy destroy against paid.
+- Copy Environments **`academy`** and **`paid`** onto the CD repo (GitHub does not share Environments across repos).
+- **`academy`:** fallback secrets `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_SESSION_TOKEN` (or paste them on Run workflow — they change every Start Lab). Also `SPRING_DATASOURCE_PASSWORD`, `NEO4J_PASSWORD`, Stripe trio. Variable: `AWS_REGION`. **Vocareum only.**
+- **`paid`:** variables `AWS_ROLE_TO_ASSUME` + `AWS_REGION`. Same **app** secrets. **No** Vocareum access keys. Admin has already created GitHub OIDC + role `github-actions-infra`.
+- Copy [`aws-infra-pipeline.example.yml`](aws-infra-pipeline.example.yml) → `.github/workflows/aws-infra-academy.yml` and [`aws-infra-paid-pipeline.example.yml`](aws-infra-paid-pipeline.example.yml) → `aws-infra-paid.yml`.
+- Optional later: app CD workflows (portal / REST / Haystack). They do **not** create the estate.
+- Optional: Environment variable `IMAGE_HTTP_URL` (HTTPS tar). **Academy** may paste Vocareum keys on the Run form; **paid must not**.
+
+**CI (already exists)** — Release pipelines produce:
+
+| App | Image | Port |
+| --- | --- | --- |
+| Portal | nginx + Vite `dist/` tar / GHCR | 80 |
+| REST | Tomcat + WAR tar / GHCR | 8080 |
+| Haystack | uvicorn tar / GHCR | 8000 |
+
+CI Environments (`integration` / `production` or none) are **not** CD `academy` / `paid`.
+
+**Remote Terraform state (required):** S3 + DynamoDB lock. Academy key ≠ paid key. The GitHub runner is ephemeral — a local `tfstate` dies with the job.
+
+---
+
+### 8.1 Terraform in GitHub Actions (first)
+
+Full contract: [`TERRAFORM-PROCESS.md`](TERRAFORM-PROCESS.md). Terraform runs **only on infra CD**. App CD never calls it.
+
+#### Which workflow
+
+| Workflow (copy name) | Environment | Auth |
+| --- | --- | --- |
+| `aws-infra-academy.yml` | `academy` | Vocareum access key + secret + **session token** |
+| `aws-infra-paid.yml` | `paid` | OIDC `vars.AWS_ROLE_TO_ASSUME` (`id-token: write`) |
+
+Trigger: **`workflow_dispatch` only**. Form: `action`, `aws_environment`, `confirm_destroy` when wiping, and on **Academy only** the three Vocareum keys (optional if Environment `academy` is set). **Paid has no key fields.** Academy: **Start Lab** then paste AWS Details. If `sts` fails (`ExpiredToken`), paste a fresh token.
+
+#### When the Terraform job runs
+
+| `action` | Terraform? | Commands on the runner |
+| --- | --- | --- |
+| `plan` | Job `terraform` | `init` → `plan` |
+| `apply` | Job `terraform` | `init` → `plan` → `apply` |
+| `destroy` | Job **`destroy`** (not the plan/apply job) | `confirm_destroy == destroy` → `init` → `destroy -auto-approve` |
+| `configure-only` | **Skipped** | `sync-secrets` + `sync-ssh-keys` + Ansible only |
+| `stop` | **Skipped** | AWS CLI: ASG desired=0 + `rds stop-db-instance` (not `terraform destroy`) |
+
+Do **not** `apply` on push or pull_request. Timeouts in the examples: plan/apply **30** minutes; destroy **60** minutes.
+
+#### Steps inside the `terraform` job (`plan` / `apply`)
+
+```
+assert-lab / assert-account          sts; refuse the wrong account
+        │
+        ▼
+Job terraform   if: action == plan || apply
+                environment: academy | paid
+  1. configure-aws-credentials@v4    three Vocareum keys  OR  role-to-assume
+  2. actions/checkout@v4             .tf from the CD repo
+  3. terraform init                  S3 backend + DynamoDB lock  (required)
+  4. terraform plan                  always; no apply on action=plan
+  5. terraform apply                 only if action=apply
+```
+
+`configure-aws-credentials` and `checkout` are **Actions** steps. `init` / `plan` / `apply` are the **Terraform** process.
+
+**Remote state:** `init` must use S3 + DynamoDB lock. Academy key ≠ paid key. The backend **bucket** is not in this state. Vocareum **Reset** deletes the bucket — keep `.tf` in Git and re-apply. Local state is CloudShell / laptop break-glass only.
+
+#### What `apply` puts in that state
+
+| In state (Terraform creates) | Not Terraform |
+| --- | --- |
+| VPC, IGW, three subnet tiers (2 AZs each), route tables | Docker / compose / `.env` |
+| NAT **instance** (Academy; not NAT Gateway) | `CREATE DATABASE` / extensions |
+| Security groups (portal / rest / haystack / neo4j / ALBs / RDS) | Stripe plaintext, DB passwords, PEMs |
+| Four launch templates + ASGs (`LabInstanceProfile` on Academy) | CI images, GHCR, GitHub Environments |
+| Public portal ALB + `tg-portal` :80 | `action=stop` (CLI) |
+| Internal REST ALB + `tg-rest` :8080 | App CD deploys |
+| Internal Haystack ALB + `tg-haystack` :8000 | |
+| RDS in the **data** subnet group (`publicly_accessible=false`, `multi_az=false`, `deletion_protection=false`) | |
+| Empty Secrets Manager shells `heavy-rental/{portal,rest,haystack,neo4j}` and `heavy-rental/ssh/*` | Secret **values** (`sync-secrets` / `sync-ssh-keys`) |
+| Optional ECR repos | |
+
+Preferred: **no** `key_name` on launch templates. PEMs wait until InService.
+
+Academy `.tf` must not create IAM roles or an OIDC provider, must not use `aws_nat_gateway` or a Marketplace Neo4j CFT, and must not register REST/Haystack on the public listener. `asg-neo4j`: `max_size = 1`.
+
+#### Destroy job (still Terraform, later)
+
+```
+assert-* → confirm_destroy == "destroy" → init (same backend/key) → destroy -auto-approve
+```
+
+No Ansible. No `stop` first. Same state as that pipeline’s `apply`. What is deleted: **§7.2d**.
+
+---
+
+### 8.2 After Terraform: `sync-secrets` and `sync-ssh-keys`
+
+These are **not** Terraform and **not** Ansible.
+
+**`sync-secrets`** builds JSON from Terraform **outputs** + GitHub Environment app secrets and `put-secret-value`s:
+
+| Terraform output | Lands in |
+| --- | --- |
+| Internal REST ALB DNS | `heavy-rental/portal` → `REST_BASE_URL` (+ `STRIPE_PUBLISHABLE_KEY` only) |
+| Internal Haystack ALB DNS | `heavy-rental/rest` → `HAYSTACK_URL` |
+| RDS endpoint hostname + port | `heavy-rental/rest` and `heavy-rental/haystack` → `POSTGRES_*` / URL |
+| `asg-neo4j` private IP | `heavy-rental/haystack` → `NEO4J_URI` (`bolt://…:7687`) |
+
+REST also gets Stripe `sk_` + `whsec_` + `pk_`. Neo4j secret is user/password only. **`sync-secrets` fails** if host, database, password, or port is empty, or if portal is missing `REST_BASE_URL`, or if REST is missing `HAYSTACK_URL` when Haystack is in use. Do not echo SecretString, `sk_`, or PEMs. Do not write Vocareum AWS keys into Secrets Manager.
+
+**Required AWS Secrets Manager parameters before any app CD `deploy`:**
+
+| Secret id (Terraform shell) | Required JSON fields (`sync-secrets`) | Who reads |
+| --- | --- | --- |
+| `heavy-rental/portal` | `REST_BASE_URL`, `STRIPE_PUBLISHABLE_KEY` | `asg-portal` / portal app CD |
+| `heavy-rental/rest` | `POSTGRES_HOST`, `POSTGRES_PORT`, `POSTGRES_DATABASE`, `POSTGRES_USERNAME`, `POSTGRES_PASSWORD`, `POSTGRES_URL` / `SPRING_DATASOURCE_*`, `HAYSTACK_URL`, `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `STRIPE_PUBLISHABLE_KEY` | `asg-rest` / REST app CD |
+| `heavy-rental/haystack` | Same Postgres field set (or Haystack db name), `NEO4J_URI`, `NEO4J_USER`, `NEO4J_PASSWORD` | `asg-haystack` / Haystack app CD |
+| `heavy-rental/neo4j` | `NEO4J_USER`, `NEO4J_PASSWORD` | `asg-neo4j` (infra/`configure-only` only) |
+
+App CD does **not** create these secrets. It only `describe-secret` / the guest `get-secret-value`. If a required id or field is missing, **fail** and run infra `apply` or `configure-only` first.
+
+**`sync-ssh-keys`:** wait until each ASG is **InService**. Then generate PEMs → `heavy-rental/ssh/*`, install **public** keys via SSM. Skip if desired=0. Never `tls_private_key` in Terraform.
+
+---
+
+### 8.3 Ansible on the guests (after secrets)
+
+Full contract: [`ANSIBLE-PROCESS.md`](ANSIBLE-PROCESS.md). Ansible runs on `apply` and `configure-only`. It does **not** run on `stop` or `destroy`.
+
+#### When and how it connects
+
+```
+Infra apply:     Terraform (EC2 InService) → sync-secrets → sync-ssh-keys → Ansible (all four groups)
+configure-only:  sync-secrets + sync-ssh-keys + Ansible   (no terraform apply)
+App CD later:    discover ASG → same playbook, one group (portal | rest | haystack). No terraform. No neo4j group.
+```
+
+1. Actions runner installs Ansible (or uses an image that has it).
+2. Dynamic inventory: four groups — `portal`, `rest`, `haystack`, `neo4j`.
+3. `ansible_connection=aws_ssm`; instance id from the ASG. No public IP. No `ansible_host`.
+4. RDS is **not** in inventory (no SSH guest OS).
+5. Everyday path is SSM. SSH PEM is break-glass only.
+
+#### Shared guest steps (every ASG)
+
+1. Reach the instance via SSM (`LabInstanceProfile` / paid instance profile).
+2. Install Docker and the compose plugin if missing.
+3. `aws secretsmanager get-secret-value` of **that role’s** app secret only.
+4. Map JSON → `.env`; `chmod 600`.
+5. Do **not** copy GitHub `secrets.*` onto the guest. Do **not** fetch `sk_` or PEMs onto `asg-portal`.
+6. Load or pull the **CI** image (pipeline-configured; see below). Do not `docker build` / `npm` / `mvn`.
+7. `docker compose up` with §6.4a `mem_limit` / `cpus`, `restart: unless-stopped`, no `replicas > 1`. Leave 256–512 MiB for OS + SSM + Docker.
+
+**Image source is configured on the GitHub Actions workflow**, not hard-coded in Ansible. Resolution: `inputs.image_http_url` → else Environment `IMAGE_HTTP_URL` → else `image_ref` if it is `https://…` → else registry tag (`docker pull`) → else latest Release tar then `docker load`. Academy preferred HTTP path: **S3 HTTPS** + `LabRole` `GetObject`. No plain `http://` registry.
+
+#### Per-group compose (infra first run)
+
+| Group | Secret | Compose | Limits |
+| --- | --- | --- | --- |
+| `portal` | `heavy-rental/portal` (`REST_BASE_URL`, `pk_` only) | nginx :80; write `/api` → `REST_BASE_URL` (CI image has SPA `try_files` only). Fail if URL empty. Health `GET /`. Do not fail solely because `/api` is down. | `256m` / `0.5` |
+| `rest` | `heavy-rental/rest` (Postgres, `HAYSTACK_URL`, Stripe trio) | Tomcat :8080. Health `/actuator/health` or `/`. No Bolt. | `1g` / `1.0` |
+| `haystack` | `heavy-rental/haystack` (Postgres, `NEO4J_URI` not localhost) | uvicorn :8000 + `postgres-haystack-sync` + `neo4j-populate`. **Must not** start `neo4j`. Optional pgvector only on `t3.medium`. Health `/docs` or `/health`. | `768m` / `1.0` + two workers `256m` / `0.25` |
+| `neo4j` | `heavy-rental/neo4j` | **Only** `neo4j:5`, `/data` on EBS, Bolt on private IP. No ALB. App CD does not run this group. | `4g` / `1.5`, heap 512m–1G |
+
+**RDS logical** (`delegate_to` rest or haystack — not Neo4j, not the runner): `CREATE DATABASE heavy_rental`, roles/grants, optional `vector`. Recommended Academy Haystack DB is a **pgvector container** on `asg-haystack`, not a second RDS.
+
+Ansible must not create the VPC/ASG/ALB/RDS **instance**/IAM, inventory RDS as a host, open `:5432` to the runner, start Neo4j on haystack, or put `sk_` on the portal.
+
+---
+
+### 8.4 Runtime (what apply + Ansible just built)
+
+```
+Browser  →  public portal ALB :80/:443
+              →  asg-portal  (nginx SPA + /api proxy)
+                    →  internal REST ALB :8080
+                          →  asg-rest
+                                →  RDS :5432          (SoR database heavy_rental)
+                                →  internal Haystack ALB :8000   (HAYSTACK_URL)
+                                      →  asg-haystack
+                                            →  RDS :5432          (sync/populate; optional Haystack db)
+                                            →  Neo4j Bolt :7687   (asg-neo4j; sg-haystack only)
+```
+
+Students use the **public portal ALB DNS** only. Operators use SSM.
+
+---
+
+### 8.5 After the first apply
+
+| Goal | Workflow | `action` | Terraform? | Ansible? |
+| --- | --- | --- | --- | --- |
+| Preview `.tf` | Infra | `plan` | `init`+`plan` | No |
+| New image / secret / after Start Lab | Infra | `configure-only` | **No** | Yes (all four groups) |
+| Pause for the lab day | Infra | `stop` | **No** | No — ASG desired=0 + stop RDS |
+| Wipe the estate | Infra | `destroy` + `confirm_destroy=destroy` | `destroy` | No |
+| New portal / REST / Haystack image only | App CD | `deploy` | **No** | One group only |
+
+**Next Start Lab:** instances come back; IPs change. Re-run **`configure-only`**. Do not recreate RDS. Session end does **not** stop RDS or ALB billing — use `stop` (§3.1).
+
+**App CD** (after infra is up): discover `asg-*` (InService + SSM Online) → resolve image (`image_http_url` / `IMAGE_HTTP_URL` / `image_ref`) → same playbook, one group → health. Fail if the ASG is missing. Auth: **§8.7**. Required SM parameters: **§8.2**.
+
+---
+
+### 8.6 Paid (`aws-infra-paid.yml`)
+
+Same job names and the same communication graph. Differences:
+
+1. Admin has already created the GitHub OIDC provider and `github-actions-infra`. Environment **`paid`** holds `AWS_ROLE_TO_ASSUME` and `AWS_REGION`. No Vocareum keys.
+2. **Terraform apply** uses the **paid** state key — same three-tier VPC; may include Multi-AZ, NAT Gateway, ACM HTTPS on the **portal** ALB, extra IAM, second RDS. RDS and Neo4j stay in the **data** subnets.
+3. `sync-secrets` / Ansible run in the **paid** account only. Same required SM ids and fields as §8.2, in the **paid** account.
+4. `action=destroy` on **this** workflow wipes **paid** state only. Never run Academy destroy against paid.
 
 Do not bake keys into Git. App passwords start in GitHub Environment secrets, then live in **AWS Secrets Manager** in that same account.
+
+### 8.7 App CD authentication (Academy three keys)
+
+Portal, REST, and Haystack **app CD** deploy with the **same** Vocareum session as infra CD (**Academy / Vocareum only**). Paste the three keys on the Run form (they expire every Start Lab) or leave them empty and use Environment `academy`.
+
+```
+Actions runner  ←  form aws_access_key_id / secret / session_token
+                     else Environment academy secrets
+                     (Vocareum only — paid uses OIDC)
+       │
+       │  sts, describe-asg, ssm, secretsmanager describe
+       │  optional: ecr:GetAuthorizationToken + docker push (Vocareum user can write ECR)
+       ▼
+EC2 (LabRole / LabInstanceProfile)
+       ←  get-secret-value heavy-rental/{portal|rest|haystack}
+       ←  docker load / ecr pull / HTTPS tar   (LabRole is ECR pull-only)
+       ←  compose up
+```
+
+| The three keys **can** | The three keys **cannot** |
+| --- | --- |
+| Authenticate the **Academy runner** (form this session, or Environment fallback) | Appear on **paid** workflows (OIDC only) |
+| `describe-secret` / prove SM ids from §8.2 exist | Push **GHCR** (that is CI `GITHUB_TOKEN`) |
+| Discover `asg-*` + SSM deploy | Live on the EC2 or in Secrets Manager |
+| Optional **ECR push** of the CI tar | Replace `LabRole` on the instance |
+
+After **Start Lab**, paste fresh AWS Details on the **Academy** Run form (or refresh Environment `academy`). Copy Environment **`academy`** onto each app-CD repo. App passwords/Stripe on that copy are optional if infra already filled AWS.
+
+Paid app CD: `AWS_ROLE_TO_ASSUME` only. **No** `aws_access_key_id` inputs. Workflows **fail** if `AWS_ACCESS_KEY_ID` is set.
 
 ---
 

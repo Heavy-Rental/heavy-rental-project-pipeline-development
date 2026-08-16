@@ -149,9 +149,11 @@ Gives `REST_BASE_URL` and `STRIPE_PUBLISHABLE_KEY`. It does **not** replace ASG 
 | --- | --- | --- |
 | `action` | Yes | `deploy` / `configure-only` / `verify` |
 | `aws_environment` | Yes | `academy` or `paid` |
-| `image_ref` | Optional | GHCR tag or `latest`. Empty = latest Release tar / `:latest` |
+| `image_ref` | Optional | GHCR/ECR tag, or an `https://…` tar URL. Empty = latest Release tar / `:latest` |
+| `image_http_url` | Optional | HTTPS URL of the CI `.tar.gz`. Empty = Environment `IMAGE_HTTP_URL`. Ansible `get_url` + `docker load` on the guest |
+| `aws_access_key_id` / `aws_secret_access_key` / `aws_session_token` | Academy only | Vocareum AWS Details (change every Start Lab). Empty = Environment `academy`. **Do not add these on paid.** |
 
-**Do not** add inputs for instance ID, private IP, SSH host, or AWS keys.
+**Do not** add inputs for instance ID, private IP, or SSH host. Image source is a **pipeline** input/variable. Academy: prefer S3 HTTPS + `LabRole` GetObject. See [`../ANSIBLE-PROCESS.md`](../ANSIBLE-PROCESS.md) §3.1.
 
 ### 5.4 Ansible inventory
 
@@ -166,7 +168,7 @@ SSH PEM (`heavy-rental/ssh/portal`) is **break-glass** only, and only after infr
 
 ### 5.5 AWS CLI on the Actions runner
 
-Credentials come from Environment **`academy`** (Vocareum three keys) or **`paid`** (OIDC). **Never** from `workflow_dispatch`. Region: `vars.AWS_REGION` or `us-east-1`. **CDK is not used.**
+Credentials: **Academy / Vocareum** — paste the three keys on Run workflow (they change every Start Lab) or use Environment `academy`. **Paid** — OIDC only; **no** key fields. Region: `vars.AWS_REGION` or `us-east-1`. **CDK is not used.**
 
 ```bash
 # 1. Prove the session (assert-lab / assert-account)
@@ -274,12 +276,20 @@ Mount that file over `/etc/nginx/conf.d/default.conf` (or `include` it) so a new
 
 | Store | Portal CD |
 | --- | --- |
-| GitHub Environment `academy` / `paid` | **Runner** AWS auth only (Vocareum keys vs OIDC) |
-| AWS `heavy-rental/portal` | What the **instance** reads: `REST_BASE_URL` (internal REST ALB), `STRIPE_PUBLISHABLE_KEY` (`pk_…` only) |
+| GitHub Environment `academy` | **Runner only:** `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_SESSION_TOKEN` (+ `AWS_REGION`). Same names as infra CD |
+| GitHub Environment `paid` | **Runner only:** OIDC `AWS_ROLE_TO_ASSUME`. **Fail** if `AWS_ACCESS_KEY_ID` is set |
+| AWS `heavy-rental/portal` | What the **instance (`LabRole`)** reads: `REST_BASE_URL` (internal REST ALB), `STRIPE_PUBLISHABLE_KEY` (`pk_…` only) |
+
+```
+Runner (academy three keys) → sts, describe-asg, ssm, describe-secret, optional ECR push
+Guest (LabRole)             → get-secret-value + docker load / ecr pull / HTTPS tar
+```
+
+AWS keys **do not** push GHCR (`GITHUB_TOKEN` / CI). On **Academy**, the three keys may be pasted on the form; **never** on paid, on the EC2, or in Secrets Manager. Infra Terraform **creates** the `heavy-rental/portal` shell; `sync-secrets` **must** write `REST_BASE_URL` + `pk_` before this CD runs. Fail if `describe-secret` misses the id.
 
 Do **not** put `sk_` or `whsec_` in the image, in `heavy-rental/portal`, or in a Vite bundle. Those stay on `heavy-rental/rest`. Portal **CI** has no Stripe secrets. CD must **not** bake `REST_BASE_URL` into a public GHCR tag.
 
-Inventory of all Environment names: AWS study **§6.0c**. Portal CI uses **no** `academy`/`paid` secrets.
+Inventory: AWS study **§6.0c** and **§8.7**. Portal CI uses **no** `academy`/`paid` secrets.
 
 ---
 
