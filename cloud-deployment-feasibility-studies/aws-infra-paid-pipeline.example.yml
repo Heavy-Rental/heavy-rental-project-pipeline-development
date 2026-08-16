@@ -1,0 +1,257 @@
+# Paid CD workflow (not CI). CI Release pipelines create the Docker image.
+# Copy to the CD repo: .github/workflows/aws-infra-paid.yml
+# Maintainer copies GitHub Environment "paid" onto this CD repo (same secret names).
+# Academy CD uses a different file: aws-infra-pipeline.example.yml
+#
+# Operator:
+#   1. Admin has created GitHub OIDC + IAM role github-actions-infra
+#   2. Environment "paid" variables: AWS_ROLE_TO_ASSUME, AWS_REGION
+#   3. Actions → this workflow → Run workflow → choose action only
+#
+# Do NOT set AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY / AWS_SESSION_TOKEN
+# on Environment paid. Those names are Vocareum-only (academy pipeline).
+#
+# Terraform/Ansible steps are stubs for the other project to fill in.
+
+name: AWS infrastructure (paid)
+
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: What this run should do
+        required: true
+        type: choice
+        default: plan
+        options:
+          - plan
+          - apply
+          - configure-only
+          - stop
+          - destroy
+      aws_environment:
+        description: GitHub Environment for the billed AWS account (must be paid)
+        required: true
+        type: environment
+        default: paid
+      confirm_destroy:
+        description: Type destroy to confirm (required when action=destroy)
+        required: false
+        type: string
+        default: ""
+
+concurrency:
+  group: aws-infra-paid-${{ github.repository }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  assert-account:
+    name: Assert paid AWS account
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.aws_environment }}
+    timeout-minutes: 5
+    steps:
+      - name: Refuse Vocareum access keys
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        run: |
+          set +x
+          if [ -n "${AWS_ACCESS_KEY_ID}" ]; then
+            echo "::error::Environment '${{ inputs.aws_environment }}' must not contain AWS_ACCESS_KEY_ID. Paid pipeline uses OIDC only. Use Environment academy for Vocareum."
+            exit 1
+          fi
+          if [ -z "${{ vars.AWS_ROLE_TO_ASSUME }}" ]; then
+            echo "::error::Set Environment variable AWS_ROLE_TO_ASSUME on '${{ inputs.aws_environment }}'."
+            exit 1
+          fi
+
+      - name: Configure AWS credentials via GitHub OIDC
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_TO_ASSUME }}
+          aws-region: ${{ vars.AWS_REGION || 'us-east-1' }}
+
+      - name: Prove the paid caller
+        run: |
+          set -euo pipefail
+          aws sts get-caller-identity
+          {
+            echo "### Paid AWS session"
+            echo ""
+            echo "OIDC assume-role succeeded. Action: \`${{ inputs.action }}\`. Environment: \`${{ inputs.aws_environment }}\`."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  terraform:
+    name: Terraform
+    runs-on: ubuntu-latest
+    needs: [assert-account]
+    if: inputs.action == 'plan' || inputs.action == 'apply'
+    environment: ${{ inputs.aws_environment }}
+    timeout-minutes: 30
+    steps:
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_TO_ASSUME }}
+          aws-region: ${{ vars.AWS_REGION || 'us-east-1' }}
+
+      - uses: actions/checkout@v4
+
+      # Other project: terraform init / plan / apply against the PAID state key.
+      # Separate backend from academy. IAM roles are allowed here.
+      # Same three-tier VPC as Academy: public / private-app / private-data.
+      # Paid extras (Multi-AZ, second RDS, Bolt NLB) stay in the data subnets.
+      # Do not apply the Neo4j Marketplace CloudFormation stack
+      # (prodview-a5jr6bo72f5aw): it creates its own VPC + public NLB/EIP.
+      - name: Terraform placeholder
+        env:
+          TF_ACTION: ${{ inputs.action }}
+        run: |
+          set -euo pipefail
+          echo "Replace this step with terraform init && terraform ${TF_ACTION} (paid workspace/state only)."
+          echo "Must create three subnet tiers: public, private-app, private-data (2 AZs each)."
+          echo "RDS + asg-neo4j in the data subnet group/subnets only. Never public or app subnets."
+          echo "Create Secrets Manager shells: heavy-rental/{portal,rest,haystack,neo4j} and empty heavy-rental/ssh/*."
+          echo "No PEM, Stripe secret, or DB password in .tf. Prefer no key_name on launch templates."
+          echo "SSH PEMs are written later by sync-ssh-keys AFTER instances are InService."
+          echo "RDS deletion_protection must be off (or flipped in this job) so action=destroy can delete RDS."
+          echo "Secrets recovery_window_in_days=0 so destroy actually removes them."
+          echo "::error::Stub. Other project: terraform init (paid remote state) && terraform ${TF_ACTION}."
+          exit 1
+
+  sync-secrets:
+    name: Sync GitHub secrets to AWS Secrets Manager
+    runs-on: ubuntu-latest
+    needs: [assert-account, terraform]
+    if: always() && needs.assert-account.result == 'success' && (inputs.action == 'apply' || inputs.action == 'configure-only') && (needs.terraform.result == 'success' || needs.terraform.result == 'skipped')
+    environment: ${{ inputs.aws_environment }}
+    timeout-minutes: 10
+    steps:
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_TO_ASSUME }}
+          aws-region: ${{ vars.AWS_REGION || 'us-east-1' }}
+
+      - name: put-secret-value placeholder
+        env:
+          SPRING_DATASOURCE_PASSWORD: ${{ secrets.SPRING_DATASOURCE_PASSWORD }}
+          NEO4J_PASSWORD: ${{ secrets.NEO4J_PASSWORD }}
+          STRIPE_PUBLISHABLE_KEY: ${{ secrets.STRIPE_PUBLISHABLE_KEY }}
+          STRIPE_SECRET_KEY: ${{ secrets.STRIPE_SECRET_KEY }}
+          STRIPE_WEBHOOK_SECRET: ${{ secrets.STRIPE_WEBHOOK_SECRET }}
+        run: |
+          set +x
+          echo "put-secret-value in the PAID account only."
+          echo "REST: POSTGRES_HOST PORT DATABASE USERNAME PASSWORD URL + Stripe secret/webhook/publishable."
+          echo "Portal: REST_BASE_URL + STRIPE_PUBLISHABLE_KEY only (never sk_ / whsec_)."
+          echo "Haystack: Postgres field set + NEO4J_URI (private IP or internal Bolt NLB)."
+          echo "Do NOT write SSH PEMs here — that is sync-ssh-keys after EC2 is InService."
+          if [ -z "${SPRING_DATASOURCE_PASSWORD}" ]; then
+            echo "::error::Set SPRING_DATASOURCE_PASSWORD on GitHub Environment '${{ inputs.aws_environment }}'."
+            exit 1
+          fi
+          echo "::error::Stub. Other project: put-secret-value in the paid account only."
+          exit 1
+
+  sync-ssh-keys:
+    name: SSH PEMs after EC2 InService
+    runs-on: ubuntu-latest
+    needs: [assert-account, terraform]
+    if: always() && needs.assert-account.result == 'success' && (inputs.action == 'apply' || inputs.action == 'configure-only') && (needs.terraform.result == 'success' || needs.terraform.result == 'skipped')
+    environment: ${{ inputs.aws_environment }}
+    timeout-minutes: 20
+    steps:
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_TO_ASSUME }}
+          aws-region: ${{ vars.AWS_REGION || 'us-east-1' }}
+
+      - name: Wait for ASG instances then put SSH PEMs
+        run: |
+          set +x
+          echo "Wait until paid ASGs have InService instances. Skip if desired=0 — do not invent PEMs."
+          echo "put-secret-value heavy-rental/ssh/* (hr-paid-*). Install public keys via SSM. Never echo the PEM."
+          echo "::error::Stub. Other project: wait for InService then put PEMs."
+          exit 1
+
+  ansible:
+    name: Ansible (EC2 retrieve AWS Secrets)
+    runs-on: ubuntu-latest
+    needs: [assert-account, terraform, sync-secrets, sync-ssh-keys]
+    if: always() && needs.assert-account.result == 'success' && needs.sync-secrets.result == 'success' && needs.sync-ssh-keys.result == 'success' && (inputs.action == 'apply' || inputs.action == 'configure-only') && (needs.terraform.result == 'success' || needs.terraform.result == 'skipped')
+    environment: ${{ inputs.aws_environment }}
+    timeout-minutes: 30
+    steps:
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_TO_ASSUME }}
+          aws-region: ${{ vars.AWS_REGION || 'us-east-1' }}
+
+      - uses: actions/checkout@v4
+
+      - name: Ansible placeholder
+        run: |
+          echo "On each paid ASG: get-secret-value of that role's APP secret → compose up (SSM)."
+          echo "asg-neo4j is in the data subnets. Haystack compose must not start neo4j."
+          echo "SSH PEMs from heavy-rental/ssh/* are break-glass only. Do not use academy secrets."
+          echo "::error::Stub. Other project: ansible-playbook via SSM on paid ASGs."
+          exit 1
+
+  stop:
+    name: Stop paid resources
+    runs-on: ubuntu-latest
+    needs: [assert-account]
+    if: inputs.action == 'stop'
+    environment: ${{ inputs.aws_environment }}
+    timeout-minutes: 15
+    steps:
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_TO_ASSUME }}
+          aws-region: ${{ vars.AWS_REGION || 'us-east-1' }}
+
+      - name: Stop placeholder
+        run: |
+          echo "Replace with stop/scale-in for paid EC2 (including asg-neo4j) / RDS in data subnets / ECS. Do not target academy resources. stop is pause — destroy deletes the paid estate."
+          echo "::error::Stub. Other project: stop paid ASGs + RDS."
+          exit 1
+
+  destroy:
+    name: Terraform destroy (paid state only)
+    runs-on: ubuntu-latest
+    needs: [assert-account]
+    if: inputs.action == 'destroy'
+    environment: ${{ inputs.aws_environment }}
+    timeout-minutes: 60
+    steps:
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_TO_ASSUME }}
+          aws-region: ${{ vars.AWS_REGION || 'us-east-1' }}
+
+      - uses: actions/checkout@v4
+
+      - name: Require confirm_destroy
+        env:
+          CONFIRM: ${{ inputs.confirm_destroy }}
+        run: |
+          set -euo pipefail
+          if [ "${CONFIRM}" != "destroy" ]; then
+            echo "::error::action=destroy requires confirm_destroy=destroy. Refusing to run terraform destroy."
+            exit 1
+          fi
+
+      # Other project: terraform init (PAID backend/key) && terraform destroy -auto-approve
+      # Deletes everything in THIS paid state. Never the academy state or Vocareum account.
+      - name: Terraform destroy placeholder
+        run: |
+          set -euo pipefail
+          echo "Replace with terraform init && terraform destroy -auto-approve (paid workspace/state only)."
+          echo "Removes all AWS resources Terraform created in the paid state (VPC, ASGs, ALBs, RDS, secrets, extras)."
+          echo "Does not delete GitHub Environments, GHCR, OIDC provider, or the state backend bucket."
+          echo "Do not use academy credentials. Do not tag-scan. Fail if state is missing."
+          echo "::error::Stub. Other project: terraform destroy -auto-approve (paid state only)."
+          exit 1

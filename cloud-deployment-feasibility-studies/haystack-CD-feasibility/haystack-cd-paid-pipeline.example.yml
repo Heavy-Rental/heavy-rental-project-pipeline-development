@@ -1,0 +1,155 @@
+# Haystack app CD (paid). Not CI. Not terraform apply.
+# Copy to: .github/workflows/haystack-cd-paid.yml
+# Order: infra Terraform creates EC2 → infra Ansible first compose
+#        → THIS workflow re-runs compose on asg-haystack with a new CI image.
+# OIDC only. No Vocareum keys. No instance IDs on the form.
+
+name: Haystack CD (paid)
+
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: deploy image, reconfigure same image, or health only
+        required: true
+        type: choice
+        default: deploy
+        options:
+          - deploy
+          - configure-only
+          - verify
+      aws_environment:
+        description: Must be paid
+        required: true
+        type: environment
+        default: paid
+      image_ref:
+        description: Optional GHCR tag
+        required: false
+        type: string
+        default: ""
+
+concurrency:
+  group: haystack-cd-paid-${{ github.repository }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  assert-account:
+    name: Assert paid AWS account
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.aws_environment }}
+    timeout-minutes: 5
+    steps:
+      - env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        run: |
+          if [ -n "${AWS_ACCESS_KEY_ID}" ]; then
+            echo "::error::paid must not contain AWS_ACCESS_KEY_ID. Use academy for Vocareum."
+            exit 1
+          fi
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_TO_ASSUME }}
+          aws-region: ${{ vars.AWS_REGION || 'us-east-1' }}
+      - run: aws sts get-caller-identity
+
+  discover-targets:
+    name: Discover asg-haystack
+    needs: [assert-account]
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.aws_environment }}
+    timeout-minutes: 5
+    steps:
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_TO_ASSUME }}
+          aws-region: ${{ vars.AWS_REGION || 'us-east-1' }}
+      - name: ASG InService + SSM Online
+        run: |
+          set -euo pipefail
+          set +x
+          ASG=asg-haystack
+          if ! aws autoscaling describe-auto-scaling-groups \
+            --auto-scaling-group-names "$ASG" \
+            --query 'AutoScalingGroups[0].AutoScalingGroupName' \
+            --output text | grep -qx "$ASG"; then
+            echo "::error::ASG ${ASG} missing. Run infra CD action=apply first. Do not use academy."
+            exit 1
+          fi
+          IDS=$(aws autoscaling describe-auto-scaling-groups \
+            --auto-scaling-group-names "$ASG" \
+            --query 'AutoScalingGroups[0].Instances[?LifecycleState==`InService`].InstanceId' \
+            --output text)
+          if [ -z "${IDS}" ] || [ "${IDS}" = "None" ]; then
+            echo "::error::No InService instance in ${ASG}."
+            exit 1
+          fi
+          ONLINE=""
+          for id in ${IDS}; do
+            ping=$(aws ssm describe-instance-information \
+              --filters "Key=InstanceIds,Values=${id}" \
+              --query 'InstanceInformationList[?PingStatus==`Online`].InstanceId' \
+              --output text)
+            if [ -n "${ping}" ] && [ "${ping}" != "None" ]; then
+              ONLINE="${ONLINE} ${ping}"
+            fi
+          done
+          if [ -z "${ONLINE// }" ]; then
+            echo "::error::No SSM Online instance in ${ASG}."
+            exit 1
+          fi
+          echo "Discovered InService+SSM hosts (ids only)."
+
+  resolve-image:
+    name: Resolve CI image
+    needs: [assert-account]
+    if: inputs.action == 'deploy'
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.aws_environment }}
+    timeout-minutes: 10
+    steps:
+      - name: Image placeholder
+        run: |
+          echo "Pull GHCR or paid ECR. image_ref='${{ inputs.image_ref }}'. Do not docker build."
+          echo "::error::Stub. Other project: resolve CI image."
+          exit 1
+
+  ansible-haystack:
+    name: Ansible haystack group
+    needs: [assert-account, discover-targets, resolve-image]
+    if: always() && needs.assert-account.result == 'success' && needs.discover-targets.result == 'success' && (inputs.action == 'deploy' || inputs.action == 'configure-only') && (needs.resolve-image.result == 'success' || needs.resolve-image.result == 'skipped')
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.aws_environment }}
+    timeout-minutes: 30
+    steps:
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_TO_ASSUME }}
+          aws-region: ${{ vars.AWS_REGION || 'us-east-1' }}
+      - name: Ansible placeholder
+        run: |
+          echo "SSM; get-secret-value heavy-rental/haystack; uvicorn :8000; no neo4j sidecar."
+          echo "::error::Stub. Other project: SSM compose on asg-haystack."
+          exit 1
+
+  verify:
+    name: Health
+    needs: [assert-account, discover-targets, ansible-haystack]
+    if: always() && needs.assert-account.result == 'success' && needs.discover-targets.result == 'success' && (needs.ansible-haystack.result == 'success' || needs.ansible-haystack.result == 'skipped' || inputs.action == 'verify')
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.aws_environment }}
+    timeout-minutes: 10
+    steps:
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_TO_ASSUME }}
+          aws-region: ${{ vars.AWS_REGION || 'us-east-1' }}
+      - name: Verify placeholder
+        run: |
+          echo "Health on :8000 via SSM. Do not print a public Haystack URL."
+          echo "::error::Stub. Other project: SSM health on :8000."
+          exit 1

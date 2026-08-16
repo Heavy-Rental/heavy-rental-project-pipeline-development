@@ -1,0 +1,151 @@
+# Portal app CD (paid). Not CI. Not terraform apply.
+# Copy to: .github/workflows/web-portal-cd-paid.yml
+# Order: infra Terraform creates EC2 → infra Ansible first compose
+#        → THIS workflow re-runs compose on asg-portal with a new CI nginx image.
+# nginx /api → REST_BASE_URL (internal REST ALB). No Vite server. No sk_ on portal.
+# OIDC only. No Vocareum keys. No instance IDs on the form.
+
+name: Web Portal CD (paid)
+
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        required: true
+        type: choice
+        default: deploy
+        options: [deploy, configure-only, verify]
+      aws_environment:
+        required: true
+        type: environment
+        default: paid
+      image_ref:
+        required: false
+        type: string
+        default: ""
+
+concurrency:
+  group: web-portal-cd-paid-${{ github.repository }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  assert-account:
+    name: Assert paid AWS account
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.aws_environment }}
+    timeout-minutes: 5
+    steps:
+      - env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        run: |
+          if [ -n "${AWS_ACCESS_KEY_ID}" ]; then
+            echo "::error::paid must not contain AWS_ACCESS_KEY_ID."
+            exit 1
+          fi
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_TO_ASSUME }}
+          aws-region: ${{ vars.AWS_REGION || 'us-east-1' }}
+      - run: aws sts get-caller-identity
+
+  discover-targets:
+    name: Discover asg-portal
+    needs: [assert-account]
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.aws_environment }}
+    timeout-minutes: 5
+    steps:
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_TO_ASSUME }}
+          aws-region: ${{ vars.AWS_REGION || 'us-east-1' }}
+      - name: ASG InService + SSM Online
+        run: |
+          set -euo pipefail
+          set +x
+          ASG=asg-portal
+          if ! aws autoscaling describe-auto-scaling-groups \
+            --auto-scaling-group-names "$ASG" \
+            --query 'AutoScalingGroups[0].AutoScalingGroupName' \
+            --output text | grep -qx "$ASG"; then
+            echo "::error::ASG ${ASG} missing. Run infra CD action=apply first. Do not use academy."
+            exit 1
+          fi
+          IDS=$(aws autoscaling describe-auto-scaling-groups \
+            --auto-scaling-group-names "$ASG" \
+            --query 'AutoScalingGroups[0].Instances[?LifecycleState==`InService`].InstanceId' \
+            --output text)
+          if [ -z "${IDS}" ] || [ "${IDS}" = "None" ]; then
+            echo "::error::No InService instance in ${ASG}."
+            exit 1
+          fi
+          ONLINE=""
+          for id in ${IDS}; do
+            ping=$(aws ssm describe-instance-information \
+              --filters "Key=InstanceIds,Values=${id}" \
+              --query 'InstanceInformationList[?PingStatus==`Online`].InstanceId' \
+              --output text)
+            if [ -n "${ping}" ] && [ "${ping}" != "None" ]; then
+              ONLINE="${ONLINE} ${ping}"
+            fi
+          done
+          if [ -z "${ONLINE// }" ]; then
+            echo "::error::No SSM Online instance in ${ASG}."
+            exit 1
+          fi
+          echo "Discovered InService+SSM hosts (ids only)."
+
+  resolve-image:
+    name: Resolve CI image
+    needs: [assert-account]
+    if: inputs.action == 'deploy'
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.aws_environment }}
+    timeout-minutes: 10
+    steps:
+      - name: Image placeholder
+        run: |
+          echo "Pull GHCR or paid ECR nginx+dist image. Do not npm run build / docker build."
+          echo "::error::Stub. Other project: resolve CI nginx+dist image."
+          exit 1
+
+  ansible-portal:
+    name: Compose playbook on asg-portal
+    needs: [assert-account, discover-targets, resolve-image]
+    if: always() && needs.assert-account.result == 'success' && needs.discover-targets.result == 'success' && (inputs.action == 'deploy' || inputs.action == 'configure-only') && (needs.resolve-image.result == 'success' || needs.resolve-image.result == 'skipped')
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.aws_environment }}
+    timeout-minutes: 30
+    steps:
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_TO_ASSUME }}
+          aws-region: ${{ vars.AWS_REGION || 'us-east-1' }}
+      - name: Compose placeholder
+        run: |
+          echo "SSM; heavy-rental/portal; nginx :80 mem_limit 256m cpus 0.5."
+          echo "location /api → REST_BASE_URL. No vite. No sk_ on this host."
+          echo "::error::Stub. Other project: SSM compose on asg-portal with /api proxy."
+          exit 1
+
+  verify:
+    name: Health
+    needs: [assert-account, discover-targets, ansible-portal]
+    if: always() && needs.assert-account.result == 'success' && needs.discover-targets.result == 'success' && (needs.ansible-portal.result == 'success' || needs.ansible-portal.result == 'skipped' || inputs.action == 'verify')
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.aws_environment }}
+    timeout-minutes: 10
+    steps:
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_TO_ASSUME }}
+          aws-region: ${{ vars.AWS_REGION || 'us-east-1' }}
+      - name: Verify placeholder
+        run: |
+          echo "SSM curl :80/. Do not fail solely because /api (REST) is down. Public portal ALB DNS only."
+          echo "::error::Stub. Other project: SSM health on :80."
+          exit 1

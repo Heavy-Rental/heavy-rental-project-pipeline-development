@@ -1,0 +1,149 @@
+# REST app CD (paid). Not CI. Not terraform apply.
+# Copy to: .github/workflows/rest-api-cd-paid.yml
+# Order: infra Terraform creates EC2 → infra Ansible first compose
+#        → THIS workflow re-runs compose on asg-rest with a new CI Tomcat image.
+# OIDC only. No Vocareum keys. No instance IDs on the form.
+
+name: REST API CD (paid)
+
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        required: true
+        type: choice
+        default: deploy
+        options: [deploy, configure-only, verify]
+      aws_environment:
+        required: true
+        type: environment
+        default: paid
+      image_ref:
+        required: false
+        type: string
+        default: ""
+
+concurrency:
+  group: rest-api-cd-paid-${{ github.repository }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  assert-account:
+    name: Assert paid AWS account
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.aws_environment }}
+    timeout-minutes: 5
+    steps:
+      - env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        run: |
+          if [ -n "${AWS_ACCESS_KEY_ID}" ]; then
+            echo "::error::paid must not contain AWS_ACCESS_KEY_ID."
+            exit 1
+          fi
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_TO_ASSUME }}
+          aws-region: ${{ vars.AWS_REGION || 'us-east-1' }}
+      - run: aws sts get-caller-identity
+
+  discover-targets:
+    name: Discover asg-rest
+    needs: [assert-account]
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.aws_environment }}
+    timeout-minutes: 5
+    steps:
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_TO_ASSUME }}
+          aws-region: ${{ vars.AWS_REGION || 'us-east-1' }}
+      - name: ASG InService + SSM Online
+        run: |
+          set -euo pipefail
+          set +x
+          ASG=asg-rest
+          if ! aws autoscaling describe-auto-scaling-groups \
+            --auto-scaling-group-names "$ASG" \
+            --query 'AutoScalingGroups[0].AutoScalingGroupName' \
+            --output text | grep -qx "$ASG"; then
+            echo "::error::ASG ${ASG} missing. Run infra CD action=apply first. Do not use academy."
+            exit 1
+          fi
+          IDS=$(aws autoscaling describe-auto-scaling-groups \
+            --auto-scaling-group-names "$ASG" \
+            --query 'AutoScalingGroups[0].Instances[?LifecycleState==`InService`].InstanceId' \
+            --output text)
+          if [ -z "${IDS}" ] || [ "${IDS}" = "None" ]; then
+            echo "::error::No InService instance in ${ASG}."
+            exit 1
+          fi
+          ONLINE=""
+          for id in ${IDS}; do
+            ping=$(aws ssm describe-instance-information \
+              --filters "Key=InstanceIds,Values=${id}" \
+              --query 'InstanceInformationList[?PingStatus==`Online`].InstanceId' \
+              --output text)
+            if [ -n "${ping}" ] && [ "${ping}" != "None" ]; then
+              ONLINE="${ONLINE} ${ping}"
+            fi
+          done
+          if [ -z "${ONLINE// }" ]; then
+            echo "::error::No SSM Online instance in ${ASG}."
+            exit 1
+          fi
+          echo "Discovered InService+SSM hosts (ids only)."
+
+  resolve-image:
+    name: Resolve CI image
+    needs: [assert-account]
+    if: inputs.action == 'deploy'
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.aws_environment }}
+    timeout-minutes: 10
+    steps:
+      - name: Image placeholder
+        run: |
+          echo "Pull GHCR or paid ECR Tomcat image. Do not docker build."
+          echo "::error::Stub. Other project: resolve CI Tomcat image."
+          exit 1
+
+  ansible-rest:
+    name: Compose playbook on asg-rest
+    needs: [assert-account, discover-targets, resolve-image]
+    if: always() && needs.assert-account.result == 'success' && needs.discover-targets.result == 'success' && (inputs.action == 'deploy' || inputs.action == 'configure-only') && (needs.resolve-image.result == 'success' || needs.resolve-image.result == 'skipped')
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.aws_environment }}
+    timeout-minutes: 30
+    steps:
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_TO_ASSUME }}
+          aws-region: ${{ vars.AWS_REGION || 'us-east-1' }}
+      - name: Compose placeholder
+        run: |
+          echo "SSM; heavy-rental/rest; Tomcat :8080 mem_limit 1g cpus 1.0."
+          echo "::error::Stub. Other project: SSM compose on asg-rest."
+          exit 1
+
+  verify:
+    name: Health
+    needs: [assert-account, discover-targets, ansible-rest]
+    if: always() && needs.assert-account.result == 'success' && needs.discover-targets.result == 'success' && (needs.ansible-rest.result == 'success' || needs.ansible-rest.result == 'skipped' || inputs.action == 'verify')
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.aws_environment }}
+    timeout-minutes: 10
+    steps:
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_TO_ASSUME }}
+          aws-region: ${{ vars.AWS_REGION || 'us-east-1' }}
+      - name: Verify placeholder
+        run: |
+          echo "SSM curl :8080/actuator/health. Do not print a public REST URL."
+          echo "::error::Stub. Other project: SSM health on :8080."
+          exit 1

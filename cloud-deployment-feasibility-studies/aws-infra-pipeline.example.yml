@@ -1,0 +1,280 @@
+# Academy CD workflow (not CI). CI Release pipelines create the Docker image.
+# Copy to the CD repo: .github/workflows/aws-infra-academy.yml
+# Maintainer copies GitHub Environment "academy" onto this CD repo (same secret names).
+# Paid CD uses a different file: aws-infra-paid-pipeline.example.yml
+#
+# Operator:
+#   1. Start Lab in Vocareum → AWS Details
+#   2. GitHub → Settings → Environments → academy → Secrets
+#        AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_SESSION_TOKEN
+#   3. Actions → this workflow → Run workflow → choose action only
+#
+# Do not put AWS keys on workflow_dispatch inputs.
+# Do not point this workflow at Environment "paid" or a billed account.
+#
+# Terraform/Ansible steps are stubs for the other project to fill in.
+
+name: AWS infrastructure (Academy)
+
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: What this run should do
+        required: true
+        type: choice
+        default: plan
+        options:
+          - plan
+          - apply
+          - configure-only
+          - stop
+          - destroy
+      aws_environment:
+        description: GitHub Environment that holds Vocareum AWS Details
+        required: true
+        type: environment
+        default: academy
+      confirm_destroy:
+        description: Type destroy to confirm (required when action=destroy)
+        required: false
+        type: string
+        default: ""
+
+concurrency:
+  group: aws-infra-academy-${{ github.repository }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  assert-lab:
+    name: Assert Vocareum session
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.aws_environment }}
+    timeout-minutes: 5
+    steps:
+      - name: Require Environment secrets
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_SESSION_TOKEN: ${{ secrets.AWS_SESSION_TOKEN }}
+        run: |
+          set +x
+          if [ -z "${AWS_ACCESS_KEY_ID}" ] || [ -z "${AWS_SECRET_ACCESS_KEY}" ] || [ -z "${AWS_SESSION_TOKEN}" ]; then
+            echo "::error::Set AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, and AWS_SESSION_TOKEN on Environment '${{ inputs.aws_environment }}' from Vocareum AWS Details, then re-run."
+            exit 1
+          fi
+
+      - name: Configure AWS credentials from Environment secrets
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+          aws-region: ${{ vars.AWS_REGION || 'us-east-1' }}
+
+      - name: Prove the lab session is live
+        run: |
+          set -euo pipefail
+          if ! aws sts get-caller-identity; then
+            echo "::error::AWS call failed. Start Lab, update Environment secrets from AWS Details, and run again."
+            exit 1
+          fi
+          {
+            echo "### Vocareum session"
+            echo ""
+            echo "Caller identity succeeded. Action: \`${{ inputs.action }}\`. Environment: \`${{ inputs.aws_environment }}\`."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  terraform:
+    name: Terraform
+    runs-on: ubuntu-latest
+    needs: [assert-lab]
+    if: inputs.action == 'plan' || inputs.action == 'apply'
+    environment: ${{ inputs.aws_environment }}
+    timeout-minutes: 30
+    steps:
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+          aws-region: ${{ vars.AWS_REGION || 'us-east-1' }}
+
+      - uses: actions/checkout@v4
+
+      # Other project: terraform init / plan / apply here.
+      # Never create aws_iam_role. Attach LabRole / LabInstanceProfile only
+      # (including asg-neo4j). Academy: no NAT Gateway, no Marketplace Neo4j AMI
+      # (prodview-a5jr6bo72f5aw CFT creates its own VPC, public NLB/EIP, IAM role),
+      # no Multi-AZ, RDS class ≤ medium. Neo4j = neo4j:5 container on asg-neo4j.
+      - name: Terraform placeholder
+        env:
+          TF_ACTION: ${{ inputs.action }}
+        run: |
+          set -euo pipefail
+          echo "::error::Stub. Other project: terraform init (S3+DynamoDB remote state) && terraform ${TF_ACTION}."
+          echo "Must create three subnet tiers; asg-portal+public ALB; asg-rest+internal ALB; asg-haystack+internal ALB."
+          echo "asg-neo4j max=1 data subnets; RDS data subnet group only; deletion_protection=false."
+          echo "Secret shells heavy-rental/{portal,rest,haystack,neo4j} and empty heavy-rental/ssh/*."
+          echo "This job must not report success until those commands exist."
+          exit 1
+
+  sync-secrets:
+    name: Sync GitHub secrets to AWS Secrets Manager
+    runs-on: ubuntu-latest
+    needs: [assert-lab, terraform]
+    if: always() && needs.assert-lab.result == 'success' && (inputs.action == 'apply' || inputs.action == 'configure-only') && (needs.terraform.result == 'success' || needs.terraform.result == 'skipped')
+    environment: ${{ inputs.aws_environment }}
+    timeout-minutes: 10
+    steps:
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+          aws-region: ${{ vars.AWS_REGION || 'us-east-1' }}
+
+      # Other project: build JSON from GitHub Environment app secrets + TF outputs
+      # (internal ALB DNS, RDS endpoint, asg-neo4j private Bolt URI).
+      # Do not put AWS_ACCESS_KEY_ID into Secrets Manager.
+      - name: put-secret-value placeholder
+        env:
+          SPRING_DATASOURCE_PASSWORD: ${{ secrets.SPRING_DATASOURCE_PASSWORD }}
+          NEO4J_PASSWORD: ${{ secrets.NEO4J_PASSWORD }}
+          STRIPE_PUBLISHABLE_KEY: ${{ secrets.STRIPE_PUBLISHABLE_KEY }}
+          STRIPE_SECRET_KEY: ${{ secrets.STRIPE_SECRET_KEY }}
+          STRIPE_WEBHOOK_SECRET: ${{ secrets.STRIPE_WEBHOOK_SECRET }}
+        run: |
+          set +x
+          echo "put-secret-value heavy-rental/rest: POSTGRES_HOST PORT DATABASE USERNAME PASSWORD URL + Stripe secret/webhook/publishable."
+          echo "heavy-rental/portal: REST_BASE_URL + STRIPE_PUBLISHABLE_KEY only (never sk_ / whsec_)."
+          echo "heavy-rental/haystack: same Postgres field set for Haystack DB + NEO4J_URI from asg-neo4j private IP."
+          echo "Do NOT write SSH PEMs here — that is sync-ssh-keys after EC2 is InService."
+          echo "Build POSTGRES_URL from host:port/database. Host = RDS data-subnet endpoint, not public."
+          if [ -z "${SPRING_DATASOURCE_PASSWORD}" ]; then
+            echo "::error::Set SPRING_DATASOURCE_PASSWORD on GitHub Environment '${{ inputs.aws_environment }}'."
+            exit 1
+          fi
+          echo "::error::Stub. Other project: put-secret-value for heavy-rental/{portal,rest,haystack,neo4j}."
+          exit 1
+
+  sync-ssh-keys:
+    name: SSH PEMs after EC2 InService
+    runs-on: ubuntu-latest
+    needs: [assert-lab, terraform]
+    if: always() && needs.assert-lab.result == 'success' && (inputs.action == 'apply' || inputs.action == 'configure-only') && (needs.terraform.result == 'success' || needs.terraform.result == 'skipped')
+    environment: ${{ inputs.aws_environment }}
+    timeout-minutes: 20
+    steps:
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+          aws-region: ${{ vars.AWS_REGION || 'us-east-1' }}
+
+      - name: Wait for ASG instances then put SSH PEMs
+        run: |
+          set +x
+          echo "Wait until asg-portal, asg-rest, asg-haystack, asg-neo4j each have an InService instance."
+          echo "If desired=0 / no instances: skip — do not invent PEMs."
+          echo "Then ssh-keygen (or load GitHub key material) and put-secret-value heavy-rental/ssh/{portal,rest,haystack,neo4j}."
+          echo "Install the public key via SSM authorized_keys. Never echo the PEM. No tls_private_key in Terraform."
+          echo "::error::Stub. Other project: wait for InService then put PEMs."
+          exit 1
+
+  ansible:
+    name: Ansible (EC2 retrieve AWS Secrets)
+    runs-on: ubuntu-latest
+    needs: [assert-lab, terraform, sync-secrets, sync-ssh-keys]
+    if: always() && needs.assert-lab.result == 'success' && needs.sync-secrets.result == 'success' && needs.sync-ssh-keys.result == 'success' && (inputs.action == 'apply' || inputs.action == 'configure-only') && (needs.terraform.result == 'success' || needs.terraform.result == 'skipped')
+    environment: ${{ inputs.aws_environment }}
+    timeout-minutes: 30
+    steps:
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+          aws-region: ${{ vars.AWS_REGION || 'us-east-1' }}
+
+      - uses: actions/checkout@v4
+
+      # Other project: ansible-playbook against EC2 via SSM; SQL via delegate_to.
+      # Inventory groups: portal, rest, haystack, neo4j. All via LabRole SSM.
+      - name: Ansible placeholder
+        run: |
+          echo "On each ASG: get-secret-value of that role's APP secret → .env → compose up (SSM)."
+          echo "asg-neo4j (data subnet): neo4j:5 only. Haystack compose must not start neo4j."
+          echo "RDS SQL: delegate_to rest or haystack. SSH PEMs: retrieve heavy-rental/ssh/* only for break-glass."
+          echo "Do not copy GitHub secrets onto the instance except via Secrets Manager."
+          echo "::error::Stub. Other project: ansible-playbook via SSM (portal /api proxy, §6.4a limits)."
+          exit 1
+
+  stop:
+    name: Stop lab resources
+    runs-on: ubuntu-latest
+    needs: [assert-lab]
+    if: inputs.action == 'stop'
+    environment: ${{ inputs.aws_environment }}
+    timeout-minutes: 15
+    steps:
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+          aws-region: ${{ vars.AWS_REGION || 'us-east-1' }}
+
+      - name: Stop placeholder
+        run: |
+          echo "Replace with ASG desired=0 (or stop-instances) for portal, rest, haystack, neo4j + NAT."
+          echo "aws rds stop-db-instance (id from Terraform outputs). Vocareum may not stop RDS for you."
+          echo "stop is pause. It does not delete ALBs, the VPC, or RDS. That is action=destroy."
+          echo "::error::Stub. Other project: ASG desired=0 + rds stop-db-instance."
+          exit 1
+
+  destroy:
+    name: Terraform destroy (all resources in this state)
+    runs-on: ubuntu-latest
+    needs: [assert-lab]
+    if: inputs.action == 'destroy'
+    environment: ${{ inputs.aws_environment }}
+    timeout-minutes: 60
+    steps:
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+          aws-region: ${{ vars.AWS_REGION || 'us-east-1' }}
+
+      - uses: actions/checkout@v4
+
+      - name: Require confirm_destroy
+        env:
+          CONFIRM: ${{ inputs.confirm_destroy }}
+        run: |
+          set -euo pipefail
+          if [ "${CONFIRM}" != "destroy" ]; then
+            echo "::error::action=destroy requires confirm_destroy=destroy. Refusing to run terraform destroy."
+            exit 1
+          fi
+
+      # Other project: terraform init (same backend/key as apply) && terraform destroy -auto-approve
+      # Must delete everything in THIS Academy state: VPC, three subnet tiers, four ASGs,
+      # public + internal ALBs, RDS, NAT instance, secret shells, TF-owned ECR.
+      # Must NOT touch paid state, LabRole, GHCR, or the state backend bucket.
+      # Fail closed if state is missing. RDS data is irrecoverable.
+      - name: Terraform destroy placeholder
+        run: |
+          set -euo pipefail
+          echo "Replace with terraform init && terraform destroy -auto-approve (Academy state only)."
+          echo "Removes all AWS resources Terraform created in this state (VPC, ASGs, ALBs, RDS, secrets, NAT)."
+          echo "Does not delete GitHub Environments, GHCR images, LabRole, or the S3 state bucket."
+          echo "Do not tag-scan the account. Do not run stop first. Timeout 45-60 min for RDS+ALB."
+          echo "::error::Stub. Other project: terraform destroy -auto-approve against the same remote state as apply."
+          exit 1
