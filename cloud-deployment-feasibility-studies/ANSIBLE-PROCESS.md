@@ -72,7 +72,7 @@ Ansible does **not** invent the URL. The **app CD** (or infra first-compose) job
 | `workflow_dispatch` input `image_ref` | Registry tag | Infra: REST **and** Haystack fallback only (portal uses `PORTAL_IMAGE`). Portal **app** CD `action=deploy`: tag if `PORTAL_IMAGE` is empty. |
 | `workflow_dispatch` input `image_http_url` | Optional HTTPS / `s3://` `.tar.gz` | `docker load` on **all** guests. Empty = `vars.IMAGE_HTTP_URL`. Leave empty for normal pulls. |
 
-CI image names (Release; do not rebuild on the guest): portal **`nginx:1.27-alpine`** → `ghcr.io/<owner>/heavy-rental-web-portal` (Node **22** at build); REST **`tomcat:10.1-jdk21-temurin`** → `ghcr.io/<owner>/heavy-rental-rest-api` (Java **21**); Haystack **`python:3.12-slim-bookworm`** → `ghcr.io/<owner>/haystack-fast-api`. Portal CD (`heavy-rental-web-portal-pipeline/deploy-pipeline/ansible/`) copies estate `guest_base` + `portal` and re-runs `--limit portal`. REST CD branch 1 (`heavy-rental-rest-api/deploy-pipeline/`) is discover only — it does **not** replace infra first-compose.
+CI image names (Release; do not rebuild on the guest): portal **`nginx:1.27-alpine`** → `ghcr.io/<owner>/heavy-rental-web-portal` (Node **22** at build); REST **`tomcat:10.1-jdk21-temurin`** → `ghcr.io/<owner>/heavy-rental-rest-api` (Java **21**); Haystack **`python:3.12-slim-bookworm`** → `ghcr.io/<owner>/haystack-fast-api`. Portal CD (`heavy-rental-web-portal-pipeline/deploy-pipeline/ansible/`) copies estate `guest_base` + `portal` and re-runs `--limit portal`. REST CD (`heavy-rental-rest-api/deploy-pipeline/ansible/`) copies estate `guest_base` + `rest` and re-runs `--limit rest`. Neither replaces infra **first** compose on `apply`.
 
 Academy pull: public GHCR needs no login. ECR tags (`*.dkr.ecr.*`) get `aws ecr get-login-password` on the guest (`LabRole`). Private GHCR is **not** pulled (no token on the guest) — copy to ECR or load a tar. Prefer a **new tag** each redeploy (`compose up` does not `--pull always`).
 
@@ -153,7 +153,7 @@ Run via `delegate_to` a **rest** or **haystack** instance (those SGs can reach `
 | Pipeline | Inventory group | Extra vs first compose |
 | --- | --- | --- |
 | Portal CD (`deploy-pipeline/ansible/`) | `portal` | New nginx + `dist/` image; keep `/api` proxy |
-| REST CD (`deploy-pipeline/` skeleton) | `rest` | Branch 2: new Tomcat image. Branch 1 is discover only. |
+| REST CD (`deploy-pipeline/ansible/`) | `rest` | New Tomcat image; refresh `.env` from `heavy-rental/rest` |
 | Haystack CD | `haystack` | New uvicorn image; same sync + populate; still no neo4j |
 
 Discover **every** `InService` + SSM Online instance in the ASG first (two at desired=2). Fail if the group is missing or none are Online.

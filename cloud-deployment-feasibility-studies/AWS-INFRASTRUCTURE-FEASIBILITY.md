@@ -198,7 +198,7 @@ REST also documents a **read-replica** compose variant. Academy Multi-AZ is a **
 
 A later deploy project loads those images (ECR copy or `docker load` of the tar). It does not rebuild from source on EC2.
 
-Haystack **app** CD (manual, after this estate exists): [`haystack-CD-feasibility/HAYSTACK-CD-FEASIBILITY.md`](haystack-CD-feasibility/HAYSTACK-CD-FEASIBILITY.md). REST **app** CD (live skeleton): [`../heavy-rental-rest-api/deploy-pipeline/`](../heavy-rental-rest-api/deploy-pipeline/) — study [`rest-api-CD-feasibility/REST-API-CD-FEASIBILITY.md`](rest-api-CD-feasibility/REST-API-CD-FEASIBILITY.md). Portal **app** CD (live): [`../heavy-rental-web-portal-pipeline/deploy-pipeline/`](../heavy-rental-web-portal-pipeline/deploy-pipeline/) — study [`web-portal-CD-feasibility/WEB-PORTAL-CD-FEASIBILITY.md`](web-portal-CD-feasibility/WEB-PORTAL-CD-FEASIBILITY.md) (public ALB only; nginx `/api` → internal REST ALB). Each discovers its ASG via the AWS API — they do not create EC2.
+Haystack **app** CD (manual, after this estate exists): [`haystack-CD-feasibility/HAYSTACK-CD-FEASIBILITY.md`](haystack-CD-feasibility/HAYSTACK-CD-FEASIBILITY.md). REST **app** CD (live): [`../heavy-rental-rest-api/deploy-pipeline/`](../heavy-rental-rest-api/deploy-pipeline/) — study [`rest-api-CD-feasibility/REST-API-CD-FEASIBILITY.md`](rest-api-CD-feasibility/REST-API-CD-FEASIBILITY.md). Portal **app** CD (live): [`../heavy-rental-web-portal-pipeline/deploy-pipeline/`](../heavy-rental-web-portal-pipeline/deploy-pipeline/) — study [`web-portal-CD-feasibility/WEB-PORTAL-CD-FEASIBILITY.md`](web-portal-CD-feasibility/WEB-PORTAL-CD-FEASIBILITY.md) (public ALB only; nginx `/api` → internal REST ALB). Each discovers its ASG via the AWS API — they do not create EC2.
 
 ---
 
@@ -1651,7 +1651,7 @@ App CD auth: academy three keys on Environment only (§8.7)
 - **`academy`:** fallback secrets `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_SESSION_TOKEN` (or paste them on Run workflow — they change every Start Lab). Also `SPRING_DATASOURCE_PASSWORD`, `NEO4J_PASSWORD`, Stripe trio. Variable: `AWS_REGION`. **Vocareum only.**
 - **`paid`:** variables `AWS_ROLE_TO_ASSUME` + `AWS_REGION`. Same **app** secrets. **No** Vocareum access keys. Admin has already created GitHub OIDC + role `github-actions-infra`.
 - Copy [`aws-infra-pipeline.example.yml`](aws-infra-pipeline.example.yml) → `.github/workflows/aws-infra-academy.yml` and [`aws-infra-paid-pipeline.example.yml`](aws-infra-paid-pipeline.example.yml) → `aws-infra-paid.yml`.
-- Portal **app** CD (Academy compose): `heavy-rental-web-portal-pipeline/deploy-pipeline/`. REST **app** CD skeleton (discover only): `heavy-rental-rest-api/deploy-pipeline/`. Haystack app CD still later. They do **not** create the estate.
+- Portal **app** CD (Academy compose): `heavy-rental-web-portal-pipeline/deploy-pipeline/`. REST **app** CD (Academy compose): `heavy-rental-rest-api/deploy-pipeline/`. Haystack app CD still later. They do **not** create the estate.
 - Optional: Environment variable `IMAGE_HTTP_URL` (HTTPS tar). **Academy** may paste Vocareum keys on the Run form; **paid must not**.
 
 **CI (already exists)** — Release pipelines produce:

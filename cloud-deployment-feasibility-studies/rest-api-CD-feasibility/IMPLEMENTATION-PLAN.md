@@ -2,9 +2,9 @@
 
 **Contract:** [`REST-API-CD-FEASIBILITY.md`](REST-API-CD-FEASIBILITY.md), [`../ANSIBLE-PROCESS.md`](../ANSIBLE-PROCESS.md), AWS study §6.0c / §6.4a.  
 **Live estate:** `heavy-rental-project-instructure-and-cloud-deploy` (`HR-162` configure). First compose of Tomcat on `asg-rest` already exists there.  
-**This plan is the delivery split.** Live YAML (branch 1 skeleton) is in `heavy-rental-rest-api/deploy-pipeline/`.
+**This plan is the delivery split.** Live YAML is in `heavy-rental-rest-api/deploy-pipeline/`.
 
-**Status:** Infra branches 1–3 exist. Portal CD branch 2 exists. REST CD **branch 1** (discover) is in `deploy-pipeline/` (`add-rest-cd-academy-skeleton`). Compose is branch 2. Paid REST CD is later.
+**Status:** Infra branches 1–3 exist. Portal CD branch 2 exists. REST CD **branch 1** (discover) and **branch 2** (compose) are in `deploy-pipeline/` (`add-rest-cd-academy-deploy`). Paid REST CD is later.
 
 Conflict order if that repo uses OpenSpec: OpenSpec → OpenSPDD → ADR → YAML / Ansible.
 
@@ -28,7 +28,7 @@ Manually deploy a **CI-built Tomcat + WAR image** onto the **existing** `asg-res
 | Piece | Location |
 | --- | --- |
 | Workflow | Packaged in `heavy-rental-rest-api/deploy-pipeline/` (caller + reusable). Copy into the Spring repo `.github/` like Release CI. |
-| Ansible | **Reuse** infra `ansible/roles/guest_base` + `roles/rest` (`--limit rest`). Copy — do not invent a second compose contract |
+| Ansible | Copied into `deploy-pipeline/ansible/` from infra `guest_base` + `rest` (`--limit rest`). Do not invent a second compose contract |
 | Inventory | Same idea as infra `inventory/aws_ssm.py`, **rest group only** (`asg-rest`) |
 | Auth | Environment **`academy`** (same secret **names** as infra). Vocareum keys: `$GITHUB_EVENT_PATH` + `::add-mask::`. Never `${{ inputs.aws_* }}` in `env:` |
 
@@ -75,8 +75,8 @@ develop
 4. Resolve keys like infra / portal CD (`$GITHUB_EVENT_PATH`, mask, Environment fallback). Refuse Environment ≠ `academy`.
 5. **`assert-lab`:** `sts get-caller-identity`. Output lab state bucket name for later SSM (`heavy-rental-tfstate-${ACCOUNT}-academy`).
 6. **`discover-targets`:** InService IDs on `asg-rest`; keep SSM Online. Fail if none or desired=0. `describe-secret heavy-rental/rest` (do not echo SecretString). Fail if the shell is missing. Do **not** print instance IPs or the internal REST ALB URL.
-7. `deploy` / `configure-only` ansible job **fails closed** (`exit 1` — “branch 2”).
-8. **`verify`** is discover-only on this branch (no `GET :8080`) so an empty Tomcat from infra is not required to pass this PR.
+7. `deploy` / `configure-only` ansible job **failed closed** on branch 1 (`exit 1` — “branch 2”). **Superseded** by §6.
+8. **`verify`** was discover-only on branch 1. **Superseded** by §6 SSM `GET :8080`.
 
 ### Done when (branch 1)
 
@@ -111,9 +111,9 @@ Start Lab → Run workflow → `assert-lab` + `discover-targets` green. No image
 4. **`configure-only`:** skip resolve-image. Use Environment `REST_IMAGE` or Run `image_ref`. Still **fail** if both empty (do not invent a Tomcat tag).
 5. **`verify`:** SSM `GET http://127.0.0.1:8080/actuator/health` or `GET /` (200–302, and 401/403 if the app is up but locked). Do **not** fail solely because Haystack (`HAYSTACK_URL`) is down. Do **not** print instance IPs or `REST_BASE_URL`. Internal ALB DNS is optional and not required.
 
-### Done when
+### Done when (branch 2)
 
-`action=deploy` with a public GHCR or ECR tag updates **both** `asg-rest` guests. Internal ALB `:8080` serves the new WAR. `verify` is green if Tomcat answers.
+`action=deploy` with a public GHCR or ECR tag updates **both** `asg-rest` guests. Internal ALB `:8080` serves the new WAR. `verify` is green if Tomcat answers. **Shipped** in `deploy-pipeline/` (`rest-api-cd-academy.yml` + `ansible/`).
 
 ---
 
