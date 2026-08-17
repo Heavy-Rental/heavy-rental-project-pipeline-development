@@ -2,6 +2,8 @@
 
 This workflow discovers `asg-rest` and can re-run REST compose (branch 2). It does **not** run Terraform or create the ASG.
 
+Installing Release + CD into [heavy-rental-spring-rest-api](https://github.com/Heavy-Rental/heavy-rental-spring-rest-api): [`PREPARE-SPRING-REPO.md`](PREPARE-SPRING-REPO.md).
+
 Install from **`deploy-pipeline/`** into the Spring repo (same pattern as Release):
 
 - `rest-api-cd-academy-caller.yml` → `.github/workflows/`
