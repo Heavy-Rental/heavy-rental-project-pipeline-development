@@ -57,9 +57,11 @@ From `heavy-rental-rest-api/release-pipeline/release-pipeline.yml`:
 
 | Artifact | When | CD use |
 | --- | --- | --- |
-| Image tar (Tomcat 10.1 + JDK 21, `ROOT.war`) | Always on Packaging | Academy: `docker load` or ECR in-region |
-| GHCR `ghcr.io/<owner>/<image>:<version>` and `:latest` | Non-PR / published Release | Paid (Academy if pull works). **Not** pushed on develop→master PR |
+| Image tar (`tomcat:10.1-jdk21-temurin` + `ROOT.war`, Java **21**) | Always on Packaging | Academy: `docker load` or ECR in-region |
+| GHCR `ghcr.io/<owner>/heavy-rental-rest-api:<version>` and `:latest` | Non-PR / published Release | Paid (Academy if pull works). **Not** pushed on develop→master PR |
 | Versioned + stable WAR | Always | Optional; image is enough |
+
+Image contract: **`tomcat:10.1-jdk21-temurin`** serving `ROOT.war` on **`:8080`**. Java **21**. Build does **not** start Postgres or Haystack.
 
 Port **8080**. Health `GET /actuator/health` or `/`. Password is **not** in the artifact; CD uses Secrets Manager.
 

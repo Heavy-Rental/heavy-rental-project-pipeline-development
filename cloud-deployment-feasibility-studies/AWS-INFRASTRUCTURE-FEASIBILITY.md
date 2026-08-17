@@ -192,13 +192,13 @@ REST also documents a **read-replica** compose variant. Academy Multi-AZ is a **
 
 | App | Image | Port |
 | --- | --- | --- |
-| REST API | `tomcat:10.1-jdk21` + `ROOT.war` → GHCR / `.tar.gz` | 8080 |
-| Haystack | Python 3.12 + uv + uvicorn `app.main:app` | 8000 |
-| Web portal | nginx serving Vite `dist/` | 80 |
+| REST API | `tomcat:10.1-jdk21-temurin` + `ROOT.war` → `ghcr.io/<owner>/heavy-rental-rest-api` / `.tar.gz`. Java **21**. | 8080 |
+| Haystack | `python:3.12-slim-bookworm` + uv + uvicorn `app.main:app` → `ghcr.io/<owner>/haystack-fast-api` / `.tar.gz` | 8000 |
+| Web portal | `nginx:1.27-alpine` + Vite `dist/` (CI Node **22**) → `ghcr.io/<owner>/heavy-rental-web-portal` / `.tar.gz` | 80 |
 
 A later deploy project loads those images (ECR copy or `docker load` of the tar). It does not rebuild from source on EC2.
 
-Haystack **app** CD (manual, after this estate exists): [`haystack-CD-feasibility/HAYSTACK-CD-FEASIBILITY.md`](haystack-CD-feasibility/HAYSTACK-CD-FEASIBILITY.md). REST **app** CD: [`rest-api-CD-feasibility/REST-API-CD-FEASIBILITY.md`](rest-api-CD-feasibility/REST-API-CD-FEASIBILITY.md). Portal **app** CD: [`web-portal-CD-feasibility/WEB-PORTAL-CD-FEASIBILITY.md`](web-portal-CD-feasibility/WEB-PORTAL-CD-FEASIBILITY.md) (public ALB only; nginx `/api` → internal REST ALB). Each discovers its ASG via the AWS API — they do not create EC2.
+Haystack **app** CD (manual, after this estate exists): [`haystack-CD-feasibility/HAYSTACK-CD-FEASIBILITY.md`](haystack-CD-feasibility/HAYSTACK-CD-FEASIBILITY.md). REST **app** CD: [`rest-api-CD-feasibility/REST-API-CD-FEASIBILITY.md`](rest-api-CD-feasibility/REST-API-CD-FEASIBILITY.md). Portal **app** CD (live): [`../heavy-rental-web-portal-pipeline/deploy-pipeline/`](../heavy-rental-web-portal-pipeline/deploy-pipeline/) — study [`web-portal-CD-feasibility/WEB-PORTAL-CD-FEASIBILITY.md`](web-portal-CD-feasibility/WEB-PORTAL-CD-FEASIBILITY.md) (public ALB only; nginx `/api` → internal REST ALB). Each discovers its ASG via the AWS API — they do not create EC2.
 
 ---
 
@@ -1582,7 +1582,7 @@ If the backend is empty or state is missing (Vocareum **Reset** already wiped th
 
 ### 7.2e Validation (design vs execution)
 
-**Design (this folder) is consistent** on: Academy vs paid isolation; three subnet tiers; four ASGs; portal-only public ALB; nginx `/api` → REST ALB → `asg-rest` → Haystack ALB :8000; Haystack → RDS :5432 and Bolt :7687; one Academy RDS (not REST-exclusive); `stop` vs `destroy`; CI image contract (ports 80 / 8080 / 8000).
+**Design (this folder) is consistent** on: Academy vs paid isolation; three subnet tiers; four ASGs at **desired=2**; portal-only public ALB; nginx `/api` → REST ALB → `asg-rest` → Haystack ALB :8000; Haystack → Haystack RDS :5432 and Bolt NLB :7687; **two** Academy Multi-AZ RDS (SoR + Haystack); two NAT Gateways (not EC2); `stop` vs `destroy`; CI image contract (ports 80 / 8080 / 8000).
 
 **Example workflows in this folder cannot apply or deploy** (stubs `exit 1`). The other project (`heavy-rental-project-instructure-and-cloud-deploy`) implements `apply` / `configure-only` / `stop` / `destroy`. Discover / `assert-*` / `confirm_destroy` stay fail-closed here.
 
@@ -1593,10 +1593,10 @@ If the backend is empty or state is missing (Vocareum **Reset** already wiped th
 | Keep Terraform state on the runner | Next job has no state; `destroy` cannot empty the estate |
 | Treat LabRole as per-ASG IAM | Portal can read `heavy-rental/rest` if LabRole can |
 | `docker compose` the CI portal image as-is | No `/api` proxy; browser cannot reach REST |
-| Pull GHCR on Academy without a token / ECR copy | `LabRole` is ECR pull-only; GHCR is private |
+| Pull **private** GHCR on Academy | `LabRole` is ECR pull-only; no PAT on the guest. **Public** GHCR needs no login |
 | Copy stub YAML and treat a green run as success | Nothing was created or destroyed |
 
-Caps: desired 1+1+1+1 + nano NAT = 5 ≤ 9; max 2+2+2+1+1 = 9.
+Caps: desired 2+2+2+2 = **8** EC2 ≤ 9. Two NAT Gateways are not EC2. Do not add a 9th instance.
 
 ### 7.3 AWS CLI — operator surface
 
@@ -1651,16 +1651,16 @@ App CD auth: academy three keys on Environment only (§8.7)
 - **`academy`:** fallback secrets `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_SESSION_TOKEN` (or paste them on Run workflow — they change every Start Lab). Also `SPRING_DATASOURCE_PASSWORD`, `NEO4J_PASSWORD`, Stripe trio. Variable: `AWS_REGION`. **Vocareum only.**
 - **`paid`:** variables `AWS_ROLE_TO_ASSUME` + `AWS_REGION`. Same **app** secrets. **No** Vocareum access keys. Admin has already created GitHub OIDC + role `github-actions-infra`.
 - Copy [`aws-infra-pipeline.example.yml`](aws-infra-pipeline.example.yml) → `.github/workflows/aws-infra-academy.yml` and [`aws-infra-paid-pipeline.example.yml`](aws-infra-paid-pipeline.example.yml) → `aws-infra-paid.yml`.
-- Optional later: app CD workflows (portal / REST / Haystack). They do **not** create the estate.
+- Portal **app** CD (Academy compose): `heavy-rental-web-portal-pipeline/deploy-pipeline/`. REST / Haystack app CD still later. They do **not** create the estate.
 - Optional: Environment variable `IMAGE_HTTP_URL` (HTTPS tar). **Academy** may paste Vocareum keys on the Run form; **paid must not**.
 
 **CI (already exists)** — Release pipelines produce:
 
 | App | Image | Port |
 | --- | --- | --- |
-| Portal | nginx + Vite `dist/` tar / GHCR | 80 |
-| REST | Tomcat + WAR tar / GHCR | 8080 |
-| Haystack | uvicorn tar / GHCR | 8000 |
+| Portal | `nginx:1.27-alpine` + Vite `dist/` (Node **22**) → `ghcr.io/<owner>/heavy-rental-web-portal` / tar | 80 |
+| REST | `tomcat:10.1-jdk21-temurin` + `ROOT.war` (Java **21**) → `ghcr.io/<owner>/heavy-rental-rest-api` / tar | 8080 |
+| Haystack | `python:3.12-slim-bookworm` + uvicorn → `ghcr.io/<owner>/haystack-fast-api` / tar | 8000 |
 
 CI Environments (`integration` / `production` or none) are **not** CD `academy` / `paid`.
 

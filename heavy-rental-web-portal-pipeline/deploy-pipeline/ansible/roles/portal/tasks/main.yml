@@ -1,0 +1,59 @@
+---
+# Copied from estate ansible/roles/portal/tasks/main.yml. Keep in sync; do not fork compose.
+- name: Portal image must be a registry tag, not an HTTP URL
+  ansible.builtin.assert:
+    that:
+      - portal_image | default('') | length > 0
+      - portal_image is not match('^https?://')
+    fail_msg: >-
+      PORTAL_IMAGE must be a registry tag (ECR: ACCOUNT.dkr.ecr.us-east-1.amazonaws.com/repo:tag).
+      Do not put an HTTPS URL here. Private GHCR needs a token; use ECR (LabRole can pull) or image_http_url + docker load.
+
+- name: REST_BASE_URL must be set
+  ansible.builtin.command:
+    argv: [grep, -E, "^REST_BASE_URL=https?://.+", "{{ env_path }}"]
+  register: rest_url_line
+  changed_when: false
+  failed_when: rest_url_line.rc != 0
+
+- name: Read REST_BASE_URL
+  ansible.builtin.shell: |
+    set -euo pipefail
+    grep -E '^REST_BASE_URL=' "{{ env_path }}" | cut -d= -f2-
+  register: rest_base_url
+  changed_when: false
+
+- name: Nginx /api proxy
+  ansible.builtin.template:
+    src: nginx-default.conf.j2
+    dest: "{{ compose_dir }}/nginx-default.conf"
+    mode: "0644"
+
+- name: Portal compose
+  ansible.builtin.template:
+    src: compose.yml.j2
+    dest: "{{ compose_dir }}/compose.yml"
+    mode: "0644"
+
+- name: Compose portal
+  ansible.builtin.command:
+    argv:
+      - docker
+      - compose
+      - --env-file
+      - "{{ env_path }}"
+      - -f
+      - "{{ compose_dir }}/compose.yml"
+      - up
+      - -d
+      - --remove-orphans
+    chdir: "{{ compose_dir }}"
+
+- name: Portal GET / is up
+  ansible.builtin.uri:
+    url: http://127.0.0.1/
+    status_code: [200, 301, 302]
+  register: portal_health
+  retries: 10
+  delay: 3
+  until: portal_health is succeeded

@@ -69,8 +69,10 @@ Ansible does **not** invent the URL. The **app CD** (or infra first-compose) job
 | --- | --- | --- |
 | Environment **variable** `PORTAL_IMAGE` | Portal registry tag | Empty = stock `nginx`. Not a secret. |
 | Environment **variable** `REST_IMAGE` / `HAYSTACK_IMAGE` | REST / Haystack tags | Empty = Run `image_ref`; still empty → that play fails |
-| `workflow_dispatch` input `image_ref` | Fallback tag | REST **and** Haystack only. **Not** the portal. |
+| `workflow_dispatch` input `image_ref` | Registry tag | Infra: REST **and** Haystack fallback only (portal uses `PORTAL_IMAGE`). Portal **app** CD `action=deploy`: tag if `PORTAL_IMAGE` is empty. |
 | `workflow_dispatch` input `image_http_url` | Optional HTTPS / `s3://` `.tar.gz` | `docker load` on **all** guests. Empty = `vars.IMAGE_HTTP_URL`. Leave empty for normal pulls. |
+
+CI image names (Release; do not rebuild on the guest): portal **`nginx:1.27-alpine`** → `ghcr.io/<owner>/heavy-rental-web-portal` (Node **22** at build); REST **`tomcat:10.1-jdk21-temurin`** → `ghcr.io/<owner>/heavy-rental-rest-api` (Java **21**); Haystack **`python:3.12-slim-bookworm`** → `ghcr.io/<owner>/haystack-fast-api`. Portal CD (`deploy-pipeline/ansible/`) copies estate `guest_base` + `portal` and re-runs `--limit portal`. It does **not** replace infra **first** compose on `apply`.
 
 Academy pull: public GHCR needs no login. ECR tags (`*.dkr.ecr.*`) get `aws ecr get-login-password` on the guest (`LabRole`). Private GHCR is **not** pulled (no token on the guest) — copy to ECR or load a tar. Prefer a **new tag** each redeploy (`compose up` does not `--pull always`).
 
@@ -150,7 +152,7 @@ Run via `delegate_to` a **rest** or **haystack** instance (those SGs can reach `
 
 | Pipeline | Inventory group | Extra vs first compose |
 | --- | --- | --- |
-| Portal CD | `portal` | New nginx + `dist/` image; keep `/api` proxy |
+| Portal CD (`deploy-pipeline/ansible/`) | `portal` | New nginx + `dist/` image; keep `/api` proxy |
 | REST CD | `rest` | New Tomcat image |
 | Haystack CD | `haystack` | New uvicorn image; same sync + populate; still no neo4j |
 

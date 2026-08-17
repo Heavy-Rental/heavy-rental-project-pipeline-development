@@ -68,7 +68,7 @@ From [`haystack-fast-api-pipeline/specification/pipelines/haystack-ci.md`](../ha
 | GHCR `ghcr.io/<owner>/haystack-fast-api:<version>` and `:latest` | Published Release / non-PR only | Paid (and Academy if GHCR pull works). **Not** pushed on `develop`→`master` PR |
 | Wheel / sdist | Always | **Not** required on EC2 if the image is used |
 
-Image contract: Python 3.12 + uv + **uvicorn `app.main:app` on `:8000`**. Build does **not** start Postgres, Neo4j, or an LLM.
+Image contract: **`python:3.12-slim-bookworm`** + uv + **uvicorn `app.main:app` on `:8000`**. GHCR `ghcr.io/<owner>/haystack-fast-api`. Build does **not** start Postgres, Neo4j, or an LLM.
 
 Runtime env (CD / Secrets Manager only): `POSTGRES_*` / `DATABASE_URL`, `NEO4J_URI` / user / password, optional `LLM_API_KEY`. Not `bolt://neo4j:7687` and not localhost.
 

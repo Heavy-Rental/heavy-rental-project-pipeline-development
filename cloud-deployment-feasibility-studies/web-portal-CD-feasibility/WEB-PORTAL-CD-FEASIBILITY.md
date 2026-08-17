@@ -4,7 +4,7 @@
 
 **Destinations:** same two AWS accounts as [`../AWS-INFRASTRUCTURE-FEASIBILITY.md`](../AWS-INFRASTRUCTURE-FEASIBILITY.md) — **Academy** (Vocareum) and **Paid**. Separate GitHub Environments (`academy`, `paid`), separate workflows. One run must never touch the other.
 
-**This CD is manually triggered after the cloud estate is already up.** It does **not** create the VPC, `asg-portal`, the public portal ALB, or RDS. If `asg-portal` is missing, the run **fails** and the operator runs infra CD `action=apply` first. Until this app CD exists, redeploy the portal with infra **`configure-only`** and Environment **`PORTAL_IMAGE`**.
+**This CD is manually triggered after the cloud estate is already up.** It does **not** create the VPC, `asg-portal`, the public portal ALB, or RDS. If `asg-portal` is missing, the run **fails** and the operator runs infra CD `action=apply` first. Live Academy workflow (discover **and** compose) is in `heavy-rental-web-portal-pipeline/deploy-pipeline/`. Infra **`configure-only`** + **`PORTAL_IMAGE`** remains a fallback if this CD is not copied into the React repo.
 
 **The hard problem is not “how to start nginx.”** It is **how the runner learns which EC2s to deploy to** (private app subnets, no public IP, IPs change after Start Lab) **and** how a **static Vite SPA** talks to a **private** REST ALB without exposing REST or baking that URL into the public image.
 
@@ -14,7 +14,9 @@
 
 ### Purpose
 
-Decide how **GitHub Actions** can **re-run the guest compose playbook** on an **already created** `asg-portal` EC2, using the **nginx + Vite `dist/` image** portal CI Release already built. Infra CD Terraform created the instance; infra CD Ansible did the first compose (including the `/api` reverse-proxy). This pipeline is a **later, manual** compose run (new image only). No new EC2.
+Decide how **GitHub Actions** can **re-run the guest compose playbook** on an **already created** `asg-portal` EC2, using the **nginx:1.27-alpine + Vite `dist/` image** (CI Node **22**) portal CI Release already built. Infra CD Terraform created the instance; infra CD Ansible did the first compose (including the `/api` reverse-proxy). This pipeline is a **later, manual** compose run (new image only). No new EC2.
+
+The Academy workflow (branch 1 discover + branch 2 compose) is in [`../../heavy-rental-web-portal-pipeline/deploy-pipeline/`](../../heavy-rental-web-portal-pipeline/deploy-pipeline/). Infra still does **first** compose on `apply`. This CD **re-runs** `guest_base` + `portal` for a new image or a secret refresh. See [`IMPLEMENTATION-PLAN.md`](IMPLEMENTATION-PLAN.md).
 
 Portal is the **only public** ALB target. The browser talks to the public portal ALB. nginx on `asg-portal` proxies `/api` to the **internal** REST ALB. A Vite **dev server does not run in AWS**.
 
@@ -39,7 +41,7 @@ Infra, estate-wide secrets, and operate/stop live in the **AWS infrastructure** 
 | --- | --- | --- |
 | **Portal CI** | `heavy-rental-web-portal-pipeline/` | Fast Feedback → Integration → **Release** (`dist/` zip + **Docker tar** + GHCR off PR) |
 | **Infra CD** | `aws-infra-pipeline.example.yml` / paid | VPC, four ASGs, public portal ALB, internal REST/Haystack ALBs, RDS, secret **shells**, `sync-secrets`, `sync-ssh-keys` |
-| **Portal app CD (this study)** | `web-portal-cd-pipeline.example.yml` / paid | Manual deploy of **this** image onto existing `asg-portal` |
+| **Portal app CD (this study)** | Live: `heavy-rental-web-portal-pipeline/deploy-pipeline/`. Examples in this folder stay stubs. | Manual deploy of **this** image onto existing `asg-portal` (`resolve-image` → Ansible `--limit portal` → SSM `GET /`). |
 
 CI never applies AWS. Infra CD never rebuilds the SPA. App CD never creates the ASG.
 
@@ -344,11 +346,9 @@ Actions → Run workflow  (action + environment; optional image_ref)
 - Do not type instance IDs
 - Confirm `heavy-rental/portal` has `REST_BASE_URL` and `pk_…` only
 
-**Still stubs (other project):**
+**Live:** estate first-compose (`guest_base` / `portal`) **and** portal app CD branch 2 in [`../../heavy-rental-web-portal-pipeline/deploy-pipeline/`](../../heavy-rental-web-portal-pipeline/deploy-pipeline/) (same roles, `--limit portal`). Example YAML **in this folder** stays fail-closed.
 
-- Image pull/load onto the instance
-- Guest nginx `/api` snippet + compose file with §6.4a limits
-- Health check command (`GET /` on `:80`)
+**Still later:** paid/OIDC portal CD; REST / Haystack app CD. Delivery split: [`IMPLEMENTATION-PLAN.md`](IMPLEMENTATION-PLAN.md).
 
 ---
 
@@ -357,5 +357,6 @@ Actions → Run workflow  (action + environment; optional image_ref)
 - Estate: [`../AWS-INFRASTRUCTURE-FEASIBILITY.md`](../AWS-INFRASTRUCTURE-FEASIBILITY.md) §6 (`asg-portal`, public `tg-portal`), §6.0c secrets, §6.4a limits, §6.6 Communication, §6.10 fallacies (topology **changes**), §7.2c, §7.2e
 - Sibling app CD: [`../haystack-CD-feasibility/HAYSTACK-CD-FEASIBILITY.md`](../haystack-CD-feasibility/HAYSTACK-CD-FEASIBILITY.md), [`../rest-api-CD-feasibility/REST-API-CD-FEASIBILITY.md`](../rest-api-CD-feasibility/REST-API-CD-FEASIBILITY.md)
 - CI: [`../../heavy-rental-web-portal-pipeline/release-pipeline/`](../../heavy-rental-web-portal-pipeline/release-pipeline/)
+- Live Academy CD: [`../../heavy-rental-web-portal-pipeline/deploy-pipeline/`](../../heavy-rental-web-portal-pipeline/deploy-pipeline/)
 - Delivery split: [`IMPLEMENTATION-PLAN.md`](IMPLEMENTATION-PLAN.md)
 - Example workflows: [`web-portal-cd-pipeline.example.yml`](web-portal-cd-pipeline.example.yml), [`web-portal-cd-paid-pipeline.example.yml`](web-portal-cd-paid-pipeline.example.yml)
