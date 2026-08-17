@@ -125,7 +125,7 @@ Start Lab → Run workflow → `assert-lab` + `discover-targets` green. No image
 | Haystack app CD | Same pattern, `asg-haystack` |
 | `--pull always` / digest pins | Optional hardening |
 
-Infra `configure-only` + `REST_IMAGE` remains a valid fallback if this CD is not copied into the Spring repo yet.
+Infra **`apply`** still first-composes REST. Infra **`configure-only`** does **not** compose REST. After that, use this app CD.
 
 ---
 
