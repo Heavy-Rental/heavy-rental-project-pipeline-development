@@ -716,7 +716,7 @@ jobs:
               echo ""
               echo "WORKDIR /app"
               echo "COPY pyproject.toml uv.lock ./"
-              echo "RUN uv sync --frozen --no-dev"
+              echo "RUN uv sync --frozen --no-dev --extra neo4j"
               echo "COPY app ./app"
               echo ""
               echo "EXPOSE 8000"

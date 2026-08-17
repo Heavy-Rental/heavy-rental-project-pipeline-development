@@ -2,18 +2,20 @@
 
 Workflows and specifications for [Heavy-Rental/haystack-fast-api](https://github.com/Heavy-Rental/haystack-fast-api).
 
-This tree (`haystack-fast-api-pipeline/`) authors the **CI family only**: Fast Feedback, Integration CI, and Release packaging. It does not provision infrastructure, deploy the service, or operate production. Those concerns belong to another project.
+This tree (`haystack-fast-api-pipeline/`) authors Fast Feedback, Integration CI, Release packaging, and Academy **app CD** (`deploy-pipeline/`). It does not provision the VPC or ASGs (infra project). Copy workflows into [haystack-fast-api](https://github.com/Heavy-Rental/haystack-fast-api) like Release.
 
-Start here: [`specification/README.md`](specification/README.md).
+Start here: [`specification/README.md`](specification/README.md). App-repo CD checklist: [`docs/PREPARE-HAYSTACK-REPO.md`](docs/PREPARE-HAYSTACK-REPO.md).
 
 | Path | Contents |
 | --- | --- |
 | `specification/` | Human index and pipeline walkthrough |
 | `openspec/` | OpenSpec behavior (requirements + scenarios) |
 | `spdd/` | OpenSPDD analysis + REASONS Canvas |
+| `docs/` | Academy CD operate + [`PREPARE-HAYSTACK-REPO.md`](docs/PREPARE-HAYSTACK-REPO.md) |
 | `fast-feedback-ci-pipeline/` | Integration-only feature-branch pipeline |
 | `integration-pipeline/` | PR / `develop` merge gate |
 | `release-pipeline/` | `develop` → `master` / GitHub Release + `uv build` + Docker/GHCR |
+| `deploy-pipeline/` | Academy app CD (discover + compose; copy into the app repo) |
 | `act/` | Local `act` smoke tests (see [`act/README.md`](act/README.md)) |
 
 ## GitHub Flow
@@ -33,8 +35,8 @@ Release stops at **packaged artifacts** (wheel, sdist, image tar; GHCR push off 
 | --- | --- |
 | Build, test, and package | In scope |
 | Create or change infrastructure | Out of scope (another project) |
-| Deploy the packaged service | Out of scope (another project; consumes Release artifacts) |
-| Operate the live system | Out of scope (another project; after go-live) |
+| Deploy the packaged service | Academy CD in `deploy-pipeline/` (copy into the app repo). Needs a public GHCR/ECR tag from Release |
+| Operate the live system | Infra estate + this CD. See [`docs/BOOTSTRAP.md`](docs/BOOTSTRAP.md) |
 
 Operate needs knowledge of the running platform. It does not create that platform, and this CI family does not either.
 

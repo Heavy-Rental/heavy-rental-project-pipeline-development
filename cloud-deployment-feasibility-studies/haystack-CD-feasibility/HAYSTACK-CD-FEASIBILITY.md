@@ -4,7 +4,7 @@
 
 **Destinations:** same two AWS accounts as [`AWS-INFRASTRUCTURE-FEASIBILITY.md`](AWS-INFRASTRUCTURE-FEASIBILITY.md) — **Academy** (Vocareum) and **Paid**. Separate GitHub Environments (`academy`, `paid`), separate workflows. One run must never touch the other.
 
-**This CD is manually triggered after the cloud estate is already up.** It does **not** create the VPC, ASGs, ALBs, RDS, or Neo4j. If `asg-haystack` is missing (or no guest is InService), the run **fails** and the operator runs infra CD `action=apply` first. Infra leaves **desired=2**, a **Haystack RDS**, and `NEO4J_URI` pointing at the **Bolt NLB**. Branch **1** (discover only) lives in `haystack-fast-api-pipeline/deploy-pipeline/`. Infra **`configure-only`** no longer composes Haystack. Until Haystack CD branch 2, first Haystack compose is infra **`apply`**.
+**This CD is manually triggered after the cloud estate is already up.** It does **not** create the VPC, ASGs, ALBs, RDS, or Neo4j. If `asg-haystack` is missing (or no guest is InService), the run **fails** and the operator runs infra CD `action=apply` first. Infra leaves **desired=2**, a **Haystack RDS**, and `NEO4J_URI` pointing at the **Bolt NLB**. Live Academy workflow (discover **and** compose) is in `haystack-fast-api-pipeline/deploy-pipeline/`. Infra **`apply`** still first-composes Haystack. Infra **`configure-only`** does **not** compose Haystack. App-repo readiness: [`../../haystack-fast-api-pipeline/docs/PREPARE-HAYSTACK-REPO.md`](../../haystack-fast-api-pipeline/docs/PREPARE-HAYSTACK-REPO.md).
 
 **The hard problem is not “how to start uvicorn.”** It is **how the runner learns which EC2s to deploy to** (private app subnets, no public IP, IPs change after Start Lab).
 
@@ -16,7 +16,7 @@
 
 Decide how **GitHub Actions** can **re-run the guest compose playbook** on an **already created** `asg-haystack` EC2, using the **haystack-fast-api** image Haystack CI Release already built. Infra CD Terraform created the instance; infra CD Ansible did the first compose. This pipeline is a **later, manual** compose run (new image only). No new EC2.
 
-The Academy **skeleton** (branch 1: `assert-lab` + discover, compose jobs fail-closed) is in [`../../haystack-fast-api-pipeline/deploy-pipeline/`](../../haystack-fast-api-pipeline/deploy-pipeline/). Compose still belongs to **infra** until Haystack CD branch 2. See [`IMPLEMENTATION-PLAN.md`](IMPLEMENTATION-PLAN.md).
+The Academy workflow (branch 1 discover + branch 2 compose) is in [`../../haystack-fast-api-pipeline/deploy-pipeline/`](../../haystack-fast-api-pipeline/deploy-pipeline/). Infra still does **first** compose on `apply`. This CD **re-runs** `guest_base` + `haystack` (no Neo4j container). See [`IMPLEMENTATION-PLAN.md`](IMPLEMENTATION-PLAN.md).
 
 ### Non-goals
 
@@ -36,7 +36,7 @@ Infra, estate-wide secrets, and operate/stop live in the **AWS infrastructure** 
 | --- | --- | --- |
 | **Haystack CI** | `haystack-fast-api-pipeline/` | Fast Feedback → Integration → **Release** (wheel + **Docker tar** + GHCR off PR) |
 | **Infra CD** | `aws-infra-pipeline.example.yml` / paid | VPC, four ASGs, ALBs, RDS, secret **shells**, `sync-secrets`, `sync-ssh-keys` |
-| **Haystack app CD (this study)** | Live skeleton: `haystack-fast-api-pipeline/deploy-pipeline/`. Examples in this folder stay stubs. | Manual deploy of **this** image onto existing `asg-haystack`. Branch 1 = discover only. Branch 2 (not built) = compose. |
+| **Haystack app CD (this study)** | Live: `haystack-fast-api-pipeline/deploy-pipeline/`. Examples in this folder stay stubs. | Manual deploy of **this** image onto existing `asg-haystack` (`resolve-image` → Ansible `--limit haystack` → SSM `GET :8000`). |
 
 CI never applies AWS. Infra CD never rebuilds Haystack. App CD never creates the ASG.
 
@@ -223,7 +223,7 @@ Leave ~256–512 MiB for OS + SSM + Docker. `restart: unless-stopped`.
 | --- | --- |
 | GitHub Environment `academy` | **Runner only:** `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_SESSION_TOKEN` (+ `AWS_REGION`). Same names as infra CD. Not Stripe/DB unless infra has not synced yet |
 | GitHub Environment `paid` | **Runner only:** OIDC `AWS_ROLE_TO_ASSUME`. **Fail** if `AWS_ACCESS_KEY_ID` is set |
-| AWS `heavy-rental/haystack` | What the **instance** (`LabRole`) reads: Haystack RDS Postgres host/port/db/user/password/URL, `NEO4J_URI` (Bolt NLB)/`USER`/`PASSWORD`, optional `LLM_API_KEY` |
+| AWS `heavy-rental/haystack` | What the **instance** (`LabRole`) reads: Haystack RDS Postgres host/port/db/user/password/URL plus `POSTGRES_HOSTNAME` / `POSTGRES_DB` / `POSTGRES_USER`, `FLEET_BACKEND=sql`, `NEO4J_BACKEND=bolt`, `NEO4J_URI` (Bolt NLB)/`USER`/`PASSWORD`, optional `LLM_API_KEY` |
 
 ```
 Runner (academy three keys) → sts, describe-asg, ssm, describe-secret, optional ECR push
@@ -287,9 +287,9 @@ Actions → Run workflow  (action + environment; optional image_ref)
 - Dispatch only after infra is up
 - Do not type instance IDs
 
-**Live (branch 1):** discover `asg-haystack` in [`../../haystack-fast-api-pipeline/deploy-pipeline/`](../../haystack-fast-api-pipeline/deploy-pipeline/). Example YAML **in this folder** stays fail-closed.
+**Live:** estate first-compose (`guest_base` / `haystack`) **and** Haystack app CD branch 2 in [`../../haystack-fast-api-pipeline/deploy-pipeline/`](../../haystack-fast-api-pipeline/deploy-pipeline/) (same roles, `--limit haystack`, no Neo4j). Example YAML **in this folder** stays fail-closed.
 
-**Still stubs (Haystack app CD branch 2):** image pull/load + compose re-run from this CD. Infra first-compose (`guest_base` / `haystack`) already exists. Delivery split: [`IMPLEMENTATION-PLAN.md`](IMPLEMENTATION-PLAN.md).
+**Still later:** paid/OIDC Haystack CD. Delivery split: [`IMPLEMENTATION-PLAN.md`](IMPLEMENTATION-PLAN.md).
 
 ---
 
@@ -297,6 +297,6 @@ Actions → Run workflow  (action + environment; optional image_ref)
 
 - Estate: [`../AWS-INFRASTRUCTURE-FEASIBILITY.md`](../AWS-INFRASTRUCTURE-FEASIBILITY.md) §6 (`asg-haystack`), §6.0c secrets, §6.10 fallacies (topology **changes**), §7.2c, §7.2e
 - Delivery split: [`IMPLEMENTATION-PLAN.md`](IMPLEMENTATION-PLAN.md)
-- Live Academy skeleton: [`../../haystack-fast-api-pipeline/deploy-pipeline/`](../../haystack-fast-api-pipeline/deploy-pipeline/)
+- Live Academy CD: [`../../haystack-fast-api-pipeline/deploy-pipeline/`](../../haystack-fast-api-pipeline/deploy-pipeline/)
 - CI: [`../../haystack-fast-api-pipeline/specification/pipelines/haystack-ci.md`](../../haystack-fast-api-pipeline/specification/pipelines/haystack-ci.md)
 - Example workflows: [`haystack-cd-pipeline.example.yml`](haystack-cd-pipeline.example.yml), [`haystack-cd-paid-pipeline.example.yml`](haystack-cd-paid-pipeline.example.yml)
