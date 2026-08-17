@@ -1,5 +1,7 @@
 # Academy CD workflow (not CI). CI Release pipelines create the Docker image.
 # Copy to the CD repo: .github/workflows/aws-infra-academy.yml
+# Live Academy implementation: heavy-rental-project-instructure-and-cloud-deploy
+# (HR-162). This example stays a stub (terraform/ansible/stop/destroy exit 1).
 # Vocareum-only. Paid CD is aws-infra-paid-pipeline.example.yml (OIDC — no key fields).
 #
 # Operator (keys change every Start Lab):
@@ -216,7 +218,7 @@ jobs:
           SPRING_DATASOURCE_PASSWORD: ${{ secrets.SPRING_DATASOURCE_PASSWORD }}
           NEO4J_PASSWORD: ${{ secrets.NEO4J_PASSWORD }}
           STRIPE_PUBLISHABLE_KEY: ${{ secrets.STRIPE_PUBLISHABLE_KEY }}
-          STRIPE_SECRET_KEY: ${{ secrets.STRIPE_SECRET_KEY }}
+          STRIPE_API_KEY: ${{ secrets.STRIPE_API_KEY }}
           STRIPE_WEBHOOK_SECRET: ${{ secrets.STRIPE_WEBHOOK_SECRET }}
         run: |
           set +x

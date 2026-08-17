@@ -4,7 +4,7 @@
 
 **Destinations:** same two AWS accounts as [`AWS-INFRASTRUCTURE-FEASIBILITY.md`](AWS-INFRASTRUCTURE-FEASIBILITY.md) — **Academy** (Vocareum) and **Paid**. Separate GitHub Environments (`academy`, `paid`), separate workflows. One run must never touch the other.
 
-**This CD is manually triggered after the cloud estate is already up.** It does **not** create the VPC, ASGs, ALBs, RDS, or Neo4j. If `asg-haystack` is missing, the run **fails** and the operator runs infra CD `action=apply` first.
+**This CD is manually triggered after the cloud estate is already up.** It does **not** create the VPC, ASGs, ALBs, RDS, or Neo4j. If `asg-haystack` is missing (or no guest is InService), the run **fails** and the operator runs infra CD `action=apply` first. Infra leaves **desired=2**, a **Haystack RDS**, and `NEO4J_URI` pointing at the **Bolt NLB**.
 
 **The hard problem is not “how to start uvicorn.”** It is **how the runner learns which EC2s to deploy to** (private app subnets, no public IP, IPs change after Start Lab).
 
@@ -78,9 +78,9 @@ Runtime env (CD / Secrets Manager only): `POSTGRES_*` / `DATABASE_URL`, `NEO4J_U
 
 | Piece | Value |
 | --- | --- |
-| Compute | Auto Scaling group **`asg-haystack`** (private **app** subnets). Desired ≥ 1, **InService** |
+| Compute | Auto Scaling group **`asg-haystack`** (private **app** subnets). Estate default **desired=2**, both **InService** |
 | Ingress | Dedicated **internal** ALB `tg-haystack` **:8000**. Not on the public portal ALB |
-| Data | RDS (Haystack DB or pgvector container on this ASG). **`asg-neo4j`** Bolt — workers on haystack, graph **not** on this host |
+| Data | **Haystack RDS** (`haystack`). Bolt via the **internal NLB** to `asg-neo4j` — workers on haystack, graph **not** on this host |
 | Auth on instance | `LabInstanceProfile` (Academy) or paid instance profile. SSM agent up |
 | Secret | `heavy-rental/haystack` already filled by infra `sync-secrets` |
 
@@ -99,7 +99,7 @@ Haystack instances have **no public IP**. IDs and private IPs **change** on scal
 | Auto Scaling group name | Stable handle (`asg-haystack`) |
 | Instance IDs that are **InService** and **SSM Online** | Ansible / SSM target |
 | Internal Haystack ALB DNS | Verify health; do not publish it |
-| Confirmation `heavy-rental/haystack` exists | `NEO4J_URI`, Postgres fields already there |
+| Confirmation `heavy-rental/haystack` exists | `NEO4J_URI` (Bolt NLB), Haystack RDS Postgres fields already there |
 
 The runner does **not** need public IPs, SSH PEMs (everyday path is SSM), or Vocareum keys on the **instance**.
 
@@ -119,14 +119,14 @@ aws ssm describe-instance-information \
   --query 'InstanceInformationList[?PingStatus==`Online`].InstanceId'
 ```
 
-If the ASG is missing, desired=0, or no instance is SSM Online → **fail** with “run infra CD apply / wait for Start Lab / run configure-only.” Do not invent hosts.
+If the ASG is missing, desired=0, or **no** instance is SSM Online → **fail** with “run infra CD apply / wait for Start Lab / run configure-only.” Desired=2 is the estate default; deploy **every** Online guest. Do not invent hosts.
 
 **2. Terraform outputs (optional cache)**  
-Infra CD may write outputs (`asg_haystack_name`, `alb_haystack_dns`, `rds_endpoint`) to the **infra** state. Haystack CD may `terraform output -json` **read-only** against that state. It must **not** `apply`. If state is missing (lab reset), fall back to (1).
+Infra CD may write outputs (`asg_haystack_name`, `alb_haystack_dns`, `rds_haystack_endpoint`, `neo4j_uri`) to the **infra** state. Haystack CD may `terraform output -json` **read-only** against that state. It must **not** `apply`. If state is missing (lab reset), fall back to (1).
 
 **3. Secrets Manager (app data, not inventory)**  
 `aws secretsmanager get-secret-value --secret-id heavy-rental/haystack`  
-Gives `NEO4J_URI`, Postgres, optional LLM. It does **not** replace ASG discovery. Infra `sync-secrets` must have run first.
+Gives `NEO4J_URI` (Bolt NLB), Haystack RDS Postgres, optional LLM. It does **not** replace ASG discovery. Infra `sync-secrets` must have run first.
 
 **4. Tags (paid or if infra sets them)**  
 `Role=haystack`, `Project=heavy-rental`. Useful when the ASG name differs. Academy: still prefer the fixed name `asg-haystack`.
@@ -147,7 +147,7 @@ Gives `NEO4J_URI`, Postgres, optional LLM. It does **not** replace ASG discovery
 
 Dynamic inventory, **one group** `haystack`:
 
-- `ansible_connection=aws_ssm` (or `community.aws.aws_ssm`)
+- `ansible_connection=amazon.aws.aws_ssm`
 - `ansible_aws_ssm_instance_id=<id>` from §5.2
 - No `ansible_host` public IP
 - RDS is **not** in inventory; SQL stays `delegate_to` a haystack instance if needed
@@ -207,7 +207,7 @@ Resource limits must match the AWS study **§6.4a** so a `t3.small` haystack hos
 | uvicorn (CI image) | `768m` | `1.0` |
 | postgres-haystack-sync | `256m` | `0.25` |
 | neo4j-populate | `256m` | `0.25` |
-| optional pgvector | `512m` / host **`t3.medium`** | `0.5` |
+| optional pgvector (fallback only) | `512m` / host **`t3.medium`** | `0.5` |
 
 Leave ~256–512 MiB for OS + SSM + Docker. `restart: unless-stopped`.
 
@@ -221,7 +221,7 @@ Leave ~256–512 MiB for OS + SSM + Docker. `restart: unless-stopped`.
 | --- | --- |
 | GitHub Environment `academy` | **Runner only:** `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_SESSION_TOKEN` (+ `AWS_REGION`). Same names as infra CD. Not Stripe/DB unless infra has not synced yet |
 | GitHub Environment `paid` | **Runner only:** OIDC `AWS_ROLE_TO_ASSUME`. **Fail** if `AWS_ACCESS_KEY_ID` is set |
-| AWS `heavy-rental/haystack` | What the **instance** (`LabRole`) reads: Postgres host/port/db/user/password/URL, `NEO4J_URI`/`USER`/`PASSWORD`, optional `LLM_API_KEY` |
+| AWS `heavy-rental/haystack` | What the **instance** (`LabRole`) reads: Haystack RDS Postgres host/port/db/user/password/URL, `NEO4J_URI` (Bolt NLB)/`USER`/`PASSWORD`, optional `LLM_API_KEY` |
 
 ```
 Runner (academy three keys) → sts, describe-asg, ssm, describe-secret, optional ECR push

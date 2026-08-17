@@ -1,0 +1,80 @@
+# =============================================================================
+# Install into: heavy-rental-react-web-portal
+# Path:         .github/workflows/portal-cd-academy-caller.yml
+# =============================================================================
+# Also copy:
+#   deploy-pipeline/web-portal-cd-academy.yml
+#     → .github/workflows/web-portal-cd-academy.yml
+#   deploy-pipeline/resolve-vocareum-aws/action.yml
+#     → .github/workflows/../actions/resolve-vocareum-aws/action.yml
+#        (.github/actions/resolve-vocareum-aws/action.yml)
+#
+# Portal app CD (Academy) — branch 1 skeleton (HR-165).
+# Not CI. Not terraform. Compose / GHCR pull is branch 2.
+#
+# After infra apply + Start Lab: Run this workflow (action=verify) to prove
+# asg-portal is InService + SSM Online. deploy/configure-only fail closed.
+# =============================================================================
+
+name: Web Portal CD (Academy)
+
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: deploy / configure-only wait for branch 2. verify = discover only.
+        required: true
+        type: choice
+        default: verify
+        options:
+          - deploy
+          - configure-only
+          - verify
+      aws_environment:
+        description: Must be academy (Vocareum Learner Lab)
+        required: true
+        type: environment
+        default: academy
+      image_ref:
+        description: GHCR/ECR tag (unused on branch 1)
+        required: false
+        type: string
+        default: ""
+      image_http_url:
+        description: HTTPS tar.gz (unused on branch 1)
+        required: false
+        type: string
+        default: ""
+      aws_access_key_id:
+        description: Vocareum AWS Details access key. Empty = Environment academy.
+        required: false
+        type: string
+        default: ""
+      aws_secret_access_key:
+        description: Vocareum secret access key. Empty = Environment academy.
+        required: false
+        type: string
+        default: ""
+      aws_session_token:
+        description: Vocareum session token. Empty = Environment academy.
+        required: false
+        type: string
+        default: ""
+
+concurrency:
+  group: web-portal-cd-academy-${{ github.repository }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  portal-cd:
+    name: Portal CD pipeline
+    uses: ./.github/workflows/web-portal-cd-academy.yml
+    with:
+      action: ${{ inputs.action }}
+      aws_environment: ${{ inputs.aws_environment }}
+      image_ref: ${{ inputs.image_ref }}
+      image_http_url: ${{ inputs.image_http_url }}
+    secrets: inherit

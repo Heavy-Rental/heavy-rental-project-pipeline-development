@@ -6,6 +6,19 @@
 
 App CD (Haystack / REST / portal) **never** runs Terraform. Guest compose is [`ANSIBLE-PROCESS.md`](ANSIBLE-PROCESS.md).
 
+### Pinned versions
+
+Live pin lives in the other project (`heavy-rental-project-instructure-and-cloud-deploy`). Recorded 2026-08-17:
+
+| Component | Version |
+| --- | --- |
+| Terraform CLI | **1.15.8** (latest stable) |
+| hashicorp/aws provider | `~> 5.0` (do not bump to 6.x here) |
+| S3 state lock | **`use_lockfile=true`** (`dynamodb_table` deprecated) |
+| Instance profile / IAM role | **`LabInstanceProfile`** / **`LabRole`** (data-source only; plan fails if they do not pair) |
+| RDS PostgreSQL (this Vocareum image, 2026-08-16) | Two Multi-AZ instances (`heavy_rental` + `haystack`). Prefer **12.22**, then **11.22**. Do not pin 16.x. |
+| Academy guest count | Four ASGs **desired=2** = **8 EC2**. Two NAT Gateways (not EC2). Internal Bolt NLB. |
+
 ---
 
 ## 1. Which workflow runs Terraform
@@ -31,7 +44,7 @@ Academy: **Start Lab** then paste AWS Details on the form. If `sts` fails (`Expi
 | `apply` | Job `terraform` | `init` → `plan` → `apply` |
 | `destroy` | Job **`destroy`** (not the plan/apply job) | `confirm_destroy == destroy` → `init` → `destroy -auto-approve` |
 | `configure-only` | **Skipped** | `sync-secrets` + `sync-ssh-keys` + Ansible only |
-| `stop` | **Skipped** | AWS CLI: ASG desired=0 + `rds stop-db-instance` (not `terraform destroy`) |
+| `stop` | **Skipped** | AWS CLI: ASG desired=0 + `rds stop-db-instance` on **both** RDS identifiers (not `terraform destroy`) |
 
 Do **not** `apply` on push or pull_request. A later optional `plan` on a trusted branch is out of the stub.
 
@@ -54,7 +67,7 @@ Job terraform   if: action == plan || apply
   5. terraform apply                 only if action=apply
         │
         ▼
-  Terraform outputs (ALB DNS, RDS endpoint, Neo4j private IP, secret ARNs)
+  Terraform outputs (ALB DNS, both RDS endpoints, neo4j_uri / NLB DNS, secret ARNs)
         │
         ▼
   Not Terraform — later jobs on apply only:
@@ -113,13 +126,14 @@ Exact bucket and key names are **other project**. Actions only needs them in the
 | In state (Terraform creates) | Not in Terraform |
 | --- | --- |
 | VPC, IGW, three subnet tiers (2 AZs each), route tables | Docker / compose / `.env` |
-| NAT **instance** (Academy; not NAT Gateway) | `CREATE DATABASE` / extensions |
-| Security groups (portal / rest / haystack / neo4j / ALBs / RDS) | Stripe plaintext, DB passwords, PEMs |
-| Four launch templates + ASGs (`LabInstanceProfile` on Academy) | CI images, GHCR, GitHub Environments |
+| Two NAT Gateways + EIP each (one per public AZ; not an EC2 NAT instance) | `CREATE DATABASE` / extensions |
+| Security groups (portal / rest / haystack / neo4j / ALBs / NLB / RDS) | Stripe plaintext, DB passwords, PEMs |
+| Four launch templates + ASGs at **desired=2** (`LabInstanceProfile` → **`LabRole`** on Academy) | CI images, GHCR, GitHub Environments |
 | Public portal ALB + `tg-portal` :80 | `action=stop` (CLI) |
 | Internal REST ALB + `tg-rest` :8080 | App CD deploys |
 | Internal Haystack ALB + `tg-haystack` :8000 | |
-| RDS in the **data** subnet group (`publicly_accessible=false`, `multi_az=false`, `deletion_protection=false`) | |
+| Internal Bolt NLB + `tg-neo4j` :7687 | |
+| Two Multi-AZ RDS in the **data** subnet group (`publicly_accessible=false`, `deletion_protection=false`) | |
 | Empty Secrets Manager shells `heavy-rental/{portal,rest,haystack,neo4j}` and `heavy-rental/ssh/*` | Secret **values** (`sync-secrets` / `sync-ssh-keys`) |
 | Optional ECR repos | |
 
@@ -135,8 +149,9 @@ Preferred: **no** `key_name` on launch templates. PEMs wait until InService.
 | --- | --- |
 | Internal REST ALB DNS | `heavy-rental/portal` → `REST_BASE_URL` |
 | Internal Haystack ALB DNS | `heavy-rental/rest` → `HAYSTACK_URL` |
-| RDS endpoint hostname + port | `heavy-rental/rest` and `heavy-rental/haystack` → `POSTGRES_HOST` / `_PORT` / URL |
-| `asg-neo4j` private IP | `heavy-rental/haystack` → `NEO4J_URI` (`bolt://…:7687`) |
+| SoR RDS endpoint hostname + port | `heavy-rental/rest` → `POSTGRES_HOST` / `_PORT` / URL |
+| Haystack RDS endpoint hostname + port | `heavy-rental/haystack` → `POSTGRES_HOST` / `_PORT` / URL |
+| Bolt NLB DNS (`neo4j_uri`) | `heavy-rental/haystack` → `NEO4J_URI` (`bolt://<nlb-dns>:7687`) |
 
 Do not echo SecretString, `sk_`, or PEMs in the job log or step summary. Public portal ALB DNS may be printed.
 
@@ -144,15 +159,15 @@ Do not echo SecretString, `sk_`, or PEMs in the job log or step summary. Public 
 
 ## 8. Academy rules inside `.tf`
 
-- **No** `aws_iam_role` / OIDC provider. Data-source `LabRole` / `LabInstanceProfile` on every ASG, including `asg-neo4j`.
+- **No** `aws_iam_role` / OIDC provider **resources**. Data-source instance profile **`LabInstanceProfile`** and IAM role **`LabRole`**. Plan fails unless `LabInstanceProfile.role_name == LabRole`. Every ASG (including `asg-neo4j`) attaches that profile. NAT Gateways have no instance profile.
 - `region = us-east-1`.
-- No `aws_nat_gateway`. No Marketplace Neo4j AMI / vendor CFT.
-- RDS class ≤ medium; data subnet group only; no enhanced monitoring.
-- `asg-neo4j`: `max_size = 1`, EC2 health only, scale-in protection.
+- Two `aws_nat_gateway` (one per public AZ) + EIP. No NAT **instance**. No Marketplace Neo4j AMI / vendor CFT.
+- RDS: **two** instances, both `multi_az=true`; class ≤ medium; data subnet group only; no enhanced monitoring. Engine: prefer **12.22**, then **11.22** (this Vocareum image).
+- Portal / REST / Haystack / Neo4j: `min=2 desired=2 max=2` across both AZs of that tier. ALBs/NLB span both subnets. Not a causal Neo4j cluster.
 - Never register REST or Haystack on the public listener.
-- Never a lone `aws_instance` outside an ASG (NAT instance is the documented exception).
+- Never a lone `aws_instance` outside an ASG.
 
-Paid may add IAM instance profiles, Multi-AZ, NAT Gateway, ACM HTTPS, a second RDS — **different state**, same three tiers.
+Paid may add created IAM instance profiles and ACM HTTPS — **different state**, same three tiers. Multi-AZ RDS, Bolt NLB, and per-AZ NAT Gateways are already on Academy.
 
 ---
 
