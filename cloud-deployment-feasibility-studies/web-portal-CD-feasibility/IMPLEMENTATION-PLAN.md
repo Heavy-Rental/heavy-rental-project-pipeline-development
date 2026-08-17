@@ -122,7 +122,7 @@ Start Lab → Run workflow → `assert-lab` + `discover-targets` green. No image
 | REST / Haystack app CD | Same pattern, different group |
 | `--pull always` / digest pins | Optional hardening |
 
-Infra `configure-only` + `PORTAL_IMAGE` remains a valid fallback if this CD is not copied into the React repo yet.
+Infra **`apply`** still first-composes the portal. Infra **`configure-only`** does **not** compose the portal. After that, use this app CD.
 
 ---
 

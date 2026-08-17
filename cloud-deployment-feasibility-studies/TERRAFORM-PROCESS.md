@@ -43,7 +43,7 @@ Academy: **Start Lab** then paste AWS Details on the form. If `sts` fails (`Expi
 | `plan` | Job `terraform` | `init` → `plan` |
 | `apply` | Job `terraform` | `init` → `plan` → `apply` |
 | `destroy` | Job **`destroy`** (not the plan/apply job) | `confirm_destroy == destroy` → `init` → `destroy -auto-approve` |
-| `configure-only` | **Skipped** | `sync-secrets` + `sync-ssh-keys` + Ansible only |
+| `configure-only` | **Skipped** | `sync-secrets` + `sync-ssh-keys` + Ansible `configure.yml` (Docker + Neo4j) |
 | `stop` | **Skipped** | AWS CLI: ASG desired=0 + `rds stop-db-instance` on **both** RDS identifiers (not `terraform destroy`) |
 
 Do **not** `apply` on push or pull_request. A later optional `plan` on a trusted branch is out of the stub.

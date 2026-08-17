@@ -4,7 +4,7 @@
 
 **Destinations:** same two AWS accounts as [`../AWS-INFRASTRUCTURE-FEASIBILITY.md`](../AWS-INFRASTRUCTURE-FEASIBILITY.md) — **Academy** and **Paid**. Environments `academy` / `paid`. One run must never touch the other.
 
-**Manually triggered after the estate is up.** It does **not** create the VPC, `asg-rest`, the internal REST ALB, or RDS. If `asg-rest` is missing, **fail** and run infra CD `action=apply` first. Live Academy workflow (discover **and** compose) is in `heavy-rental-rest-api/deploy-pipeline/`. Infra **`configure-only`** + **`REST_IMAGE`** remains a fallback if this CD is not copied into the Spring repo.
+**Manually triggered after the estate is up.** It does **not** create the VPC, `asg-rest`, the internal REST ALB, or RDS. If `asg-rest` is missing, **fail** and run infra CD `action=apply` first. Live Academy workflow (discover **and** compose) is in `heavy-rental-rest-api/deploy-pipeline/`. Infra **`apply`** still first-composes REST. Infra **`configure-only`** does **not** compose REST — use this app CD (or `apply` for first compose).
 
 **The hard problem** is discovering the **private** EC2 (no public IP; IDs change after Start Lab). Do not type instance IDs on the form.
 

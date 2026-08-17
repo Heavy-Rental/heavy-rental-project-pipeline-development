@@ -4,7 +4,7 @@
 
 **Destinations:** same two AWS accounts as [`../AWS-INFRASTRUCTURE-FEASIBILITY.md`](../AWS-INFRASTRUCTURE-FEASIBILITY.md) — **Academy** (Vocareum) and **Paid**. Separate GitHub Environments (`academy`, `paid`), separate workflows. One run must never touch the other.
 
-**This CD is manually triggered after the cloud estate is already up.** It does **not** create the VPC, `asg-portal`, the public portal ALB, or RDS. If `asg-portal` is missing, the run **fails** and the operator runs infra CD `action=apply` first. Live Academy workflow (discover **and** compose) is in `heavy-rental-web-portal-pipeline/deploy-pipeline/`. Infra **`configure-only`** + **`PORTAL_IMAGE`** remains a fallback if this CD is not copied into the React repo.
+**This CD is manually triggered after the cloud estate is already up.** It does **not** create the VPC, `asg-portal`, the public portal ALB, or RDS. If `asg-portal` is missing, the run **fails** and the operator runs infra CD `action=apply` first. Live Academy workflow (discover **and** compose) is in `heavy-rental-web-portal-pipeline/deploy-pipeline/`. Infra **`apply`** still first-composes the portal. Infra **`configure-only`** does **not** compose the portal — use this app CD (or `apply` for first compose).
 
 **The hard problem is not “how to start nginx.”** It is **how the runner learns which EC2s to deploy to** (private app subnets, no public IP, IPs change after Start Lab) **and** how a **static Vite SPA** talks to a **private** REST ALB without exposing REST or baking that URL into the public image.
 

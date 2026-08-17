@@ -198,7 +198,7 @@ REST also documents a **read-replica** compose variant. Academy Multi-AZ is a **
 
 A later deploy project loads those images (ECR copy or `docker load` of the tar). It does not rebuild from source on EC2.
 
-Haystack **app** CD (manual, after this estate exists): [`haystack-CD-feasibility/HAYSTACK-CD-FEASIBILITY.md`](haystack-CD-feasibility/HAYSTACK-CD-FEASIBILITY.md). REST **app** CD (live): [`../heavy-rental-rest-api/deploy-pipeline/`](../heavy-rental-rest-api/deploy-pipeline/) — study [`rest-api-CD-feasibility/REST-API-CD-FEASIBILITY.md`](rest-api-CD-feasibility/REST-API-CD-FEASIBILITY.md). Portal **app** CD (live): [`../heavy-rental-web-portal-pipeline/deploy-pipeline/`](../heavy-rental-web-portal-pipeline/deploy-pipeline/) — study [`web-portal-CD-feasibility/WEB-PORTAL-CD-FEASIBILITY.md`](web-portal-CD-feasibility/WEB-PORTAL-CD-FEASIBILITY.md) (public ALB only; nginx `/api` → internal REST ALB). Each discovers its ASG via the AWS API — they do not create EC2.
+Haystack **app** CD (live skeleton): [`../haystack-fast-api-pipeline/deploy-pipeline/`](../haystack-fast-api-pipeline/deploy-pipeline/) — study [`haystack-CD-feasibility/HAYSTACK-CD-FEASIBILITY.md`](haystack-CD-feasibility/HAYSTACK-CD-FEASIBILITY.md). REST **app** CD (live): [`../heavy-rental-rest-api/deploy-pipeline/`](../heavy-rental-rest-api/deploy-pipeline/) — study [`rest-api-CD-feasibility/REST-API-CD-FEASIBILITY.md`](rest-api-CD-feasibility/REST-API-CD-FEASIBILITY.md). Portal **app** CD (live): [`../heavy-rental-web-portal-pipeline/deploy-pipeline/`](../heavy-rental-web-portal-pipeline/deploy-pipeline/) — study [`web-portal-CD-feasibility/WEB-PORTAL-CD-FEASIBILITY.md`](web-portal-CD-feasibility/WEB-PORTAL-CD-FEASIBILITY.md) (public ALB only; nginx `/api` → internal REST ALB). Each discovers its ASG via the AWS API — they do not create EC2.
 
 ---
 
@@ -425,7 +425,7 @@ Attach **`LabInstanceProfile`** (`LabRole`). Actions / Vocareum user: `PutSecret
 
 **Academy cannot enforce per-ASG `GetSecretValue`.** Every instance shares `LabRole`. If that role can read `heavy-rental/rest`, the portal host can too. Treat isolation as **convention**: Ansible writes only that role’s JSON to `.env`; do not fetch `sk_` or PEMs onto `asg-portal`. **Paid** must use **separate instance profiles** so portal cannot read `heavy-rental/rest` or `heavy-rental/ssh/*`. Configurer / Vocareum user: `GetSecretValue` on `heavy-rental/ssh/*`.
 
-`configure-only` still runs **sync-secrets** then **`sync-ssh-keys`** (only if instances are InService) then Ansible so a password, Stripe, or SSH-key change lands in AWS without a full apply.
+`configure-only` still runs **sync-secrets** then **`sync-ssh-keys`** (only if instances are InService) then Ansible **`configure.yml`** (Docker + Compose on all guests; Neo4j compose). Portal / REST / Haystack **images** are app CD.
 
 #### GitHub Environment inventory (not one list for every project)
 
@@ -621,7 +621,7 @@ These apply to the **current** design (§6 Academy, §6P paid). They do **not** 
 
 #### Fault tolerance
 
-**Academy:** Public and internal ALBs. ELB health checks **replace** an unhealthy portal / REST / Haystack node. Each of those ASGs already runs **one guest per AZ** (`desired=2`). Both RDS instances are Multi-AZ (primary + **standby**, still one writer each). Two Neo4j guests sit behind an **internal Bolt NLB**; Neo4j is **derived state** — if a guest is replaced, `neo4j-populate` rebuilds the graph from the SoR RDS. After a Vocareum restart, `configure-only` brings containers back.
+**Academy:** Public and internal ALBs. ELB health checks **replace** an unhealthy portal / REST / Haystack node. Each of those ASGs already runs **one guest per AZ** (`desired=2`). Both RDS instances are Multi-AZ (primary + **standby**, still one writer each). Two Neo4j guests sit behind an **internal Bolt NLB**; Neo4j is **derived state** — if a guest is replaced, `neo4j-populate` rebuilds the graph from the SoR RDS. After a Vocareum restart, `configure-only` refills SM, installs Docker + Compose, and composes Neo4j; portal / REST / Haystack **images** are app CD.
 
 **Limit:** One **NAT** in public AZ-0. If that NAT or AZ-0 dies, **all** private outbound (SSM, ECR, yum) fails. Two Neo4j guests are **not** a cluster — NLB may hash populate to one node. Session end **does not** freeze credits.
 
@@ -629,7 +629,7 @@ These apply to the **current** design (§6 Academy, §6P paid). They do **not** 
 
 #### Maintainability
 
-**Academy:** Terraform owns VPC/ASG/ALB/both RDS/NLB; Ansible owns Docker, `.env`, and RDS *logical* state (roles/grants/extensions — Terraform already created the instances). `configure-only` updates images/secrets without recreating RDS. Secrets live in Secrets Manager, not `.tf`. CI builds the image; CD deploys it. Operators use SSM (PEM only after InService, break-glass). Academy and paid are **two workflows / two states**.
+**Academy:** Terraform owns VPC/ASG/ALB/both RDS/NLB; Ansible owns Docker, `.env`, and RDS *logical* state (roles/grants/extensions — Terraform already created the instances). `configure-only` updates secrets (and Neo4j compose) without recreating RDS. App images are app CD. Secrets live in Secrets Manager, not `.tf`. CI builds the image; CD deploys it. Operators use SSM (PEM only after InService, break-glass). Academy and paid are **two workflows / two states**.
 
 **Limit:** Vocareum tokens expire; lab **reset** wipes S3 state — re-apply from Git.
 
@@ -1651,7 +1651,7 @@ App CD auth: academy three keys on Environment only (§8.7)
 - **`academy`:** fallback secrets `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_SESSION_TOKEN` (or paste them on Run workflow — they change every Start Lab). Also `SPRING_DATASOURCE_PASSWORD`, `NEO4J_PASSWORD`, Stripe trio. Variable: `AWS_REGION`. **Vocareum only.**
 - **`paid`:** variables `AWS_ROLE_TO_ASSUME` + `AWS_REGION`. Same **app** secrets. **No** Vocareum access keys. Admin has already created GitHub OIDC + role `github-actions-infra`.
 - Copy [`aws-infra-pipeline.example.yml`](aws-infra-pipeline.example.yml) → `.github/workflows/aws-infra-academy.yml` and [`aws-infra-paid-pipeline.example.yml`](aws-infra-paid-pipeline.example.yml) → `aws-infra-paid.yml`.
-- Portal **app** CD (Academy compose): `heavy-rental-web-portal-pipeline/deploy-pipeline/`. REST **app** CD (Academy compose): `heavy-rental-rest-api/deploy-pipeline/`. Haystack app CD still later. They do **not** create the estate.
+- Portal **app** CD (Academy compose): `heavy-rental-web-portal-pipeline/deploy-pipeline/`. REST **app** CD (Academy compose): `heavy-rental-rest-api/deploy-pipeline/`. Haystack **app** CD skeleton (discover only): `haystack-fast-api-pipeline/deploy-pipeline/`. They do **not** create the estate.
 - Optional: Environment variable `IMAGE_HTTP_URL` (HTTPS tar). **Academy** may paste Vocareum keys on the Run form; **paid must not**.
 
 **CI (already exists)** — Release pipelines produce:
@@ -1688,7 +1688,7 @@ Trigger: **`workflow_dispatch` only**. Form: `action`, `aws_environment`, `confi
 | `plan` | Job `terraform` | `init` → `plan` |
 | `apply` | Job `terraform` | `init` → `plan` → `apply` |
 | `destroy` | Job **`destroy`** (not the plan/apply job) | `confirm_destroy == destroy` → `init` → `destroy -auto-approve` |
-| `configure-only` | **Skipped** | `sync-secrets` + `sync-ssh-keys` + Ansible only |
+| `configure-only` | **Skipped** | `sync-secrets` + `sync-ssh-keys` + Ansible `configure.yml` (Docker + Neo4j) |
 | `stop` | **Skipped** | AWS CLI: ASG desired=0 + `rds stop-db-instance` (not `terraform destroy`) |
 
 Do **not** `apply` on push or pull_request. Timeouts in the examples: plan/apply **30** minutes; destroy **60** minutes.
@@ -1779,13 +1779,13 @@ App CD does **not** create these secrets. It only `describe-secret` / the guest 
 
 ### 8.3 Ansible on the guests (after secrets)
 
-Full contract: [`ANSIBLE-PROCESS.md`](ANSIBLE-PROCESS.md). Ansible runs on `apply` and `configure-only`. It does **not** run on `stop` or `destroy`.
+Full contract: [`ANSIBLE-PROCESS.md`](ANSIBLE-PROCESS.md). Ansible runs on `apply` (all four groups, first compose) and `configure-only` (Docker + Compose on all guests; **Neo4j compose only**). It does **not** run on `stop` or `destroy`.
 
 #### When and how it connects
 
 ```
 Infra apply:     Terraform (EC2 InService) → sync-secrets → sync-ssh-keys → Ansible (all four groups)
-configure-only:  sync-secrets + sync-ssh-keys + Ansible   (no terraform apply)
+configure-only:  sync-secrets + sync-ssh-keys + Ansible configure.yml   (Docker + Compose; Neo4j compose; no app images)
 App CD later:    discover ASG → same playbook, one group (portal | rest | haystack). No terraform. No neo4j group.
 ```
 
@@ -1845,7 +1845,7 @@ Students use the **public portal ALB DNS** only. Operators use SSM.
 | Goal | Workflow | `action` | Terraform? | Ansible? |
 | --- | --- | --- | --- | --- |
 | Preview `.tf` | Infra | `plan` | `init`+`plan` | No |
-| New image / secret / after Start Lab | Infra | `configure-only` | **No** | Yes (all four groups) |
+| New secret / after Start Lab | Infra | `configure-only` | **No** | Docker + Neo4j. Portal / REST / Haystack **images** = app CD |
 | Pause for the lab day | Infra | `stop` | **No** | No — ASG desired=0 + stop **both** RDS |
 | Wipe the estate | Infra | `destroy` + `confirm_destroy=destroy` | `destroy` | No |
 | New portal / REST / Haystack image only | App CD | `deploy` | **No** | One group only |
