@@ -44,10 +44,10 @@ Infrastructure, deploy, and operate belong to **another project**. This file is 
 | Question | Answer |
 | --- | --- |
 | Can we build this on this Vocareum lab? | **Yes.** The lab is **long-lived** (resources persist; EC2 is stopped at session end and restarted next Start Lab). Stay on the Readme allow-list and the credit budget. |
-| EKS or simpler? | **Still simpler than EKS.** Prefer **VPC + four EC2 Auto Scaling groups + ALBs + one RDS**. REST and Haystack are **internal**; only the portal is public. RDS and Neo4j sit in a **separate private data-subnet pair**. |
-| Ansible for EC2 + RDS sync? | **Yes — for configuration, not for creating the VPC/ASG/RDS.** Terraform creates ASGs, ALBs, the data subnets, and the database. Ansible installs Docker per ASG, writes env files, extensions, Neo4j on `asg-neo4j`, and Haystack sync/populate. |
+| EKS or simpler? | **Still simpler than EKS.** Prefer **VPC + four EC2 Auto Scaling groups + ALBs + two RDS**. REST and Haystack are **internal**; only the portal is public. Both RDS instances and Neo4j sit in a **separate private data-subnet pair**. |
+| Ansible for EC2 + RDS sync? | **Yes — for configuration, not for creating the VPC/ASG/RDS.** Terraform creates ASGs, ALBs, the data subnets, and **both** databases. Ansible installs Docker per ASG, writes env files, extensions, Neo4j on `asg-neo4j`, and Haystack sync/populate. |
 | Dedicated ALB for REST? | **Yes — a dedicated internal ALB** (`scheme=internal`). REST is not on the public ALB. Same pattern as Haystack. |
-| Recommended shape | **Academy (§6):** one VPC, three subnet tiers, four ASGs, one single-AZ RDS, one Neo4j. **Paid (§6P):** same tiers in a **separate** account; Multi-AZ RDS / second RDS / NAT Gateway / HTTPS optional. REST and Haystack: dedicated **internal** ALBs. No public 8080/8000/5432/7687. |
+| Recommended shape | **Academy (§6):** one VPC, three subnet tiers, four ASGs at **desired=2** (portal/React, REST/Spring Boot, Haystack, Neo4j — one guest per AZ), **two Multi-AZ RDS**, two Neo4j guests behind an **internal Bolt NLB**, **two NAT Gateways** (**8 EC2**). **Paid (§6P):** same tiers in a **separate** account; HTTPS / OIDC / created IAM optional. REST and Haystack: dedicated **internal** ALBs. No public 8080/8000/5432/7687. |
 | CI vs CD | **CI** (this repo’s Release pipelines) **builds and publishes Docker images**. **CD** (this study — `aws-infra-academy.yml` / `aws-infra-paid.yml`) is the only apply path to AWS. CD does not rebuild the app. |
 | GitHub Environments | The **maintainer** configures Environments **`academy`** and **`paid`** on the CD repo. CI trees use **other** Environments (`integration`, `production`) or **none**. Inventory: **§6.0c**. GitHub does not share Environments across repos. |
 | Trigger / CD pipeline | **Academy CD:** Environment `academy` + Vocareum AWS keys. **Paid CD:** Environment `paid` + OIDC. Never one workflow for both accounts. |
@@ -80,8 +80,8 @@ These watch and recover what **Deploy** already built. They are not a third CD w
 
 | Phase | AWS service | Academy notes |
 | --- | --- | --- |
-| Operate | **Systems Manager Session Manager** | **Yes, including `asg-haystack` and `asg-neo4j`.** Same as portal and REST. Launch template uses **`LabInstanceProfile`** (`LabRole`). Amazon Linux has the SSM agent. **No SSH :22 and no public IP required** if the instance can reach SSM (`ssm`, `ssmmessages`, `ec2messages`) via a **NAT instance** (`t3.nano`) or **VPC interface endpoints**. Data-subnet Neo4j has no public IP — Session Manager is the only operate path. Do **not** add a NAT Gateway on Academy. Vocareum documents LabRole + Session Manager “terminal in the browser.” |
-| Operate | ASG desired=0 / instance stop; **RDS stop** | `action=stop` on the CD workflow — lab-day cost control. Must include `asg-neo4j` and the RDS instance. Does **not** delete the VPC or ALBs. |
+| Operate | **Systems Manager Session Manager** | **Yes, including `asg-haystack` and `asg-neo4j`.** Same as portal and REST. Launch template uses **`LabInstanceProfile`** (`LabRole`). Amazon Linux has the SSM agent. **No SSH :22 and no public IP required** if the instance can reach SSM (`ssm`, `ssmmessages`, `ec2messages`) via the **same-AZ NAT Gateway** or **VPC interface endpoints**. Data-subnet Neo4j has no public IP — Session Manager is the only operate path. Vocareum documents LabRole + Session Manager “terminal in the browser.” |
+| Operate | ASG desired=0 / instance stop; **RDS stop** | `action=stop` on the CD workflow — lab-day cost control. Must include `asg-neo4j` and **both** RDS instances (`heavy-rental-academy` and `heavy-rental-haystack-academy`). Does **not** delete the VPC or ALBs. |
 | Operate | **`terraform destroy`** | `action=destroy` on the **same** CD workflow — removes **every AWS resource Terraform created** in that state (VPC, ASGs, ALBs, RDS, secret shells, …). See **§7.2d**. |
 | Monitor | **CloudWatch Logs** | ALB + instance/docker logs |
 | Monitor | **CloudWatch Metrics + Alarms** | Public ALB 5xx, unhealthy targets, RDS CPU, EC2 status |
@@ -128,7 +128,7 @@ This lab’s Readme (2025-06-24) is **broader** than older “Foundation Service
 | Budget | Exceeding budget **disables the account and deletes everything** | Stop EC2/RDS when idle. Avoid NAT Gateway and EKS control plane. |
 | IAM | **Cannot create users, groups, or roles** (service-linked roles only). Use **`LabRole`** / **`LabInstanceProfile`**. EKS uses pre-created **`LabEksClusterRole`** | No GitHub OIDC provider. Attach LabRole everywhere a service asks for a role. |
 | EC2 | Quick Start / My / Community AMIs; **no Marketplace**. nano–**large**. ≤ **9** instances; ≤ **32** vCPU. ≥20 instances **wipes the account** | Docker on Amazon Linux (or another Quick Start Linux). App runtimes stay in **containers**. |
-| RDS | PostgreSQL (and others). nano–**medium**. ≤ 100 GB gp2. **No enhanced monitoring**. **No Multi-AZ**. Lab may **not** stop RDS when the session ends | One small instance in a **private data-subnet group** (still **two AZs** — AWS requires that even when `multi_az = false`). `publicly_accessible = false`. Stop it yourself. AWS auto-starts a DB left stopped for 7 days. |
+| RDS | PostgreSQL (and others). nano–**medium**. ≤ 100 GB gp2. **No enhanced monitoring**. The 2025-06-24 Readme still **publishes “No Multi-AZ”**. Lab may **not** stop RDS when the session ends | **Implemented lab default:** two `db.t3.micro` instances in the **private data-subnet group**, both `multi_az = true` (primary + standby). Engine prefer **12.22**, then **11.22**. `publicly_accessible = false`. Stop **both** yourself. AWS auto-starts a DB left stopped for 7 days. If a future Vocareum image rejects Multi-AZ, fall back to `multi_az = false` on the **same two** instances. |
 | ECS / Fargate | **Allowed.** Task role **and** execution role = **`LabRole`**. For ECS on EC2, create the ASG first (cannot create extra IAM roles) | Feasible, not required. Compose-on-EC2 is simpler and matches today’s network. |
 | EKS | **Allowed** with **`LabEksClusterRole`** (cluster + node). Instance types nano–large | Feasible, still the wrong default for this estate (cost, IAM, ops). |
 | ECR | Console user can **write**; **LabRole is read-only** | Push images as the Vocareum user. EC2 with LabRole can **pull**. |
@@ -145,12 +145,12 @@ Intact ≠ free.
 
 | Resource | After Vocareum session ends | Credit impact |
 | --- | --- | --- |
-| EC2 (four ASGs + NAT instance) | Usually **stopped** (not terminated) | **No** instance-hours while stopped. **Yes** EBS volumes (root + Neo4j `/data`) still bill. |
-| **RDS Postgres** | Lab often **does not** stop it | **Yes — this is the usual leak.** A left-on `db.t3.micro` / `small` runs 24/7. |
+| EC2 (four ASGs at desired=2 = **8**) | Usually **stopped** (not terminated) | **No** instance-hours while stopped. **Yes** EBS volumes (root + Neo4j `/data`) still bill. |
+| **RDS Postgres (two Multi-AZ instances)** | Lab often **does not** stop them | **Yes — this is the usual leak.** Two left-on `db.t3.micro` Multi-AZ instances run 24/7. |
 | Public + internal **ALBs** | Left in place (`action=stop` does not delete them) | **Yes** — ALBs have an hourly charge even with no traffic. |
 | VPC / subnets / SGs | Intact | No meaningful charge. |
 | Secrets Manager / ECR images | Intact | Small ongoing storage. |
-| NAT Gateway | **Not** in this design | Would bill 24/7 — that is why it is forbidden. |
+| NAT Gateway (two, one per public AZ) | Left in place (`action=stop` cannot pause them) | **Yes — bill 24/7 until `destroy`.** Session end does not stop Gateways. |
 | RDS after **`action=stop`** | **Stopped** | Compute stops; **storage** still bills. AWS **auto-starts** a DB left stopped for **7 days**. |
 
 **Before you walk away:** GitHub Actions → this CD workflow → **`action=stop`**. That is the pipeline path that stops **RDS** (and ASGs if Vocareum has not already). Session end alone is not enough for RDS.
@@ -159,7 +159,7 @@ Intact ≠ free.
 
 `action=stop` is **pause** (credit control). It is **not** `terraform destroy`. ALBs, the VPC, secret shells, and RDS **storage** stay and still bill.
 
-`action=destroy` is **teardown**. It runs `terraform destroy` against **that pipeline’s state** and deletes **every AWS resource Terraform created** (VPC, three subnet tiers, four ASGs, public + internal ALBs, RDS, NAT instance, secret shells, TF-owned ECR, …). Daily lab end is still `stop`. Use `destroy` at end of class, after a failed estate you want wiped, or when credits must go to zero. See **§7.2d**.
+`action=destroy` is **teardown**. It runs `terraform destroy` against **that pipeline’s state** and deletes **every AWS resource Terraform created** (VPC, three subnet tiers, four ASGs, public + internal ALBs, RDS, two NAT Gateways + EIPs, secret shells, TF-owned ECR, …). Daily lab end is still `stop` for EC2/RDS; **NAT Gateways keep billing until destroy**. Use `destroy` at end of class, after a failed estate you want wiped, or when credits must go to zero. See **§7.2d**.
 
 ---
 
@@ -186,7 +186,7 @@ From [heavy-rental-devcontainer-configuration](https://github.com/Heavy-Rental/h
 | `neo4j` | Bolt 7687 / Browser 7474 | Yes — Bolt **private**, in the **data subnet** (not on the Haystack host) |
 | `neo4j-populate` | SQL → Cypher; HTTP :8089 | Yes — worker on `asg-haystack`; HTTP internal only |
 
-REST also documents a **read-replica** compose variant. Academy **forbids Multi-AZ RDS**. Do **not** implement a replica in the lab.
+REST also documents a **read-replica** compose variant. Academy Multi-AZ is a **standby** (same writer), **not** a read replica. Do **not** add a replica instance in the lab.
 
 ### 4.3 What Release already produces
 
@@ -238,7 +238,7 @@ Beanstalk **is** listed (use `LabRole` + `LabInstanceProfile`). It is a poor mat
 
 This section is the **lab** design. REST and Haystack are **internal servers**. Only the Vite/nginx **portal** is internet-facing. The **paid** account is a **separate VPC** with the same three tiers plus extras — see **§6P**.
 
-Two AZs of **subnets**. **One** RDS. **One** Neo4j. Academy **forbids Multi-AZ RDS**. A subnet in each AZ is not a database in each AZ.
+Two AZs of **subnets**, not two full copies of the stack. Each app/Neo4j ASG runs **one guest per AZ** (`desired=2`). Portal (React), REST (Spring Boot), and Haystack ALBs span both AZs. **Two** Multi-AZ RDS instances (SoR + Haystack). **Two** NAT Gateways (one per public AZ). Guest count is **8 EC2**.
 
 ```
                          Internet
@@ -249,38 +249,36 @@ Two AZs of **subnets**. **One** RDS. **One** Neo4j. Academy **forbids Multi-AZ R
          │                     VPC  us-east-1  (Academy)                    │
          │                                                                  │
          │   public subnets                                                 │
-         │   AZ-a 10.0.0.0/24              AZ-b 10.0.1.0/24                 │
+         │   AZ-0 10.0.0.0/24              AZ-1 10.0.1.0/24                 │
          │   ┌─────────────────────────────┬─────────────────────────────┐  │
-         │   │         Public ALB (spans both)  portal :80 only          │  │
-         │   │         NO /api  NO /haystack  NO 5432  NO 7687           │  │
+         │   │ NAT t3.nano (AZ-0 only)     │  (ALB only)                 │  │
+         │   │ Public ALB (spans both)  portal :80 only                  │  │
+         │   │ NO /api  NO /haystack  NO 5432  NO 7687                   │  │
          │   └──────────────┬──────────────┴─────────────────────────────┘  │
          │                  │ target :80                                    │
-         │   private APP subnets                                            │
-         │   AZ-a 10.0.10.0/24             AZ-b 10.0.11.0/24                │
+         │   private APP subnets  — 0.0.0.0/0 → shared NAT in AZ-0          │
+         │   AZ-0 10.0.10.0/24             AZ-1 10.0.11.0/24                │
          │   ┌─────────────────────────────┬─────────────────────────────┐  │
-         │   │ ASG portal  nginx :80       │  (ASG may land in either AZ;│  │
-         │   │ Internal ALB REST :8080     │   desired=1 → one instance) │  │
-         │   │ Internal ALB Haystack :8000 │                             │  │
-         │   │ ASG rest Tomcat:8080 ──────►│ ASG haystack uvicorn:8000   │  │
-         │   │                             │ + sync + populate           │  │
-         │   │                             │ (no Neo4j on haystack)      │  │
+         │   │ asg-portal x1  nginx :80    │ asg-portal x1               │  │
+         │   │ asg-rest x1    Tomcat:8080  │ asg-rest x1                 │  │
+         │   │ asg-haystack x1 uvicorn     │ asg-haystack x1             │  │
+         │   │ Internal ALB REST :8080  +  Internal ALB Haystack :8000   │  │
+         │   │ (no Neo4j on haystack)      │ desired=2 → one per AZ      │  │
          │   └──────────────┬──────────────┴──────────────┬──────────────┘  │
-         │                  │ JDBC                        │ Bolt / JDBC     │
+         │                  │ JDBC                        │ Bolt NLB / JDBC │
          │                  ▼                             ▼                 │
          │   private DATA subnets  — no IGW, no public IPs                  │
-         │   AZ-a 10.0.20.0/24             AZ-b 10.0.21.0/24                │
+         │   AZ-0 10.0.20.0/24             AZ-1 10.0.21.0/24                │
          │   ┌─────────────────────────────┬─────────────────────────────┐  │
-         │   │ ONE RDS Postgres :5432      │ empty capacity              │  │
-         │   │   multi_az=false            │ (required in subnet group;  │  │
-         │   │ ONE asg-neo4j  neo4j:5      │  not a second RDS/Neo4j)    │  │
-         │   │   Bolt :7687  max=1         │                             │  │
-         │   │ (RDS and Neo4j each sit in  │                             │  │
-         │   │  one AZ, not both)          │                             │  │
+         │   │ asg-neo4j x1  neo4j:5       │ asg-neo4j x1  neo4j:5       │  │
+         │   │ RDS SoR primary             │ RDS SoR standby             │  │
+         │   │ RDS Haystack primary        │ RDS Haystack standby        │  │
+         │   │ Internal Bolt NLB :7687 (spans both; not a cluster)       │  │
          │   └─────────────────────────────┴─────────────────────────────┘  │
          └──────────────────────────────────────────────────────────────────┘
 ```
 
-\*Public ALB stays **HTTP :80** unless the class already has a domain + ACM cert. REST, Haystack, RDS, and Neo4j **never** get a public listener. RDS and Neo4j may share AZ-a, or one may land in AZ-b — still **one of each**.
+\*Public ALB stays **HTTP :80** unless the class already has a domain + ACM cert. REST, Haystack, RDS, and Neo4j **never** get a public listener. Two Neo4j guests share an NLB; they are **not** a causal cluster. If the NAT or public AZ-0 dies, all private outbound (SSM, ECR, yum) fails.
 
 ### 6.0 Internal servers (REST + Haystack)
 
@@ -306,16 +304,16 @@ There is **no standalone EC2**. Each compute role is a launch template + Auto Sc
 
 | ASG | Subnet tier | What runs | Registers with | Academy size |
 | --- | --- | --- | --- | --- |
-| `asg-portal` | Private **app** | nginx portal image | **Public** ALB `tg-portal` :80 | min 1, desired 1, max 2 |
-| `asg-rest` | Private **app** | Tomcat + WAR | **Internal** REST ALB `tg-rest` :8080 | min 1, desired 1, max 2 |
-| `asg-haystack` | Private **app** | uvicorn Haystack + sync + populate (+ optional pgvector container). **No Neo4j.** | **Internal** Haystack ALB `tg-haystack` :8000. SSM via `LabInstanceProfile`. | min 1, desired 1, max 2 |
-| `asg-neo4j` | Private **data** | `neo4j:5` container only | **None** (no ALB on Academy). SSM via `LabInstanceProfile`. Bolt from `sg-haystack` only. | min 1, desired 1, **max 1** |
+| `asg-portal` | Private **app** | nginx portal image | **Public** ALB `tg-portal` :80 | min 2, desired 2, max 2 |
+| `asg-rest` | Private **app** | Tomcat + WAR | **Internal** REST ALB `tg-rest` :8080 | min 2, desired 2, max 2 |
+| `asg-haystack` | Private **app** | uvicorn Haystack + sync + populate. **No Neo4j.** | **Internal** Haystack ALB `tg-haystack` :8000. SSM via `LabInstanceProfile`. | min 2, desired 2, max 2 |
+| `asg-neo4j` | Private **data** | `neo4j:5` container only | **Internal NLB** `tg-neo4j` :7687. SSM via `LabInstanceProfile`. | min 2, desired 2, max 2 |
 
-Hard caps still apply across **all** ASGs: ≤ **9** instances, ≤ **32** vCPU, class ≤ **large**. Default desired=1 on each of the **four** ASGs so the lab stays at four instances (five if a `t3.nano` NAT instance is used). That is inside the Vocareum cap.
+Hard caps still apply: ≤ **9** instances, ≤ **32** vCPU, class ≤ **large**. Default is **2+2+2+2 ASG = 8 EC2** (Vocareum default cap 9). NAT Gateways are not EC2.
 
-ASG health: ELB health checks on portal / REST / Haystack so an unhealthy node is replaced. **`asg-neo4j` uses EC2 health only** (no ELB) and **scale-in protection** — it is stateful. Scale policies stay **off** (no CPU scale-out that burns credits).
+ASG health: ELB health checks on portal / REST / Haystack so an unhealthy node is replaced. **`asg-neo4j` uses EC2 health only** (NLB TCP check does not replace the guest) and **scale-in protection** — each guest is stateful. Two Neo4j guests are **independent** (not a causal cluster). Scale policies stay **off** (no CPU scale-out that burns credits).
 
-RDS is not EC2 — no ASG. Neo4j is a container on **`asg-neo4j` in the data subnets**, not a sidecar on Haystack. Marketplace AMI is forbidden, so the host is Amazon Linux + Docker + `LabInstanceProfile`. Neo4j is **derived state** (SQL → Cypher via `neo4j-populate`); if the instance is replaced, Ansible re-pulls `neo4j:5` and the populate worker rebuilds the graph from RDS.
+RDS is not EC2 — no ASG. Neo4j is a container on **`asg-neo4j` in the data subnets**, not a sidecar on Haystack. Marketplace AMI is forbidden, so the host is Amazon Linux + Docker + `LabInstanceProfile`. Neo4j is **derived state** (SQL → Cypher via `neo4j-populate`); if a guest is replaced, Ansible re-pulls `neo4j:5` and the populate worker rebuilds the graph from the SoR RDS. The NLB may hash populate to **one** node — accepted (not a cluster).
 
 ### 6.0c Credentials live in AWS Secrets Manager
 
@@ -334,9 +332,9 @@ Never put Vocareum `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` / `AWS_SESSION_
 
 | Secrets Manager id | ASG | JSON fields |
 | --- | --- | --- |
-| `heavy-rental/portal` | `asg-portal` | `REST_BASE_URL` (internal REST ALB Terraform output). **Stripe (portal):** `STRIPE_PUBLISHABLE_KEY` (from GitHub Environment). **Never** `STRIPE_SECRET_KEY` or `STRIPE_WEBHOOK_SECRET` on the portal — those are REST-only. |
-| `heavy-rental/rest` | `asg-rest` | **Postgres (all of):** `POSTGRES_HOST` (RDS endpoint hostname from Terraform — data-subnet address, not public), `POSTGRES_PORT` (`5432`), `POSTGRES_DATABASE` (`heavy_rental`), `POSTGRES_USERNAME`, `POSTGRES_PASSWORD`, `POSTGRES_URL` / `SPRING_DATASOURCE_URL` (`jdbc:postgresql://<host>:<port>/<database>`). Also `SPRING_DATASOURCE_USERNAME` / `SPRING_DATASOURCE_PASSWORD` (same user/password). `HAYSTACK_URL` (internal Haystack ALB). **Stripe (REST):** `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `STRIPE_PUBLISHABLE_KEY` (same publishable key as the portal). |
-| `heavy-rental/haystack` | `asg-haystack` | Same Postgres **field set** for the Haystack DB (same RDS host/port on Academy; `POSTGRES_DATABASE` may be the Haystack db name). `DATABASE_URL` (`postgresql://user:pass@host:port/db`). `NEO4J_URI` (from `asg-neo4j` private IP, e.g. `bolt://10.0.20.x:7687` — not localhost), `NEO4J_USER`, `NEO4J_PASSWORD`, `LLM_API_KEY` if used. No Stripe. |
+| `heavy-rental/portal` | `asg-portal` | `REST_BASE_URL` (internal REST ALB). **Stripe:** `STRIPE_PUBLISHABLE_KEY` and `VITE_STRIPE_PUBLISHABLE_KEY` (same `pk_`). **Never** `STRIPE_API_KEY` or `STRIPE_WEBHOOK_SECRET` on the portal. |
+| `heavy-rental/rest` | `asg-rest` | **Postgres (all of):** `POSTGRES_HOST` (RDS endpoint hostname from Terraform — data-subnet address, not public), `POSTGRES_PORT` (`5432`), `POSTGRES_DATABASE` (`heavy_rental`), `POSTGRES_USERNAME`, `POSTGRES_PASSWORD`, `POSTGRES_URL` / `SPRING_DATASOURCE_URL` (`jdbc:postgresql://<host>:<port>/<database>`). Also `SPRING_DATASOURCE_USERNAME` / `SPRING_DATASOURCE_PASSWORD` (same user/password). `HAYSTACK_URL` (internal Haystack ALB). **Stripe (REST):** `STRIPE_API_KEY`, `STRIPE_WEBHOOK_SECRET`, `STRIPE_PUBLISHABLE_KEY` (same publishable key as the portal). |
+| `heavy-rental/haystack` | `asg-haystack` | Same Postgres **field set** for the **Haystack RDS** (`POSTGRES_HOST` = Haystack instance endpoint, `POSTGRES_DATABASE` = `haystack`). `DATABASE_URL` (`postgresql://user:pass@host:port/db`). `NEO4J_URI` from the **internal Bolt NLB** (`bolt://<nlb-dns>:7687` — not localhost, not a guest private IP), `NEO4J_USER`, `NEO4J_PASSWORD`, `LLM_API_KEY` if used. No Stripe. |
 | `heavy-rental/neo4j` | `asg-neo4j` | `NEO4J_USER`, `NEO4J_PASSWORD`. No Postgres password dump, no Stripe, no LLM key. |
 
 Terraform **must create** these secret **shells** on `apply` (empty JSON is fine). It does not put passwords or Stripe values in `.tf`. **`sync-secrets` must then write every field in the table** (GitHub Environment values + RDS hostname/port/db name + JDBC/URI strings it **builds**). App CD **fails** if the shell is missing or a required field is empty (`describe-secret` / compose `get-secret-value`). Infra `apply` is not done until those parameters exist.
@@ -347,9 +345,9 @@ Terraform **must create** these secret **shells** on `apply` (empty JSON is fine
 
 | JSON field | Source | Example |
 | --- | --- | --- |
-| `POSTGRES_HOST` | Terraform RDS endpoint hostname | `heavy-rental.xxxx.us-east-1.rds.amazonaws.com` |
+| `POSTGRES_HOST` | Terraform RDS endpoint hostname (**SoR** for REST, **Haystack** for Haystack) | `heavy-rental-academy.xxxx.us-east-1.rds.amazonaws.com` |
 | `POSTGRES_PORT` | Terraform (default `5432`) | `5432` |
-| `POSTGRES_DATABASE` | Convention / Ansible | `heavy_rental` (REST) or Haystack db name |
+| `POSTGRES_DATABASE` | Terraform initial DB name | `heavy_rental` (REST / SoR) or `haystack` |
 | `POSTGRES_USERNAME` | GitHub Environment | `heavy_rental` |
 | `POSTGRES_PASSWORD` | GitHub Environment `SPRING_DATASOURCE_PASSWORD` (or Haystack equivalent) | *(never log)* |
 | `POSTGRES_URL` | Built by Actions | REST: `jdbc:postgresql://<host>:<port>/<database>`. Haystack: `postgresql://<user>:<password>@<host>:<port>/<database>` |
@@ -361,10 +359,10 @@ Spring Boot also maps `SPRING_DATASOURCE_URL` = `POSTGRES_URL`, `SPRING_DATASOUR
 | Field | `heavy-rental/portal` | `heavy-rental/rest` | Source |
 | --- | --- | --- | --- |
 | `STRIPE_PUBLISHABLE_KEY` | **Yes** (`pk_…`) | **Yes** | GitHub Environment |
-| `STRIPE_SECRET_KEY` | **No** | **Yes** (`sk_…`) | GitHub Environment |
+| `STRIPE_API_KEY` | **No** | **Yes** (`sk_…`) | GitHub Environment |
 | `STRIPE_WEBHOOK_SECRET` | **No** | **Yes** (`whsec_…`) | GitHub Environment |
 
-The React portal is a browser app: it may use the **publishable** key only. Charges, webhooks, and the secret key stay on the Spring REST API (private subnet). Do not bake `sk_` into the Vite image. `sync-secrets` fails if REST is missing `STRIPE_SECRET_KEY` when Stripe is in use.
+The React portal is a browser app: it may use the **publishable** key only. Charges, webhooks, and the secret key stay on the Spring REST API (private subnet). Do not bake `sk_` into the Vite image. `sync-secrets` fails if REST is missing `STRIPE_API_KEY` when Stripe is in use.
 
 #### SSH private keys (one per ASG — **after** EC2 is InService)
 
@@ -436,7 +434,7 @@ GitHub Environments are **per repository**. They are **not** defined the same wa
 | Haystack CI (Fast Feedback, Integration, Release) | **None** | No DB / Neo4j / LLM secrets | Workflows **fail** if `LLM_API_KEY` is set |
 | Portal CI | **None** for app config | `GITHUB_TOKEN` for GHCR | No Stripe in CI |
 | Mobile CI | **None** for AWS | APK only | Not deployed to the VPC |
-| **Infra CD Academy** (this study) | **`academy`** | Secrets: `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_SESSION_TOKEN`, `SPRING_DATASOURCE_PASSWORD`, `NEO4J_PASSWORD`, `STRIPE_PUBLISHABLE_KEY`, `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`. Variable: `AWS_REGION` | Vocareum keys for the **runner** only. App passwords feed `sync-secrets`. Example: `aws-infra-pipeline.example.yml` |
+| **Infra CD Academy** (this study) | **`academy`** | Secrets: `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_SESSION_TOKEN`, `SPRING_DATASOURCE_PASSWORD`, `NEO4J_PASSWORD`, `STRIPE_PUBLISHABLE_KEY`, `STRIPE_API_KEY`, `STRIPE_WEBHOOK_SECRET`. Variables: `AWS_REGION`, optional `PORTAL_IMAGE` / `REST_IMAGE` / `HAYSTACK_IMAGE` | Vocareum keys for the **runner** only. Live YAML: other project `aws-infra-academy.yml`. Example in this folder is a stub. |
 | **Infra CD Paid** | **`paid`** | Variables: `AWS_ROLE_TO_ASSUME`, `AWS_REGION`. Same **app** secrets as academy (Postgres password, Neo4j, Stripe). **No** Vocareum access keys | OIDC only |
 | **Portal / REST / Haystack app CD (Academy)** | **`academy`** (same **names** as infra; copy onto each app-CD repo) | Secrets (fallback): **`AWS_ACCESS_KEY_ID`**, **`AWS_SECRET_ACCESS_KEY`**, **`AWS_SESSION_TOKEN`**. Variable: `AWS_REGION`. Optional `IMAGE_HTTP_URL` | **Vocareum only.** Runner may paste the three keys on Run workflow (they change every Start Lab) or use Environment fallback. Never on paid. Never in SM / on EC2 |
 | **Portal / REST / Haystack app CD (Paid)** | **`paid`** | Variables: `AWS_ROLE_TO_ASSUME`, `AWS_REGION`. Optional `IMAGE_HTTP_URL`. **No** `AWS_ACCESS_KEY_ID` | OIDC only. Paid YAML **fails** if an access key is set |
@@ -466,12 +464,13 @@ Internal REST/Haystack ALBs stay HTTP inside the VPC. Do **not** enable HTTPS on
 | Public ingress | **Internet-facing ALB inside the VPC** (public subnets + IGW) | **Portal only** (`tg-portal` instance :80). HTTP :80 always. HTTPS :443 when an ACM cert exists. No REST, no Haystack. |
 | REST ingress | **Dedicated internal ALB** | `scheme=internal`, `tg-rest` :8080, health `GET /actuator/health` or `/` |
 | Haystack ingress | **Dedicated internal ALB** | `scheme=internal`, `tg-haystack` :8000, health `GET /docs` or `/health` |
-| Portal / REST / Haystack compute | **One ASG each** in the **private app** subnets (launch template + `LabInstanceProfile`) | Never a lone EC2. Images from ECR or GHCR tar. |
-| Neo4j compute | **`asg-neo4j`** in the **private data** subnets (launch template + `LabInstanceProfile`) | `neo4j:5` container. No Marketplace AMI. `max=1`. |
-| `postgres-primary` | **RDS PostgreSQL** in the **data subnet group only** | `publicly_accessible = false`. SG: `sg-rest` + `sg-haystack` only. Engine Postgres. Size micro/small. `multi_az = false`. |
-| `postgres-haystack` + pgvector | **Same one RDS, second database** *or* Postgres+pgvector **container on `asg-haystack`** | Two RDS instances will burn the budget. Confirm `CREATE EXTENSION vector`; if blocked, run `pgvector/pgvector:pg17` on the **app** ASG. |
-| `postgres-haystack-sync` | Container on **`asg-haystack`** | `SOURCE_HOST` = RDS endpoint (data subnet); `TARGET_HOST` = Haystack DB. |
-| Neo4j | Container on **`asg-neo4j`** (`neo4j:5`) | Bolt `7687` from `sg-haystack` only. Do not publish 7474/7687 to the internet. |
+| Portal / REST / Haystack compute | **One ASG each** in the **private app** subnets (launch template + **`LabInstanceProfile`**) | Never a lone EC2. Images from ECR or GHCR tar. Profile **must** use IAM role **`LabRole`**. Data-source both names; never create IAM. **desired=2** (one guest per app AZ). |
+| Neo4j compute | **`asg-neo4j`** in the **private data** subnets (launch template + **`LabInstanceProfile`**) | Same profile / **`LabRole`**. `neo4j:5` container. No Marketplace AMI. **desired=2** (one per data AZ). Not a causal cluster. |
+| NAT (Academy) | Two `aws_nat_gateway` + EIP (one per public AZ) | No instance profile. Each private subnet uses the Gateway in the **same** AZ. Bills until `destroy`. |
+| `postgres-primary` (SoR) | **RDS PostgreSQL** `heavy-rental-academy` / db `heavy_rental` in the **data subnet group only** | `publicly_accessible = false`. `multi_az = true`. SG: `sg-rest` + `sg-haystack` only. Engine = what Vocareum lists. This lab (2026-08-16): prefer **12.22**, then **11.22**. Do not pin 16.x. Size `db.t3.micro`. |
+| `postgres-haystack` | **Second RDS** `heavy-rental-haystack-academy` / db `haystack` in the **same data subnet group** | Same class, engine, password, Multi-AZ, and SGs. Terraform creates the instance because the Actions runner cannot `CREATE DATABASE` on private RDS. |
+| `postgres-haystack-sync` | Container on **`asg-haystack`** | Worker, **not** a third RDS. `SOURCE_HOST` = SoR RDS; `TARGET_HOST` = Haystack RDS. |
+| Neo4j | Container on **`asg-neo4j`** (`neo4j:5`) | Bolt `7687` via **internal NLB**. Do not publish 7474/7687 to the internet. |
 | `neo4j-populate` | Container on **`asg-haystack`** | Worker, not the database. Talks Bolt to `asg-neo4j` and SQL to RDS. Trigger URL stays internal (`http://neo4j-populate:8089` on the Haystack host). |
 | Image registry | **ECR** in us-east-1 | Copy from GHCR during a lab session, or `docker load` the release tar. Push `neo4j:5` to ECR so `asg-neo4j` does not pull Docker Hub through a NAT Gateway. |
 | App / Postgres / Stripe / SSH PEMs | **AWS Secrets Manager** | App JSON `heavy-rental/{portal,rest,haystack,neo4j}` (Postgres host/port/db/user/password/URL; Stripe on portal+REST). SSH PEMs `heavy-rental/ssh/{portal,rest,haystack,neo4j}`. Instances `get-secret-value` app JSON; configurer retrieves PEMs. |
@@ -487,14 +486,14 @@ Internal REST/Haystack ALBs stay HTTP inside the VPC. Do **not** enable HTTPS on
 
 | Tier | Example CIDRs | Route | Contents |
 | --- | --- | --- | --- |
-| Public (2 AZs) | `10.0.0.0/24`, `10.0.1.0/24` | `0.0.0.0/0` → IGW | Internet-facing **portal ALB only** + IGW. Optional NAT instance ENI lives here. |
-| Private **app** (2 AZs) | `10.0.10.0/24`, `10.0.11.0/24` | `0.0.0.0/0` → NAT instance (not NAT Gateway) | `asg-portal`, `asg-rest`, `asg-haystack`, both internal ALBs |
-| Private **data** (2 AZs) | `10.0.20.0/24`, `10.0.21.0/24` | No IGW. No public IPs. `map_public_ip_on_launch = false`. Outbound (Neo4j image pull / SSM) via the **same** NAT instance, or VPC endpoints | **RDS subnet group** + **`asg-neo4j` only** |
+| Public (2 AZs) | `10.0.0.0/24`, `10.0.1.0/24` | `0.0.0.0/0` → IGW | Internet-facing **portal ALB only** + IGW. **One NAT Gateway + EIP per AZ**. |
+| Private **app** (2 AZs) | `10.0.10.0/24`, `10.0.11.0/24` | `0.0.0.0/0` → NAT Gateway in the **same** AZ | `asg-portal` (React), `asg-rest` (Spring Boot), `asg-haystack` (one guest each per AZ), both internal ALBs |
+| Private **data** (2 AZs) | `10.0.20.0/24`, `10.0.21.0/24` | No IGW. No public IPs. `map_public_ip_on_launch = false`. Outbound via the same-AZ NAT Gateway, or VPC endpoints | **Both RDS** (Multi-AZ) + **`asg-neo4j` one guest per AZ** + internal Bolt NLB |
 
-- **Placement (read this twice):** the data subnet **group** lists **both** AZs because AWS requires two subnets for RDS. That is **not** Multi-AZ and **not** “one RDS per AZ” or “one Neo4j per AZ.” Academy runs **one** RDS (`multi_az = false`) and **one** `asg-neo4j` (`max=1`). Each process sits in **one** of the two data subnets. The other subnet is empty capacity.
+- **Placement:** two AZs ≠ two full copies. Each ASG places **one** guest in each AZ. Both RDS instances are Multi-AZ (primary in one AZ, standby in the other). Each private subnet uses the NAT Gateway in its **own** AZ. S3 uses a **gateway endpoint** (no NAT).
 - **RDS subnet group** lists **only** the two data subnets. `publicly_accessible = false`.
 - **Portal instances** do **not** need a public IP; the public ALB targets them inside the VPC.
-- **Outbound for private ASGs (image pulls):** **Do not use NAT Gateway** on a $50 lab. Prefer a **NAT instance** `t3.nano` shared by the app **and** data private route tables. If credits force it, `asg-portal` may use public subnets **still inside the VPC**, SG 80 only from `sg-alb-public`. REST / Haystack / Neo4j / RDS stay private with **no public IPs**.
+- **Outbound for private ASGs (image pulls):** two NAT Gateways (one per public AZ). Portal / REST / Haystack / Neo4j in AZ-n use the Gateway in public AZ-n. If AZ-0 dies, AZ-1 outbound stays up. Gateways bill until `destroy`. REST / Haystack / Neo4j / RDS stay private with **no public IPs**.
 - **Security groups:**
   - `sg-alb-public`: 80 (and 443 if used) from the internet
   - `sg-alb-rest`: 8080 from `sg-portal` only (and from `sg-alb-rest` health)
@@ -503,7 +502,7 @@ Internal REST/Haystack ALBs stay HTTP inside the VPC. Do **not** enable HTTPS on
   - `sg-rest`: 8080 from `sg-alb-rest`; egress `5432` to `sg-rds` **and `8000` to `sg-alb-haystack`** (Tomcat → `HAYSTACK_URL`). No egress `7687` (REST does not talk Bolt)
   - `sg-haystack`: 8000 from `sg-alb-haystack`; egress `5432` to `sg-rds` and `7687` to `sg-neo4j`; `8089` stays on the Haystack instance SG for the populate worker
   - `sg-rds`: **5432 from `sg-rest` and `sg-haystack` only** — not from `sg-portal`, `sg-alb-public`, `sg-neo4j`, or `0.0.0.0/0`
-  - `sg-neo4j`: **7687 from `sg-haystack` only**; optional `7474` from `sg-haystack` for SSM-forwarded Browser
+  - `sg-neo4j`: **7687 from `sg-haystack` and from the Bolt NLB / VPC CIDR**; optional `7474` from `sg-haystack` for SSM-forwarded Browser
   - Optional `:22` on each instance SG **only** from a management SG (for PEM break-glass). **Never** `:22` from `0.0.0.0/0`
   - No public 8080, 8000, 5432, 7474, 7687, or 8089
 
@@ -514,19 +513,19 @@ The data-subnet split uses only allow-listed building blocks. It does **not** ne
 | Concern | Academy answer |
 | --- | --- |
 | Extra subnets / route tables | Ordinary VPC. Vocareum allows VPC. |
-| RDS in a private subnet | Yes. `aws_db_subnet_group` on the two data subnets. `publicly_accessible = false`. `multi_az = false`. Class ≤ `medium`. Storage ≤ 100 GB gp2. No enhanced monitoring. |
-| Two AZs for a single-AZ RDS | **Required by AWS** for a subnet group, even when Multi-AZ is forbidden. Two data subnets, one RDS instance. |
+| RDS in a private subnet | Yes. `aws_db_subnet_group` on the two data subnets. `publicly_accessible = false`. **Two** instances, both `multi_az = true`. Class ≤ `medium`. Storage ≤ 100 GB gp2. No enhanced monitoring. |
+| Two AZs for Multi-AZ RDS | Required for the subnet group **and** used: primary + standby per instance. Still **one writer** per database. |
 | Neo4j with no Marketplace AMI | `neo4j:5` **container** on Amazon Linux in `asg-neo4j`. Attach `LabInstanceProfile`. Do **not** create an IAM role. |
-| Fourth ASG / instance count | Desired 1+1+1+1 = **4**, or **5** with a NAT instance. Cap is **9** instances / **32** vCPU / class ≤ **large**. Stay at desired=1. |
-| Neo4j memory | `asg-neo4j` = `t3.large` (allowed). `asg-haystack` can drop to `t3.small` once the graph process leaves it. Cap Neo4j heap 512m–1G as in compose. |
-| Image pull without NAT Gateway | Copy `neo4j:5` to **ECR** as the Vocareum user (LabRole is pull-only). `asg-neo4j` pulls via the **NAT instance** or **ECR + S3 VPC endpoints**. Never a NAT Gateway. |
-| SSM onto a data-subnet host | Same as Haystack: `LabInstanceProfile` + NAT instance **or** interface endpoints `ssm` / `ssmmessages` / `ec2messages`. No SSH :22. |
-| Secrets Manager from data subnet | `LabRole` can `GetSecretValue`. If there is no NAT, add a `secretsmanager` interface endpoint — or keep the shared NAT instance. |
-| Stateful Neo4j + ASG | `max=1`, EC2 health only, scale-in protection, EBS for `/data`. Graph is rebuildable from RDS via `neo4j-populate`. Do not invent Multi-AZ Neo4j on the lab. |
-| Session end vs credits | Vocareum **stops EC2** (including `asg-neo4j` and the NAT instance). **RDS and ALBs may keep billing.** See **§3.1**. `action=stop` must call `aws rds stop-db-instance`. Intact ≠ free. |
-| What Academy must **not** add for this split | NAT Gateway, a second RDS, Multi-AZ, Marketplace Neo4j AMI, a new IAM role, an internet-facing Neo4j/RDS address, EKS. |
+| Instance count | Desired 2+2+2+2 = **8**. Cap is **9** instances / **32** vCPU / class ≤ **large**. NAT Gateways are not EC2. |
+| Neo4j memory | `asg-neo4j` = `t3.large` × **2** (allowed). `asg-haystack` stays `t3.small`. Cap Neo4j heap 512m–1G as in compose. |
+| Image pull | Copy `neo4j:5` to **ECR** as the Vocareum user (LabRole is pull-only). `asg-neo4j` pulls via the **same-AZ NAT Gateway** or **ECR + S3 VPC endpoints**. |
+| SSM onto a data-subnet host | Same as Haystack: `LabInstanceProfile` + the same-AZ NAT Gateway **or** interface endpoints `ssm` / `ssmmessages` / `ec2messages`. No SSH :22. |
+| Secrets Manager from data subnet | `LabRole` can `GetSecretValue`. Outbound is the same-AZ NAT Gateway (or a `secretsmanager` interface endpoint). |
+| Stateful Neo4j + ASG | `desired=2`, EC2 health only, scale-in protection, EBS for `/data`. Graph is rebuildable from SoR RDS via `neo4j-populate`. Two guests behind an NLB are **not** a causal cluster. |
+| Session end vs credits | Vocareum **stops EC2** (including both Neo4j guests). **NAT Gateways, both RDS, and ALBs keep billing.** See **§3.1**. `action=stop` must call `aws rds stop-db-instance` on **both** identifiers. Intact ≠ free. |
+| What Academy must **not** add for this split | A NAT **instance**, a **third** RDS, Marketplace Neo4j AMI, a new IAM role, an internet-facing Neo4j/RDS address, EKS, a 9th EC2. |
 
-If lab credits cannot afford the fourth instance, the **documented fallback** is to keep Neo4j as a container on `asg-haystack` **and still put RDS in the data subnet group**. That fallback is worse isolation (graph shares the app host) and is **not** the default. Do not put RDS in the app subnets to save money — the extra data subnets themselves are free.
+If lab credits cannot afford two Neo4j guests, the **documented fallback** is `asg-neo4j` desired=1 (lose AZ redundancy) **and still keep both RDS in the data subnet group**. Putting Neo4j back on `asg-haystack` is worse isolation and is **not** the default. Do not put RDS in the app subnets to save money — the extra data subnets themselves are free.
 
 ### 6.2b Neo4j Marketplace listing — evaluated and rejected for Academy
 
@@ -550,31 +549,34 @@ Software is ~$0.04/hour plus EC2. Community Edition has no separate license fee;
 | **Academy (this section)** | **Rejected.** Use `neo4j:5` on `asg-neo4j` in the data subnets. |
 | **Paid** | Out of scope here. See **§6P** — vendor CFT still rejected; Marketplace AMI inside *our* data-subnet ASG is optional only. |
 
-### 6.3 Why not two RDS instances?
+### 6.3 Why two RDS instances?
 
-Compose isolates `postgres-primary` and `postgres-haystack`. In a commercial account that maps to two RDS instances. On Academy:
+Compose isolates `postgres-primary` and `postgres-haystack`. Academy maps that to **two** `aws_db_instance` resources in the **same data subnet group**:
 
-- Two `db.t3.small` instances left running will dominate the credit budget.
-- Multi-AZ is forbidden anyway.
+- The GitHub Actions runner sits **outside** the VPC and cannot `CREATE DATABASE` on private RDS (`:5432` is not open to the runner).
+- Ansible `CREATE DATABASE` on a second name of one instance is a leftover path; Terraform already created `heavy_rental` and `haystack` as **separate instances**.
+- `postgres-haystack-sync` is a **worker** on `asg-haystack` (`SOURCE` = SoR, `TARGET` = Haystack RDS), **not** a third database.
 
-**Recommendation:** one RDS for REST; run Haystack pgvector as a container **on `asg-haystack`**.
+Both instances are `db.t3.micro`, `multi_az = true`, same master password, engine prefer **12.22** then **11.22**. `sg-rds` allows **`sg-rest` and `sg-haystack` :5432**. Portal never reaches `:5432`. REST never reaches Bolt.
 
-That is **not** “an RDS instance that belongs to `asg-rest` only.” Academy has **one** RDS. `asg-rest` uses database `heavy_rental` (SoR). `sg-rds` still allows **`sg-haystack` :5432** because `postgres-haystack-sync` and `neo4j-populate` must **read** that same instance. Portal never reaches `:5432`. REST never reaches Bolt. Paid may add a **second** RDS for Haystack pgvector; REST still uses its own instance on `:5432`.
+**Credit fallback** (not the default): `multi_az = false` on both, or one RDS + a pgvector **container** on `asg-haystack` if credits cannot afford the second instance. Do not invent a third RDS for the sync worker.
+
+The Vocareum 2025-06-24 Readme still **publishes “No Multi-AZ.”** The implemented lab uses Multi-AZ anyway (operator-accepted credit cost vs AZ loss). If apply is rejected, keep **two** instances and set `multi_az = false`.
 
 ### 6.4 Instance sizing (stay on allow-list)
 
 | Workload | Suggested | Academy notes |
 | --- | --- | --- |
-| `asg-portal` | `t3.micro` or `small` | App subnet |
-| `asg-rest` | `t3.small` | App subnet |
-| `asg-haystack` (Haystack + workers, **no** Neo4j) | `t3.small` or `medium` | App subnet. No longer sized for graph heap. |
-| `asg-neo4j` (`neo4j:5` only) | **`t3.large`** (memory) | **Data** subnet. `max=1`. Heap 512m–1G. |
-| NAT instance (optional) | `t3.nano` | Public subnet. Shared by app + data private routes. **Not** a NAT Gateway. |
-| RDS | `db.t3.micro` or `small`, 20 GB gp2 | **Data** subnet group. `multi_az = false`. |
+| `asg-portal` | `t3.micro` × **2** | App subnet. One per AZ. |
+| `asg-rest` | `t3.small` × **2** | App subnet. One per AZ. |
+| `asg-haystack` (Haystack + workers, **no** Neo4j) | `t3.small` × **2** | App subnet. One per AZ. |
+| `asg-neo4j` (`neo4j:5` only) | **`t3.large`** × **2** | **Data** subnet. One per AZ. Heap 512m–1G. Not a cluster. |
+| NAT Gateway | **x2** (not EC2) | One per public AZ + EIP. Same-AZ outbound for portal / REST / Haystack / Neo4j. |
+| RDS SoR + RDS Haystack | `db.t3.micro` × **2**, 20 GB gp2 | **Data** subnet group. Both `multi_az = true`. |
 
-Hard caps: class ≤ **large**, ≤ **9** instances **across all ASGs + NAT**, ≤ **32** vCPU. Desired 1+1+1+1 (and one nano NAT) stays inside that.
+Hard caps: class ≤ **large**, ≤ **9** instances **across all ASGs**, ≤ **32** vCPU. **8 ASG guests + 0 NAT EC2 = 8.**
 
-Stop ASGs (desired=0 or instance stop via `action=stop`) — including **`asg-neo4j`** — and RDS when the lab day ends. **Ending the Vocareum session does not freeze the budget** (§3.1). RDS left running is the usual credit leak. RDS left stopped for seven days is **auto-started by AWS** and will spend credits again.
+Stop ASGs (desired=0 or instance stop via `action=stop`) — including **`asg-neo4j`** — and **both** RDS instances when the lab day ends. **Ending the Vocareum session does not freeze the budget** (§3.1). RDS left running is the usual credit leak. RDS left stopped for seven days is **auto-started by AWS** and will spend credits again.
 
 ### 6.4a Container resource limits (Ansible compose)
 
@@ -594,12 +596,12 @@ Haystack **app CD** re-runs compose on `asg-haystack` with the **same** haystack
 
 ### 6.5 What Academy must not build
 
-- NAT Gateway
-- Multi-AZ RDS, a second RDS, or a Neo4j replica in the other AZ
+- A NAT **instance** (outbound is two NAT Gateways). Do not add a 9th EC2.
+- A **third** RDS, a read replica, or a Neo4j **causal cluster**
 - Marketplace Neo4j / the vendor CloudFormation stack (`prodview-a5jr6bo72f5aw`)
 - A new IAM role or OIDC provider (use `LabRole` / `LabInstanceProfile` only)
 - Public 8080, 8000, 5432, 7474, 7687, 8089, or **22**
-- `STRIPE_SECRET_KEY` / `STRIPE_WEBHOOK_SECRET` on the portal secret or in the Vite image
+- `STRIPE_API_KEY` / `STRIPE_WEBHOOK_SECRET` on the portal secret or in the Vite image
 - SSH PEMs or Postgres passwords in `.tf`, git, or the job summary
 - RDS or `asg-neo4j` in public or app subnets
 - EKS / Fargate as the default
@@ -607,47 +609,47 @@ Haystack **app CD** re-runs compose on `asg-haystack` with the **same** haystack
 
 ### 6.6 System design principles
 
-These apply to the **current** design (§6 Academy, §6P paid). They do **not** change the topology. Academy **does not** claim Multi-AZ data, CPU autoscaling, or strong consistency on Neo4j.
+These apply to the **current** design (§6 Academy, §6P paid). They do **not** change the topology. Academy **does not** claim CPU autoscaling, a Neo4j causal cluster, or strong consistency on Neo4j.
 
 #### Fault tolerance
 
-**Academy:** Public and internal ALBs. ELB health checks **replace** an unhealthy portal / REST / Haystack node. Subnets span **two AZs** so a replacement can land in the other AZ. Neo4j is **derived state** — if `asg-neo4j` is replaced, `neo4j-populate` rebuilds the graph from RDS. After a Vocareum restart, `configure-only` brings containers back.
+**Academy:** Public and internal ALBs. ELB health checks **replace** an unhealthy portal / REST / Haystack node. Each of those ASGs already runs **one guest per AZ** (`desired=2`). Both RDS instances are Multi-AZ (primary + **standby**, still one writer each). Two Neo4j guests sit behind an **internal Bolt NLB**; Neo4j is **derived state** — if a guest is replaced, `neo4j-populate` rebuilds the graph from the SoR RDS. After a Vocareum restart, `configure-only` brings containers back.
 
-**Limit:** **One** RDS (`multi_az = false`) and **one** Neo4j (`max=1`). Losing that AZ takes the data tier offline. Two data subnets are **not** two databases.
+**Limit:** One **NAT** in public AZ-0. If that NAT or AZ-0 dies, **all** private outbound (SSM, ECR, yum) fails. Two Neo4j guests are **not** a cluster — NLB may hash populate to one node. Session end **does not** freeze credits.
 
-**Paid:** Optional Multi-AZ RDS (primary + **standby**, still one writer). App ASGs may run `desired > 1`. Neo4j stays `max=1`.
+**Paid:** Same Multi-AZ RDS + app `desired=2` as Academy. May add NAT **Gateway** (per-AZ egress), HTTPS, target-tracking. Still no causal Neo4j cluster.
 
 #### Maintainability
 
-**Academy:** Terraform owns VPC/ASG/ALB/RDS; Ansible owns Docker, `.env`, and RDS *logical* state (idempotent). `configure-only` updates images/secrets without recreating RDS. Secrets live in Secrets Manager, not `.tf`. CI builds the image; CD deploys it. Operators use SSM (PEM only after InService, break-glass). Academy and paid are **two workflows / two states**.
+**Academy:** Terraform owns VPC/ASG/ALB/both RDS/NLB; Ansible owns Docker, `.env`, and RDS *logical* state (roles/grants/extensions — Terraform already created the instances). `configure-only` updates images/secrets without recreating RDS. Secrets live in Secrets Manager, not `.tf`. CI builds the image; CD deploys it. Operators use SSM (PEM only after InService, break-glass). Academy and paid are **two workflows / two states**.
 
 **Limit:** Vocareum tokens expire; lab **reset** wipes S3 state — re-apply from Git.
 
-**Paid:** OIDC + Environment reviewers. Optional second RDS still in the **same** data subnet group.
+**Paid:** OIDC + Environment reviewers. Same two RDS in the **same** data subnet group.
 
 #### Scalability
 
-**Academy:** One ASG per role so a single tier *can* grow (`max=2` on portal/REST/Haystack).
+**Academy:** One ASG per role at **desired=2** (one guest per AZ). Scale **policies stay off** (credits).
 
-**Limit:** Scale **policies stay off** (credits). Caps: ≤ **9** instances, class ≤ **large**. RDS and Neo4j do **not** scale out.
+**Limit:** Caps: ≤ **9** instances, class ≤ **large**. Each RDS is still **one writer**. Two Neo4j guests do **not** scale write throughput (not a cluster).
 
-**Paid:** Target-tracking on **app** ASGs only; larger instance classes; optional second RDS for Haystack pgvector.
+**Paid:** Target-tracking on **app** ASGs only; larger instance classes.
 
 #### Reliability
 
-**Academy:** ELB + compose `restart: unless-stopped`. Clients use **ALB DNS**, not instance IPs. `assert-lab` before apply. `action=stop` so idle RDS/EC2 do not exhaust the budget and wipe the account (§3.1). CloudWatch on ALB 5xx, unhealthy targets, RDS CPU. Credentials from Secrets Manager.
+**Academy:** ELB + compose `restart: unless-stopped`. Clients use **ALB / NLB DNS**, not instance IPs. `assert-lab` before apply. `action=stop` so idle RDS/EC2 do not exhaust the budget and wipe the account (§3.1). CloudWatch on ALB 5xx, unhealthy targets, RDS CPU. Credentials from Secrets Manager.
 
-**Limit:** Single-AZ RDS/Neo4j. Session end **does not** freeze credits.
+**Limit:** Shared NAT. Session end **does not** freeze credits. Two Multi-AZ `db.t3.micro` instances cost more idle hours than one single-AZ DB.
 
-**Paid:** Multi-AZ RDS, HTTPS on the public portal ALB, NAT Gateway or VPC endpoints.
+**Paid:** NAT Gateway (or extra endpoints), HTTPS on the public portal ALB.
 
 #### Consistency
 
-**Academy:** **RDS PostgreSQL is the system of record** (one writer, ACID). Neo4j is **derived** (SQL → Cypher). Haystack sync **polls** (~60s) — **eventual**, not CDC, not DMS. `sync-secrets` is the only write path into Secrets Manager.
+**Academy:** **RDS PostgreSQL `heavy_rental` is the system of record** (one writer, ACID). Haystack RDS is a **derived** store. Neo4j is **derived** (SQL → Cypher). Haystack sync **polls** (~60s) — **eventual**, not CDC, not DMS. `sync-secrets` is the only write path into Secrets Manager.
 
-**Limit:** Graph and search can **lag** RDS. Not multi-master. Do not treat Neo4j as SoR.
+**Limit:** Graph and search can **lag** RDS. Not multi-master. Do not treat Neo4j as SoR. Two Neo4j guests may diverge until populate rebuilds.
 
-**Paid:** Same model. A second RDS is still one writer per database.
+**Paid:** Same model. Each RDS is still one writer.
 
 #### Communication
 
@@ -658,16 +660,16 @@ Browser  →  public portal ALB :80/:443
               →  asg-portal  (nginx SPA + /api proxy)
                     →  internal REST ALB :8080
                           →  asg-rest
-                                →  RDS :5432          (SoR database heavy_rental)
+                                →  RDS SoR :5432      (heavy_rental, Multi-AZ)
                                 →  internal Haystack ALB :8000   (HAYSTACK_URL)
                                       →  asg-haystack
-                                            →  RDS :5432          (sync/populate; optional Haystack db)
-                                            →  Neo4j Bolt :7687   (asg-neo4j; sg-haystack only)
+                                            →  RDS Haystack :5432 (haystack, Multi-AZ)
+                                            →  Bolt NLB :7687     (asg-neo4j ×2; not a cluster)
 ```
 
 Security groups **are** the contract. Browser / mobile never call REST, Haystack, RDS, or Bolt. Operators: SSM (or SSM port-forward + PEM). CD: Actions → Terraform outputs → Secrets Manager → instance `get-secret-value`.
 
-**Paid extras:** HTTPS at the **portal** edge only; optional **internal** Bolt NLB. Still no public API.
+**Paid extras:** HTTPS at the **portal** edge only. Bolt NLB is already on Academy. Still no public API.
 
 ### 6.7 System design trade-offs
 
@@ -675,18 +677,18 @@ System design is a set of **trade-offs**. Cost, scalability, reliability, mainta
 
 §6.6 is what we **keep**. This section is what we **gave up**, and why.
 
-A highly reliable, highly scalable estate (Multi-AZ RDS, CPU scale-out, HA Neo4j) needs more expensive components. On Academy those components either **violate the allow-list** or **consume the budget** until the account is disabled. If cost is the constraint, we sacrifice some robustness and scale — we do **not** sacrifice private APIs or the data-subnet split.
+A highly reliable, highly scalable estate (per-AZ NAT Gateway, CPU scale-out, Neo4j causal cluster) needs more expensive components. On Academy those components either **violate the allow-list**, **break the 9-EC2 cap**, or **consume the budget** until the account is disabled. If cost is the constraint, we sacrifice some robustness and scale — we do **not** sacrifice private APIs or the data-subnet split.
 
 #### Cost versus reliability, robustness, and scalability
 
 | We chose (Academy) | We gave up | Why |
 | --- | --- | --- |
-| One single-AZ RDS; Neo4j `max=1`; scale policies **off**; NAT **instance** not Gateway | Multi-AZ, HA graph, CPU scale-out | Credits + Vocareum caps (class ≤ large, ≤ 9 instances, no Multi-AZ) |
-| Three ALBs (public portal + internal REST + internal Haystack) | One cheaper shared ALB | REST/Haystack must not share the public listener |
+| Two Multi-AZ RDS; app/Neo4j `desired=2`; **two** NAT Gateways; scale policies **off** | Causal graph cluster, CPU scale-out | Credits + Vocareum caps (class ≤ large, ≤ 9 instances). NAT Gateways bill 24/7 |
+| Three ALBs + internal Bolt NLB | One cheaper shared ALB | REST/Haystack must not share the public listener; Bolt needs a stable URI |
 | Four ASGs vs one public EC2 + Compose (option D) | Fewer instances / lower idle cost | Replace and isolate by role; no lone EC2 |
 | `action=stop` for the lab day; `action=destroy` only to wipe the estate | Daily `terraform destroy` | Keep ALB DNS and RDS data across sessions. Idle ALBs/EBS still bill until **destroy** (§3.1, §7.2d) |
 
-**Paid** may buy the left-behind side (Multi-AZ standby, NAT Gateway, app `desired > 1`) **without** changing who may talk to whom.
+**Paid** may buy the left-behind side (NAT Gateway, HTTPS, app target-tracking) **without** changing who may talk to whom.
 
 #### Time versus space
 
@@ -711,16 +713,16 @@ Measure latency with **percentiles** (p50, p90, p99), not the average (outliers 
 
 | Choice in this design | Effect on latency | Effect on throughput |
 | --- | --- | --- |
-| Browser → portal ALB → portal → **internal REST ALB** → REST → RDS / Haystack / Neo4j | Extra hops vs one public box | Isolation + health replace. ALB can spread load **only if** `desired > 1` |
-| Academy `desired=1`, scale policies **off** | Fine for a class demo | **Capped.** More load raises p99; we do **not** add instances |
-| Neo4j + pgvector (space, above) | Lower **processing time** for graph/search | Same host still saturates under a flood |
+| Browser → portal ALB → portal → **internal REST ALB** → REST → RDS / Haystack / Neo4j | Extra hops vs one public box | Isolation + health replace. ALB spreads across **two** guests per app ASG |
+| Academy `desired=2`, scale policies **off** | One guest per AZ | **Capped at 8 EC2** (Vocareum max 9). More load raises p99; we do **not** add a 9th instance |
+| Neo4j + Haystack RDS (space, above) | Lower **processing time** for graph/search | Each Neo4j guest still saturates under a flood; NLB is not a cluster |
 | Haystack poll ~60s | Not request latency; **freshness** lag | Avoids CDC load on RDS |
 | ECR in-region | Faster **cold start** (image pull) | Not request throughput |
-| One RDS writer + one Neo4j | Simple path | Single JDBC + single Bolt — **ceiling** under load |
+| One writer per RDS + two independent Neo4j | Simple path | Single JDBC per DB — **ceiling** under load |
 
 **Academy target:** acceptable **demo** response time at **low** throughput. Do not tune the lab for high QPS.
 
-**Paid:** raise throughput with app `desired > 1` / target-tracking. Watch **p99 target-response-time** on the public and internal ALBs (CloudWatch — Monitor, not a new product). One RDS writer and one Neo4j remain the data-tier ceiling unless that tier changes.
+**Paid:** raise throughput with app target-tracking. Watch **p99 target-response-time** on the public and internal ALBs (CloudWatch — Monitor, not a new product). One writer per RDS remains the data-tier ceiling unless that tier changes.
 
 #### Performance versus scalability
 
@@ -733,15 +735,15 @@ A service is scalable only if extra instances/CPU buy a matching gain. Faster gr
 
 | Piece | Performance (one request) | Scalability (more load) |
 | --- | --- | --- |
-| Neo4j + pgvector | Better single-request graph/search (less join / re-embed) | Same `t3.large` / one Bolt — **`max=1`**, does not scale out |
-| Internal ALBs | Extra hop — slightly worse one-request time | Required to spread load **if** `desired > 1` |
-| Academy `desired=1`, scale policies **off** | Tuned for a **demo** (one student) | **Not** scalable. More users raise p50/p99; we do not add instances |
-| One RDS writer | Fine for class write rate | Throughput ceiling. Multi-AZ is **HA**, not more writers |
+| Neo4j + Haystack RDS | Better single-request graph/search (less join / re-embed) | Two `t3.large` behind an NLB — **not** a cluster, does not scale writes |
+| Internal ALBs + Bolt NLB | Extra hop — slightly worse one-request time | Spreads across **desired=2** |
+| Academy `desired=2`, scale policies **off** | Two guests per role (demo + AZ loss) | **Not** elastically scalable. Caps at 8 EC2 |
+| One writer per RDS | Fine for class write rate | Throughput ceiling. Multi-AZ is **HA**, not more writers |
 | Four ASGs | Isolation — not a faster single request | **Shape** to grow one tier later; caps ≤ 9 / class ≤ large |
 
-**Academy:** optimize **single-path demo performance**, not proportional scale. A second portal instance would be scale; we leave it off to save credits.
+**Academy:** optimize **single-path demo performance**, not proportional scale. A third portal instance would be scale; we leave it off (9-EC2 cap + credits).
 
-**Paid:** the scale lever is app `desired > 1` / target-tracking. The data tier (one RDS writer, one Neo4j) still does not scale out. Single-request speed still comes from Neo4j/pgvector and in-region ECR, not from more instances.
+**Paid:** the scale lever is app target-tracking. Each RDS is still one writer. Single-request speed still comes from Neo4j/Haystack RDS and in-region ECR, not from more instances.
 
 #### Consistency versus availability
 
@@ -751,27 +753,27 @@ CAP is often misread as “abandon one of C, A, or P at all times.” The choice
 
 **PACELC:** if **P**artition → choose **A** or **C** (CAP). **E**lse (healthy path) → choose **L**atency or **C**onsistency. Large systems replicate to survive partitions; then a normal read is either a **slower consistent** read (quorum / hop to the writer) or a **faster stale** local read.
 
-This lab is **not** a three-region multi-master. The distributed pieces are four ASGs, ALBs, one RDS, and one Neo4j across **two AZs**. CAP and PACELC still apply on those links. We do **not** claim CA (pretend the network never fails).
+This lab is **not** a three-region multi-master. The distributed pieces are four ASGs, ALBs, two Multi-AZ RDS, and two Neo4j guests across **two AZs**. CAP and PACELC still apply on those links. We do **not** claim CA (pretend the network never fails).
 
 | Store / path | If partitioned or lagging | Choice |
 | --- | --- | --- |
-| **RDS** (system of record, one writer) | App AZ cannot reach the DB | **CP:** REST/Haystack return errors. No split-brain, no second writer. Academy `multi_az=false` — that AZ down = **unavailable**. |
-| **Neo4j** (derived, §6.6) | Bolt down or `neo4j-populate` behind | **AP-ish for graph reads:** may be **stale** vs RDS. If the only node is down (`max=1`), the graph is unavailable. **Not** SoR. |
-| **Haystack / pgvector** | Sync poll ~60s, or Haystack host down | **Eventual / AP-ish:** search can be stale. **Not** SoR. |
+| **RDS SoR / Haystack** (one writer each) | App AZ cannot reach the writer | **CP:** REST/Haystack return errors. No split-brain, no second writer. Multi-AZ **standby** is promoted — not a second writable copy. |
+| **Neo4j** (derived, §6.6) | Bolt down or `neo4j-populate` behind | **AP-ish for graph reads:** may be **stale** vs RDS. One guest down still leaves the other behind the NLB (graphs may diverge). **Not** SoR. |
+| **Haystack RDS** | Sync poll ~60s, or Haystack host down | **Eventual / AP-ish:** search can be stale. **Not** SoR. |
 | Portal → REST → Haystack (internal ALBs) | A hop fails | **Fail closed** — 5xx / unhealthy target. Do not invent a write on RDS. |
 
 **One line:** **RDS is CP; Neo4j and Haystack are eventual (AP-ish).** Same as §6.6 (SoR vs derived).
 
 | PACELC mode | This estate |
 | --- | --- |
-| **P** (partition) | **RDS = C** (error if unreachable). **Neo4j / Haystack = A / eventual** (stale, or down if the only node is gone). |
-| **E** (no partition) — RDS | **C over L:** one writer, no local replica. Clients pay the hop to that AZ for a consistent read. Academy forbids Multi-AZ / replicas, so there is **no** replica-lag trade on Postgres. |
+| **P** (partition) | **RDS = C** (error if the writer is unreachable; Multi-AZ failover is still one writer). **Neo4j / Haystack = A / eventual** (stale, or one of two Neo4j guests gone). |
+| **E** (no partition) — RDS | **C over L:** one writer per instance. Clients pay the hop to that AZ for a consistent read. Multi-AZ is HA, **not** a read replica — no replica-lag trade unless you later add one. |
 | **E** (no partition) — Neo4j / Haystack | **L over C:** graph/search answer **without** waiting for the last SQL write. Sync/populate can be ~60s behind. That is the healthy-path ELC choice on **derived** stores. |
 | Internal ALBs (healthy path) | Extra hop = **latency** for isolation, not a replica-consistency choice. |
 
-**Academy:** prefer **consistency on RDS** and accept **unavailability** if that instance is unreachable. Graph/search may stay usable while **behind** RDS; they must not be treated as the latest write.
+**Academy:** prefer **consistency on each RDS writer** and accept **unavailability** until Multi-AZ failover finishes. Graph/search may stay usable while **behind** SoR; they must not be treated as the latest write.
 
-**Paid Multi-AZ RDS:** better **availability** of the **same** consistent writer (standby) under **P**. Not a second writable copy. ELC on RDS only appears if you later add a **read replica**. Neo4j stays `max=1`.
+**Paid:** same Multi-AZ RDS model. ELC on RDS only appears if you later add a **read replica**. Neo4j stays two independent Community guests, not a cluster.
 
 #### Other weighed pairs
 
@@ -790,14 +792,14 @@ Use the official [AWS Well-Architected Framework](https://docs.aws.amazon.com/we
 
 This section covers the Framework pages we treat as required reading for the other project: [Welcome](https://docs.aws.amazon.com/wellarchitected/latest/framework/welcome.html), [Definitions](https://docs.aws.amazon.com/wellarchitected/latest/framework/definitions.html), [On architecture](https://docs.aws.amazon.com/wellarchitected/latest/framework/on-architecture.html), [General design principles](https://docs.aws.amazon.com/wellarchitected/latest/framework/general-design-principles.html), [The pillars](https://docs.aws.amazon.com/wellarchitected/latest/framework/the-pillars-of-the-framework.html), [The review process](https://docs.aws.amazon.com/wellarchitected/latest/framework/the-review-process.html), [Further reading](https://docs.aws.amazon.com/wellarchitected/latest/framework/further-reading.html), and the Framework [glossary pointer](https://docs.aws.amazon.com/wellarchitected/latest/framework/glossary.html).
 
-The Framework helps you design and operate **secure, reliable, efficient, cost-effective, and sustainable** workloads, and to measure them against those qualities. **Security and operational excellence are generally not traded off** against the other pillars. Business context *does* drive other trades — on Academy we trade **reliability vs cost** (single-AZ RDS). That is allowed by the Framework.
+The Framework helps you design and operate **secure, reliable, efficient, cost-effective, and sustainable** workloads, and to measure them against those qualities. **Security and operational excellence are generally not traded off** against the other pillars. Business context *does* drive other trades — on Academy we trade **reliability vs cost** (one shared NAT, scale policies off, no causal Neo4j). That is allowed by the Framework.
 
 #### Definitions ([source](https://docs.aws.amazon.com/wellarchitected/latest/framework/definitions.html))
 
 | Term | Meaning here |
 | --- | --- |
-| **Component** | Code, config, and AWS resources that meet one requirement (e.g. `asg-rest`, the RDS instance). |
-| **Workload** | The Heavy Rental runtime: portal + REST + Haystack + Neo4j + RDS in one VPC. |
+| **Component** | Code, config, and AWS resources that meet one requirement (e.g. `asg-rest`, one RDS instance). |
+| **Workload** | The Heavy Rental runtime: portal + REST + Haystack + Neo4j + two RDS in one VPC. |
 | **Architecture** | How those components talk (public portal ALB → internal ALBs → data tier). |
 | **Milestone** | Design, first `apply`, go-live demo, daily `action=stop`, end-of-class `action=destroy`. |
 | **Technology portfolio** | Academy lab **and** paid account — two workloads, not one. |
@@ -813,10 +815,10 @@ For this study: the **other project** owns the Terraform/Ansible. This file is t
 
 | Principle | This estate |
 | --- | --- |
-| **Stop guessing capacity** | Academy fixes `desired=1` and size classes to the allow-list — we do **not** guess a huge fleet. Paid may scale **app** ASGs from data (ALB p99). |
+| **Stop guessing capacity** | Academy fixes `desired=2` (8 EC2) and size classes to the allow-list — we do **not** guess a huge fleet. Paid may scale **app** ASGs from data (ALB p99). |
 | **Test at production scale** | Academy **cannot** afford a second full copy. Use `configure-only` and Integration CI images. Paid may stand up a short-lived twin and tear it down. |
 | **Automate with experimentation in mind** | Terraform + Ansible in Actions. `plan` before `apply`. Revert = Git + re-apply. |
-| **Evolutionary architectures** | Same three tiers from Academy → paid. Add Multi-AZ / HTTPS / second RDS **without** changing who may talk to whom. |
+| **Evolutionary architectures** | Same three tiers from Academy → paid. Add HTTPS / NAT Gateway / target-tracking **without** changing who may talk to whom. |
 | **Drive architectures using data** | CloudWatch ALB 5xx, unhealthy targets, RDS CPU, p99 if enabled. Budget UI / Cost Explorer. |
 | **Improve through game days** | **Not** a class requirement. Optional later on paid. Session-end + `configure-only` is the cheap failure drill. |
 
@@ -826,10 +828,10 @@ For this study: the **other project** owns the Terraform/Ansible. This file is t
 | --- | --- | --- | --- | --- |
 | **Operational excellence** | Run the workload, see operations, improve process | Actions CD; Terraform + Ansible; `plan` / `apply` / `configure-only` / `stop` / `destroy`; SSM; `assert-lab` | Vocareum tokens; no game days | OIDC + Environment reviewers |
 | **Security** | Protect data, systems, assets | Three subnet tiers; internal REST/Haystack; SGs; Secrets Manager (Postgres, Stripe, SSH PEMs after InService); `LabRole`; no public 5432/7687; no `sk_` on the portal | Session access keys (no OIDC); HTTP portal default | OIDC; HTTPS on portal ALB |
-| **Reliability** | Work correctly when expected; operate the lifecycle | ASGs + ELB replace; ALB DNS; Neo4j rebuildable from RDS; `action=stop` so a budget wipe is less likely | Single-AZ RDS/Neo4j | Multi-AZ RDS standby |
-| **Performance efficiency** | Right resources; stay efficient as demand and tech change | Neo4j/pgvector for graph/search; ECR in-region; `t3.*` per role | `desired=1`; no Graviton/Lambda experiments | Larger classes; app scale-out |
-| **Cost optimization** | Business value at the lowest price | No NAT Gateway / EKS; one RDS; scale policies off; `action=stop`; §3.1 | Idle ALBs still bill; EBS while stopped | Cost Explorer; right-size |
-| **Sustainability** | Less energy; max value from what you provision | Stop idle compute; small classes; no always-on EKS/NAT GW | ALBs 24/7 | Do not turn on Multi-AZ until needed |
+| **Reliability** | Work correctly when expected; operate the lifecycle | ASGs + ELB replace; ALB/NLB DNS; two Multi-AZ RDS; Neo4j rebuildable from SoR; `action=stop` so a budget wipe is less likely | Shared NAT in AZ-0; Neo4j not clustered | NAT Gateway; HTTPS |
+| **Performance efficiency** | Right resources; stay efficient as demand and tech change | Neo4j + Haystack RDS for graph/search; ECR in-region; `t3.*` per role | `desired=2` cap; no Graviton/Lambda experiments | Larger classes; app scale-out |
+| **Cost optimization** | Business value at the lowest price | No NAT Gateway / EKS; scale policies off; `action=stop`; §3.1 | Idle ALBs + two Multi-AZ RDS still bill; EBS while stopped | Cost Explorer; right-size |
+| **Sustainability** | Less energy; max value from what you provision | Stop idle compute; small classes; no always-on EKS/NAT GW | ALBs 24/7 | Do not add NAT Gateway until needed |
 
 #### The review process ([source](https://docs.aws.amazon.com/wellarchitected/latest/framework/the-review-process.html))
 
@@ -871,9 +873,9 @@ Break a complex system into **smaller modules** that run on their own and still 
 | --- | --- | --- |
 | `asg-portal` | Replace or scale the nginx image without touching REST | Public ALB in; internal REST ALB out |
 | `asg-rest` | Own ASG + internal ALB | RDS `:5432`; Haystack ALB |
-| `asg-haystack` | Workers stay here; **no** Neo4j sidecar | RDS; Bolt to `asg-neo4j` |
-| `asg-neo4j` | Data-subnet module; `max=1` | Bolt from haystack only |
-| RDS | Managed; not an ASG | `sg-rds` from rest/haystack only |
+| `asg-haystack` | Workers stay here; **no** Neo4j sidecar | Haystack RDS; Bolt NLB |
+| `asg-neo4j` | Data-subnet module; `desired=2` | Bolt via internal NLB |
+| Both RDS | Managed; not an ASG | `sg-rds` from rest/haystack only |
 | Public vs internal ALBs | Portal is the only public module | No `/api` or `/haystack` on the public listener |
 | Subnet tiers | Public / app / data | Route tables + security groups |
 | CI vs CD; academy vs paid | Separate workflows and state | Images in; **no** shared VPC |
@@ -886,10 +888,10 @@ How modularity serves the usual requirements:
 | --- | --- |
 | **Maintainability** | Replace one ASG or `configure-only` one image. |
 | **Reusability** | Paid copies the same three tiers and ALB pattern. |
-| **Scalability** | Grow **one** app ASG later (paid). Neo4j/RDS stay single. |
+| **Scalability** | Grow **one** app ASG later (paid). Each RDS stays one writer; Neo4j is not a cluster. |
 | **Reliability** | ELB replaces one module. A failed hop **fails closed** — not a rewrite of the VPC. |
 
-**Hidden cost:** more modules mean more ALBs, instances, SGs, and secret ids. Interfaces (ALB DNS, Bolt URI, JDBC) **must** live in Secrets Manager so modules do not hard-code each other. Academy pays that cost up to the credit cap (four ASGs, three ALBs). Option D (one public EC2 + compose) is the anti-pattern: cheaper, not isolated.
+**Hidden cost:** more modules mean more ALBs, instances, SGs, and secret ids. Interfaces (ALB DNS, Bolt URI, JDBC) **must** live in Secrets Manager so modules do not hard-code each other. Academy pays that cost up to the credit cap (four ASGs, three ALBs, Bolt NLB, two NAT Gateways, 8 EC2). Option D (one public EC2 + compose) is the anti-pattern: cheaper, not isolated.
 
 This is **not** EKS microservices. It is **component-based** split at ASG / ALB / subnet / pipeline boundaries, with SGs as the contract.
 
@@ -902,7 +904,7 @@ KISS: do not add features or layers the class does not need. Isolation already c
 | KISS principle | This estate |
 | --- | --- |
 | **Core requirements** | One VPC; portal public; REST / Haystack / RDS / Neo4j private; CI images; stay inside Academy credits |
-| **Minimize components** | **No** EKS, Fargate, CDK+Terraform, Marketplace Neo4j CFT, second RDS, NAT Gateway, Multi-AZ, CPU scale-out, or WA Tool on the lab. **`destroy` is a CD action**, not a daily job |
+| **Minimize components** | **No** EKS, Fargate, CDK+Terraform, Marketplace Neo4j CFT, NAT Gateway, causal Neo4j, CPU scale-out, or WA Tool on the lab. **`destroy` is a CD action**, not a daily job |
 | **Avoid overengineering** | Neo4j = `neo4j:5` container, not an Enterprise cluster. Haystack sync = poll ~60s, not DMS/CDC. Everyday shell = SSM; PEM only after InService |
 | **Easy to use** | Students use the **portal ALB** only. Operators use **Run workflow** + `action`. No public SSH |
 | **Test and refine** | CI Integration / Release. CD `plan` then `apply`. `configure-only` after Start Lab |
@@ -921,7 +923,7 @@ KISS: do not add features or layers the class does not need. Isolation already c
 | --- | --- | --- |
 | ALB 5xx, unhealthy host count | Public portal ALB + internal REST/Haystack ALBs | Request failures vs a dead target |
 | **p99** target-response-time (not the average) | Same ALBs | Latency under load (§6.7). p50-only hides the tail |
-| RDS CPU, connections, `FreeStorageSpace` | The one writer | Data-tier ceiling |
+| RDS CPU, connections, `FreeStorageSpace` | Each RDS writer (SoR + Haystack) | Data-tier ceiling |
 | EC2 status / ASG **InService** | Four ASGs | Replace; `sync-ssh-keys` waits for this |
 | CloudWatch Logs / `docker logs` | Instances | App faults |
 | Learner Lab budget / Cost Explorer | Account | Credits — session end ≠ free (§3.1) |
@@ -939,16 +941,16 @@ Do not add a second portal instance because the demo “felt slow.” Check **p9
 
 | Lunch we took | What we paid |
 | --- | --- |
-| Isolated APIs (three ALBs, four ASGs) | Idle ALB hours, more instances |
-| Single-AZ RDS / Neo4j `max=1` | Unavailability if that AZ or node is gone (CAP **P**) |
-| `desired=1`, scale policies off | Throughput / scalability |
-| Neo4j + pgvector (space) | Extra `t3.large` + EBS |
+| Isolated APIs (three ALBs, four ASGs, Bolt NLB, two NAT Gateways) | Idle ALB/NLB/NAT Gateway hours, 8 EC2 |
+| Shared NAT in AZ-0; Neo4j not clustered | All private outbound dies with that NAT; graphs may diverge |
+| `desired=2`, scale policies off | Throughput / elasticity (capped at 9) |
+| Two Neo4j `t3.large` + two Multi-AZ RDS | Extra instance-hours + RDS hours |
 | Eventual graph/search (PACELC **L**) | Stale vs RDS (~60s) |
 | `action=stop` on lab days (not daily `destroy`) | ALBs and EBS still bill until `action=destroy` |
 | KISS (no EKS, no CDC) | Not an HA graph, not high QPS |
 | Option D **rejected** | Not the cheapest single box |
 
-A highly tuned one-off (Marketplace Neo4j CFT, EKS) would buy a narrow win and **lose** maintainability or the allow-list. A one-box compose stack is simpler and **wrong** for private APIs. **Right** here means class lab + private APIs + data-subnet split. Paid can **buy** another lunch (Multi-AZ, app scale-out) — that lunch is still not free.
+A highly tuned one-off (Marketplace Neo4j CFT, EKS) would buy a narrow win and **lose** maintainability or the allow-list. A one-box compose stack is simpler and **wrong** for private APIs. **Right** here means class lab + private APIs + data-subnet split. Paid can **buy** another lunch (NAT Gateway, HTTPS, app scale-out) — that lunch is still not free.
 
 #### Guideline of use cases: it always depends
 
@@ -959,12 +961,12 @@ There is **no silver bullet**. The same compose problem can be EKS, one public E
 | Factor | What this study optimized for |
 | --- | --- |
 | **Users** | Students: **portal ALB** only. Operators: Actions + SSM |
-| **Constraints** | Allow-list, ≤ 9 instances, no Multi-AZ, no new IAM, credit budget |
+| **Constraints** | Allow-list, ≤ 9 instances, no new IAM, credit budget |
 | **Feasible** | Terraform + Compose-on-EC2 — not EKS |
 | **Sustainable** | Long-lived VPC; daily `action=stop`; `action=destroy` only to wipe |
-| **Good enough** | Single-AZ RDS, `desired=1`, poll sync — **not** Multi-AZ + CDC |
+| **Good enough** | Two Multi-AZ RDS, `desired=2`, poll sync — **not** CDC or a Neo4j cluster |
 
-**Academy** and **paid** are **two use cases** and one communication graph. Paid extras (HTTPS, Multi-AZ, app scale) are not required to “finish” the class design. West: doing the lab “as well as” a multi-region bank is **not** worth it on a $50–$100 budget.
+**Academy** and **paid** are **two use cases** and one communication graph. Paid extras (HTTPS, NAT Gateway, app scale) are not required to “finish” the class design. West: doing the lab “as well as” a multi-region bank is **not** worth it on a $50–$100 budget.
 
 Silver bullets we **refused**: EKS, the Neo4j Marketplace CFT, one public EC2 (option D).
 
@@ -994,27 +996,27 @@ This workload is **distributed** (browser, ALBs, four ASGs, RDS, Neo4j, GitHub A
 | --- | --- | --- |
 | **The network is reliable** | No retries, no health replace | Internal ALBs **fail closed** (5xx). ELB replaces unhealthy targets. CAP **P**: RDS can be unreachable. Use TCP/HTTPS/Bolt as they are — they cope with loss; we do not pretend the path never dies. |
 | **Latency is zero** | Chatty calls, ignore p99 | Portal ALB → portal → REST ALB → RDS/Haystack/Bolt **adds hops**. Region is `us-east-1`, not a global edge. Measure **p99**, not “instant.” |
-| **Bandwidth is infinite** | Huge payloads, pull Docker Hub every start | Finite: no NAT Gateway; ECR **in-region**; `desired=1`; Secrets Manager JSON is small. Congestion is real on a `t3` NAT instance. |
+| **Bandwidth is infinite** | Huge payloads, pull Docker Hub every start | Finite: two NAT Gateways; ECR **in-region**; `desired=2`; Secrets Manager JSON is small. |
 | **The network is secure** | Open 8080 “because it’s a VPC” | VPC ≠ safe. Private APIs, SGs, Secrets Manager, no `sk_` on the portal, SSM not public `:22`. Defense in depth. |
 | **Topology doesn’t change** | Pin instance IPs | ASG **replace**; Vocareum stop/start; IPs change. Clients use **ALB DNS**. `configure-only` after Start Lab. Bolt URI is rewritten in SM. |
 | **There is one administrator** | One person, one console | CI vs CD; academy vs paid; Terraform vs Ansible; `LabRole` vs humans. Modules (§6.9) so repair is not one god-box. |
-| **Transport cost is zero** | Ignore ALB/NAT/ECR in the budget | ALB **hourly**, NAT instance, image pull, §3.1 credits after session end. Transport is **on the bill**. |
+| **Transport cost is zero** | Ignore ALB/NAT/ECR in the budget | ALB **hourly**, two NAT Gateways (24/7), image pull, §3.1 credits after session end. Transport is **on the bill**. |
 | **The network is homogeneous** | One protocol, one OS | ALB + RDS + Bolt + SSM + Actions + Vocareum. Interop: DNS, JDBC, Bolt, `get-secret-value`. Do not assume every hop is Amazon Linux HTTP. |
 
 Neglecting these yields outages, slow tails, inconsistent data, leaks, scale surprises, and “who owns this?” **§6.8** maps the same ideas: Operational excellence → single administrator / homogeneous network; Security → secure network; Reliability → reliable network / fixed topology; Performance efficiency → zero latency / infinite bandwidth; Cost optimization and Sustainability → zero transport cost.
 
 ### 6.11 Adherence review
 
-The **current** Academy (§6) and paid (§6P) design **adheres** to the Well-Architected Framework **as this study uses it** (§6.8: guideline + use case) and to §6.6–§6.10. It does **not** “pass” every WAF best practice. Doing so (Multi-AZ, OIDC, HTTPS, game days, X-Ray, EKS) would break KISS, credits, and Vocareum. WAF itself: **security and operational excellence are not traded away**; other pillars **are** traded for cost. That is **adherence**, not a defect.
+The **current** Academy (§6) and paid (§6P) design **adheres** to the Well-Architected Framework **as this study uses it** (§6.8: guideline + use case) and to §6.6–§6.10. It does **not** “pass” every WAF best practice. Doing so (OIDC, HTTPS, game days, X-Ray, EKS, per-AZ NAT) would break KISS, credits, and Vocareum. WAF itself: **security and operational excellence are not traded away**; other pillars **are** traded for cost. That is **adherence**, not a defect.
 
-This section is a **review snapshot** (conversation, not audit). Do not “fix” Academy by adding EKS or Multi-AZ.
+This section is a **review snapshot** (conversation, not audit). Do not “fix” Academy by adding EKS or a NAT Gateway.
 
 #### What already meets the bars
 
 | Bar | How the design meets it |
 | --- | --- |
 | **Isolation** (§6.9) | Four ASGs, three subnet tiers, dedicated internal ALBs, one secret per role |
-| **KISS** (§6.9) | No EKS, CDK+TF, Marketplace Neo4j CFT, second RDS, NAT Gateway, CPU scale-out |
+| **KISS** (§6.9) | No EKS, CDK+TF, Marketplace Neo4j CFT, NAT Gateway, causal Neo4j, CPU scale-out |
 | **Metrics** (§6.9) | ALB 5xx, p99, RDS CPU, InService, budget, `assert-lab` |
 | **TINSTAAFL / depends** (§6.7, §6.9) | Catalogued lunches; two use cases |
 | **Fallacies** (§6.10) | Fail closed, ALB DNS, SM, private APIs, transport on the bill |
@@ -1027,11 +1029,11 @@ This section is a **review snapshot** (conversation, not audit). Do not “fix�
 
 | Risk | Why we keep it |
 | --- | --- |
-| Single-AZ RDS / Neo4j `max=1` | Academy forbids Multi-AZ; credits |
+| Shared NAT in AZ-0; Neo4j not clustered | 9-EC2 cap; Community Edition |
 | HTTP on portal unless ACM | Cannot mint a cert for `*.elb.amazonaws.com` |
 | Vocareum access keys (no OIDC) | Cannot create an IdP |
 | Shared `LabRole` can read every SM secret the role allows | Cannot create per-ASG instance profiles. Convention + paid isolation (§6.0c) |
-| `desired=1`, scale policies off | Credits / instance cap |
+| `desired=2`, scale policies off | Credits / instance cap |
 | Idle ALB hours; no ElastiCache | KISS + §3.1 |
 | No game days / WA Tool on lab | Class effort |
 
@@ -1040,7 +1042,7 @@ This section is a **review snapshot** (conversation, not audit). Do not “fix�
 - No public REST, Haystack, RDS, or Bolt
 - No Neo4j sidecar on haystack as the **default**
 - No PEM in Terraform / no `put-secret-value` of PEMs **before** InService
-- No `STRIPE_SECRET_KEY` on the portal
+- No `STRIPE_API_KEY` on the portal
 - `destroy` only on `workflow_dispatch` + `confirm_destroy=destroy`; academy state ≠ paid state
 - No CDK + Terraform on the same VPC
 - No Marketplace Neo4j CloudFormation stack
@@ -1057,7 +1059,7 @@ System design principles: **§6.6**. Trade-offs: **§6.7**. Well-Architected: **
 
 Auth is **GitHub OIDC** → IAM role `github-actions-infra`. No Vocareum keys. The account **may** create IAM roles and instance profiles.
 
-Two AZs of **subnets**. Default is still **one Neo4j** (`max=1`). RDS may be Multi-AZ (primary + **standby**, not two writers). An optional **second** RDS for Haystack pgvector uses the **same data subnet group**.
+Two AZs of **subnets**. Same default as Academy: **two Multi-AZ RDS**, **two Neo4j guests** behind an internal Bolt NLB. Paid may raise classes or add a NAT **Gateway**. Each RDS is still one writer. Neo4j is still **not** a causal cluster.
 
 ```
                          Internet
@@ -1084,11 +1086,9 @@ Two AZs of **subnets**. Default is still **one Neo4j** (`max=1`). RDS may be Mul
          │                  ▼                             ▼                 │
          │   private DATA subnets (2 AZs)  — no public IPs                  │
          │   ┌───────────────────────────────────────────────────────────┐  │
-         │   │ RDS primary :5432     (+ Multi-AZ standby in the other AZ │  │
-         │   │                         when enabled — still one writer)  │  │
-         │   │ optional 2nd RDS (Haystack/pgvector) — same subnet group  │  │
-         │   │ asg-neo4j  neo4j:5 or paid Marketplace AMI   Bolt :7687   │  │
-         │   │ optional internal NLB for Bolt (not internet-facing)      │  │
+         │   │ RDS SoR Multi-AZ + RDS Haystack Multi-AZ (one writer each)│  │
+         │   │ asg-neo4j ×2  neo4j:5 or paid Marketplace AMI             │  │
+         │   │ internal Bolt NLB :7687 (not internet-facing)             │  │
          │   └───────────────────────────────────────────────────────────┘  │
          │   Outbound: NAT Gateway or VPC endpoints (paid may use either)   │
          └──────────────────────────────────────────────────────────────────┘
@@ -1103,12 +1103,12 @@ Two AZs of **subnets**. Default is still **one Neo4j** (`max=1`). RDS may be Mul
 | Public ALB rule to REST, Haystack, RDS, or Neo4j | **No** |
 | Internet-facing ALB/NLB for REST, Haystack, or Bolt | **No** |
 | Dedicated **internal** ALB for REST and for Haystack | **Yes** |
-| Internal NLB for Neo4j Bolt | **Yes** (optional) |
+| Internal NLB for Neo4j Bolt | **Yes** (same as Academy) |
 | SSM port-forward | **Yes** — break-glass |
 
 ### 6P.0a Compute
 
-Same four ASGs in the same tiers. Paid **may** create instance profiles (do not use `LabRole`). App ASGs may enable target-tracking later. **`asg-neo4j` stays `max=1`** (Community Edition, stateful). Desired counts can rise above 1 on portal/rest/haystack; Neo4j does not.
+Same four ASGs in the same tiers at **desired=2**. Paid **may** create instance profiles (do not use `LabRole`). App ASGs may enable target-tracking later. Two Neo4j guests stay **independent Community** processes behind the Bolt NLB (not a causal cluster).
 
 ### 6P.0c Secrets
 
@@ -1126,9 +1126,9 @@ GitHub Environment **`paid`**: `AWS_ROLE_TO_ASSUME`, `AWS_REGION`, app passwords
 | Auth | Environment access keys | OIDC role |
 | IAM | `LabRole` only | May create roles / instance profiles |
 | Subnet tiers | Public / app / data | **Same** |
-| RDS | One, `multi_az = false` | One writer; **Multi-AZ standby** optional. Optional **second** RDS for pgvector — **same data subnet group** |
-| Neo4j | `neo4j:5` container, `max=1` | Same default. Optional Marketplace **AMI in our data-subnet ASG** (not the vendor CFT). Optional internal Bolt NLB |
-| Egress | NAT **instance** `t3.nano` or endpoints | NAT **Gateway** or endpoints |
+| RDS | Two Multi-AZ (`heavy_rental` + `haystack`) | Same two writers. May enlarge class. Still **same data subnet group** |
+| Neo4j | `neo4j:5` ×2 + internal Bolt NLB | Same default. Optional Marketplace **AMI in our data-subnet ASG** (not the vendor CFT) |
+| Egress | One NAT **instance** `t3.nano` in AZ-0 | NAT **Gateway** (per-AZ) or endpoints |
 | Public ALB | HTTP :80 typical | HTTPS :443 |
 | Instance class | ≤ `large` | Larger classes allowed |
 | ECS / EKS | Allowed, not default | Still not the default |
@@ -1137,11 +1137,11 @@ GitHub Environment **`paid`**: `AWS_ROLE_TO_ASSUME`, `AWS_REGION`, app passwords
 
 Same example CIDRs as §6.2 (`10.0.0.0/24` public … `10.0.20.0/24` data). Differences:
 
-- Data route table may use a **NAT Gateway** (or endpoints) instead of a NAT instance.
-- RDS subnet group = **data subnets only**. Multi-AZ uses those two AZs as primary + standby — still **one** cluster, not one independent Postgres per AZ.
-- Optional second RDS: same subnet group, still `publicly_accessible = false`.
-- `asg-neo4j` still **one** instance. The second data subnet is not a second graph database.
-- Security groups: same as §6.2. If an internal Bolt NLB exists, `sg-haystack` talks to the NLB SG; the NLB talks to `sg-neo4j:7687`.
+- Data route tables already use a **NAT Gateway** in the same AZ (or endpoints).
+- RDS subnet group = **data subnets only**. Both instances are Multi-AZ (primary + standby) — still **one writer each**, not one independent Postgres per AZ.
+- Two RDS is the default (same as Academy), still `publicly_accessible = false`.
+- `asg-neo4j` is **desired=2**. The two guests are not a causal cluster.
+- Security groups: same as §6.2. `sg-haystack` talks to the Bolt NLB SG; the NLB talks to `sg-neo4j:7687`.
 
 ### 6P.5 What paid must not do
 
@@ -1150,7 +1150,7 @@ Same example CIDRs as §6.2 (`10.0.0.0/24` public … `10.0.20.0/24` data). Diff
 - Run the Neo4j Marketplace **CloudFormation** stack (`prodview-a5jr6bo72f5aw`)
 - Put RDS or Neo4j in public or app subnets
 - Publish 5432, 7474, 7687, or 22 to the internet
-- Put `STRIPE_SECRET_KEY` on the portal or bake `sk_` into the Vite image
+- Put `STRIPE_API_KEY` on the portal or bake `sk_` into the Vite image
 - Mix CDK and Terraform on the same VPC
 - Apply from app CI/Release workflows
 
@@ -1200,17 +1200,17 @@ Step-by-step of the GitHub Actions Terraform job (`plan` / `apply` / `destroy`, 
 
 This pipeline-authoring devcontainer already installs Terraform, tflint, tfsec, and terraform-docs.
 
-Terraform should own: VPC, **public + private-app + private-data** subnets, route tables, SGs, launch templates + **ASGs** (`asg-portal`, `asg-rest`, `asg-haystack` in app subnets; **`asg-neo4j` in data subnets**) with `LabInstanceProfile` (preferred: **no** `key_name` — PEMs come **after** InService), public ALB + `tg-portal`, **dedicated internal ALB** + `tg-rest`, **dedicated internal ALB** + `tg-haystack`, RDS in the **data subnet group only** (`publicly_accessible = false`), ECR, **`aws_secretsmanager_secret` shells** for `heavy-rental/{portal,rest,haystack,neo4j}` and `heavy-rental/ssh/*` (no plaintext passwords, Stripe secrets, or PEMs in `.tf` or state). Never a lone `aws_instance` outside an ASG (the NAT instance, if used, is the one documented exception — or wrap it in a 1-instance ASG). Never register REST or Haystack on the public listener. Never place RDS or `asg-neo4j` in the app or public subnets.
+Terraform should own: VPC, **public + private-app + private-data** subnets, route tables, SGs, launch templates + **ASGs** (`asg-portal`, `asg-rest`, `asg-haystack` in app subnets at **desired=2**; **`asg-neo4j` in data subnets** at **desired=2**) with `LabInstanceProfile` (preferred: **no** `key_name` — PEMs come **after** InService), public ALB + `tg-portal`, **dedicated internal ALB** + `tg-rest`, **dedicated internal ALB** + `tg-haystack`, **internal Bolt NLB** + `tg-neo4j`, **two Multi-AZ RDS** in the **data subnet group only** (`publicly_accessible = false`), two NAT Gateways (one per public AZ), ECR, **`aws_secretsmanager_secret` shells** for `heavy-rental/{portal,rest,haystack,neo4j}` and `heavy-rental/ssh/*` (no plaintext passwords, Stripe secrets, or PEMs in `.tf` or state). Never a lone `aws_instance` outside an ASG. Never register REST or Haystack on the public listener. Never place RDS or `asg-neo4j` in the app or public subnets.
 
 **Academy-specific rules for modules:**
 
-- `iam_role` resources: **do not create**. Data-source `LabRole` / `LabInstanceProfile`. **`asg-neo4j` uses the same `LabInstanceProfile`.**
+- `iam_role` resources: **do not create**. Data-source instance profile **`LabInstanceProfile`** and IAM role **`LabRole`**. Plan **fails** unless `LabInstanceProfile.role_name == LabRole`. All four ASGs (including **`asg-neo4j`**) attach that profile only. NAT Gateways have no instance profile.
 - No OIDC provider resource.
 - No ECS/EKS resources.
 - `region = us-east-1`.
-- RDS: `multi_az = false`, no enhanced monitoring, class ≤ medium, subnet group = **data subnets only**.
-- No `aws_nat_gateway`. No Marketplace AMI data source for Neo4j.
-- `asg-neo4j`: `max_size = 1`, EC2 health only, scale-in protection.
+- RDS: **two** instances, both `multi_az = true`, no enhanced monitoring, class ≤ medium, subnet group = **data subnets only**. Engine prefer **12.22** then **11.22**.
+- Two `aws_nat_gateway` (one per public AZ) + EIP. No NAT instance. No Marketplace AMI data source for Neo4j.
+- `asg-neo4j`: `min=2 desired=2 max=2`, EC2 health only, scale-in protection, registers with the Bolt NLB.
 
 **State backend (required for Actions):** S3 + DynamoDB lock (both are allow-listed). The GitHub runner is **ephemeral** — a local `terraform.tfstate` on the job is gone when the job ends; the next `apply`/`destroy` would orphan the VPC or fail. **Local state is CloudShell / laptop break-glass only.** Academy and paid use **different** bucket keys. The bucket itself is **not** in the same state (chicken-and-egg). Vocareum **Reset** deletes the bucket — keep `.tf` in Git and re-apply.
 
@@ -1229,9 +1229,9 @@ What Ansible should do:
 | Target | Playbook work |
 | --- | --- |
 | Each app ASG instance | Install Docker. **`aws secretsmanager get-secret-value`** for that role’s secret → `.env` → compose up with **§6.4a** `mem_limit`/`cpus`. Do not copy GitHub `secrets.*` onto the guest. Haystack compose **must not** start `neo4j`. |
-| `asg-neo4j` | Install Docker. `get-secret-value` `heavy-rental/neo4j`. Compose **only** `neo4j:5` with `/data` on EBS. Bolt bound to the instance private IP (reachable from `sg-haystack`). |
-| RDS (logical) | `community.postgresql` (or `ansible.builtin.command` + `psql`): create `heavy_rental` / Haystack DB if needed, roles, grants, `CREATE EXTENSION IF NOT EXISTS vector` |
-| Sync workers | On **`asg-haystack`**: ensure `postgres-haystack-sync` and `neo4j-populate` are up and pointed at the **RDS endpoint** and the **`asg-neo4j` Bolt URI** — this **is** the compose “sync up”, not AWS DMS |
+| `asg-neo4j` | Install Docker. `get-secret-value` `heavy-rental/neo4j`. Compose **only** `neo4j:5` with `/data` on EBS on **each** guest. Bolt on the guest; Haystack uses the **NLB** URI. |
+| RDS (logical) | Roles, grants, `CREATE EXTENSION IF NOT EXISTS vector`. Terraform already created both instances/DBs. |
+| Sync workers | On **`asg-haystack`**: ensure `postgres-haystack-sync` and `neo4j-populate` are up and pointed at the **SoR RDS**, the **Haystack RDS**, and the **Bolt NLB URI** — this **is** the compose “sync up”, not AWS DMS |
 
 What Ansible should **not** do:
 
@@ -1242,8 +1242,8 @@ What Ansible should **not** do:
 
 Inventory / connection (Academy-friendly):
 
-1. Terraform outputs each ASG name, the three ALB DNS names, the RDS endpoint, and the **Neo4j private IP / Bolt URI**
-2. Ansible inventory is **four groups** (`portal`, `rest`, `haystack`, `neo4j`) via SSM (`LabRole`)
+1. Terraform outputs each ASG name, the three ALB DNS names, **both** RDS endpoints, and the **Bolt NLB** URI
+2. Ansible inventory is **four groups** (`portal`, `rest`, `haystack`, `neo4j`) via SSM (`LabRole`) — **all** InService instances (two per ASG)
 3. RDS SQL is `delegate_to` a **rest** or **haystack** instance (those SGs can reach RDS). Do not `delegate_to` Neo4j for Postgres. Do not open 5432 to the Actions runner.
 
 Idempotency: re-run the playbook after every lab Start Lab (instances come back, public IPs may change, containers should `restart: unless-stopped`).
@@ -1263,7 +1263,7 @@ Optional overlap: **CodeDeploy** is allow-listed. Use it only if you want AWS-na
 | How Actions authenticates | Environment secrets `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_SESSION_TOKEN` | **OIDC** → IAM role (e.g. `github-actions-infra`). No long-lived access keys |
 | Terraform state | `s3://…/academy/…` or lab-local | Separate bucket/key, e.g. `s3://…/paid/…` |
 | IAM in Terraform | **Do not create roles.** Use `LabRole` / `LabInstanceProfile` | May create task roles, instance profiles, OIDC provider (once, by an admin) |
-| Shape | Same **three-tier VPC** (public / private-app / private-data). Four ASGs + 1× RDS in the data subnet group. NAT **instance** or VPC endpoints — **no NAT Gateway**, no Multi-AZ | Same three-tier mapping **plus** paid-only extras: Multi-AZ RDS, NAT Gateway or private+endpoints, ACM/HTTPS, optional second RDS (still in the **data** subnet group) / ECS / internal Bolt NLB |
+| Shape | Same **three-tier VPC** (public / private-app / private-data). Four ASGs at desired=2 + **two Multi-AZ RDS** + Bolt NLB + **two NAT Gateways** | Same three-tier mapping **plus** paid-only extras: ACM/HTTPS, created IAM / OIDC |
 | Who may run apply | People who can use Environment `academy` | Required reviewers on Environment `paid` |
 
 Hard isolation:
@@ -1455,9 +1455,9 @@ Enable Environment protection (required reviewers) on `paid` before the first ap
 #### What the paid pipeline may do that Academy must not
 
 - Create IAM roles and instance profiles (task role, deploy role already exists)
-- Multi-AZ RDS, larger instance classes, NAT Gateway or VPC endpoints — **still in the same three-tier layout**
-- Second RDS for Haystack pgvector (compose isolation) — **same data subnet group**, never a public or app subnet
-- Optional internal **NLB** for Neo4j Bolt (paid only). Academy uses the instance private IP in Secrets Manager.
+- Larger instance classes, NAT Gateway or extra VPC endpoints — **still in the same three-tier layout**
+- Same two Multi-AZ RDS as Academy — **same data subnet group**, never a public or app subnet
+- Internal **NLB** for Neo4j Bolt is already on Academy. Paid keeps it (stable `NEO4J_URI`).
 - Optional Neo4j Marketplace **AMI** inside **our** data-subnet `asg-neo4j` (see §6.2b). Never the vendor CloudFormation stack.
 - ACM certificate + HTTPS on the **public portal** ALB only. REST and Haystack stay on **dedicated internal** ALBs.
 - ECR in the paid account as the runtime registry
@@ -1527,15 +1527,15 @@ Terraform’s dependency graph is the order. Do **not** hand-delete ASGs or the 
 | Resource Terraform created | After destroy |
 | --- | --- |
 | VPC, IGW, public / private-app / private-data subnets, route tables | **Gone** |
-| NAT instance (Academy) or NAT Gateway (paid, if in state) | **Gone** |
+| Two NAT Gateways + EIPs | **Gone** (hourly Gateway charge stops) |
 | `asg-portal`, `asg-rest`, `asg-haystack`, `asg-neo4j` + launch templates + EC2 | **Terminated / gone** |
-| Public portal ALB + both internal ALBs + listeners + target groups | **Gone** (hourly ALB charge stops) |
-| RDS instance + TF-created subnet / parameter / option groups | **Deleted** (data **irrecoverable**) |
+| Public portal ALB + both internal ALBs + Bolt NLB + listeners + target groups | **Gone** (hourly ALB/NLB charge stops) |
+| Both RDS instances + TF-created subnet / parameter / option groups | **Deleted** (data **irrecoverable**) |
 | Security groups | **Gone** |
 | Secrets Manager shells `heavy-rental/{portal,rest,haystack,neo4j}` and `heavy-rental/ssh/*` | **Deleted** (including PEMs) |
 | ECR repositories Terraform created (and images in them) | **Gone** |
 | CloudWatch log groups / alarms Terraform created | **Gone** |
-| Paid extras in that state (second RDS, Bolt NLB, ACM listener, IAM roles TF created) | **Gone** |
+| Paid extras in that state (ACM listener, IAM roles TF created, NAT Gateway) | **Gone** |
 
 Academy RDS: set `deletion_protection = false` so destroy can succeed. Secrets Manager: `recovery_window_in_days = 0` (or force-delete) so the secret is actually removed, not scheduled.
 
@@ -1576,7 +1576,7 @@ If the backend is empty or state is missing (Vocareum **Reset** already wiped th
 
 **Design (this folder) is consistent** on: Academy vs paid isolation; three subnet tiers; four ASGs; portal-only public ALB; nginx `/api` → REST ALB → `asg-rest` → Haystack ALB :8000; Haystack → RDS :5432 and Bolt :7687; one Academy RDS (not REST-exclusive); `stop` vs `destroy`; CI image contract (ports 80 / 8080 / 8000).
 
-**Example workflows cannot apply or deploy.** Terraform, Ansible, image load, `stop`, and `destroy` steps are stubs and **must exit 1** until the other project replaces them. Discover / `assert-*` / `confirm_destroy` are real fail-closed checks.
+**Example workflows in this folder cannot apply or deploy** (stubs `exit 1`). The other project (`heavy-rental-project-instructure-and-cloud-deploy`) implements `apply` / `configure-only` / `stop` / `destroy`. Discover / `assert-*` / `confirm_destroy` stay fail-closed here.
 
 **Would fail at implement time if ignored:**
 
@@ -1715,13 +1715,14 @@ Job terraform   if: action == plan || apply
 | Public portal ALB + `tg-portal` :80 | `action=stop` (CLI) |
 | Internal REST ALB + `tg-rest` :8080 | App CD deploys |
 | Internal Haystack ALB + `tg-haystack` :8000 | |
-| RDS in the **data** subnet group (`publicly_accessible=false`, `multi_az=false`, `deletion_protection=false`) | |
+| Internal Bolt NLB + `tg-neo4j` :7687 | |
+| Two Multi-AZ RDS in the **data** subnet group (`publicly_accessible=false`, `deletion_protection=false`) | |
 | Empty Secrets Manager shells `heavy-rental/{portal,rest,haystack,neo4j}` and `heavy-rental/ssh/*` | Secret **values** (`sync-secrets` / `sync-ssh-keys`) |
 | Optional ECR repos | |
 
 Preferred: **no** `key_name` on launch templates. PEMs wait until InService.
 
-Academy `.tf` must not create IAM roles or an OIDC provider, must not use `aws_nat_gateway` or a Marketplace Neo4j CFT, and must not register REST/Haystack on the public listener. `asg-neo4j`: `max_size = 1`.
+Academy `.tf` must not create IAM roles or an OIDC provider. Data-source **`LabInstanceProfile`** and **`LabRole`**; plan fails unless the profile uses that role. Must use two `aws_nat_gateway` (not a NAT instance). Must not use a Marketplace Neo4j CFT, and must not register REST/Haystack on the public listener. Portal / REST / Haystack / Neo4j: `desired=2` + two-AZ ALB/NLB. Both RDS: `multi_az=true`. Engine: prefer **12.22** then **11.22** on this Vocareum image.
 
 #### Destroy job (still Terraform, later)
 
@@ -1743,8 +1744,9 @@ These are **not** Terraform and **not** Ansible.
 | --- | --- |
 | Internal REST ALB DNS | `heavy-rental/portal` → `REST_BASE_URL` (+ `STRIPE_PUBLISHABLE_KEY` only) |
 | Internal Haystack ALB DNS | `heavy-rental/rest` → `HAYSTACK_URL` |
-| RDS endpoint hostname + port | `heavy-rental/rest` and `heavy-rental/haystack` → `POSTGRES_*` / URL |
-| `asg-neo4j` private IP | `heavy-rental/haystack` → `NEO4J_URI` (`bolt://…:7687`) |
+| SoR RDS endpoint hostname + port | `heavy-rental/rest` → `POSTGRES_*` / URL |
+| Haystack RDS endpoint hostname + port | `heavy-rental/haystack` → `POSTGRES_*` / URL |
+| Bolt NLB DNS | `heavy-rental/haystack` → `NEO4J_URI` (`bolt://<nlb-dns>:7687`) |
 
 REST also gets Stripe `sk_` + `whsec_` + `pk_`. Neo4j secret is user/password only. **`sync-secrets` fails** if host, database, password, or port is empty, or if portal is missing `REST_BASE_URL`, or if REST is missing `HAYSTACK_URL` when Haystack is in use. Do not echo SecretString, `sk_`, or PEMs. Do not write Vocareum AWS keys into Secrets Manager.
 
@@ -1752,8 +1754,8 @@ REST also gets Stripe `sk_` + `whsec_` + `pk_`. Neo4j secret is user/password on
 
 | Secret id (Terraform shell) | Required JSON fields (`sync-secrets`) | Who reads |
 | --- | --- | --- |
-| `heavy-rental/portal` | `REST_BASE_URL`, `STRIPE_PUBLISHABLE_KEY` | `asg-portal` / portal app CD |
-| `heavy-rental/rest` | `POSTGRES_HOST`, `POSTGRES_PORT`, `POSTGRES_DATABASE`, `POSTGRES_USERNAME`, `POSTGRES_PASSWORD`, `POSTGRES_URL` / `SPRING_DATASOURCE_*`, `HAYSTACK_URL`, `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `STRIPE_PUBLISHABLE_KEY` | `asg-rest` / REST app CD |
+| `heavy-rental/portal` | `REST_BASE_URL`, `STRIPE_PUBLISHABLE_KEY`, `VITE_STRIPE_PUBLISHABLE_KEY` (same `pk_`) | `asg-portal` / portal app CD |
+| `heavy-rental/rest` | `POSTGRES_HOST`, `POSTGRES_PORT`, `POSTGRES_DATABASE`, `POSTGRES_USERNAME`, `POSTGRES_PASSWORD`, `POSTGRES_URL` / `SPRING_DATASOURCE_*`, `HAYSTACK_URL`, `STRIPE_API_KEY`, `STRIPE_WEBHOOK_SECRET`, `STRIPE_PUBLISHABLE_KEY` | `asg-rest` / REST app CD |
 | `heavy-rental/haystack` | Same Postgres field set (or Haystack db name), `NEO4J_URI`, `NEO4J_USER`, `NEO4J_PASSWORD` | `asg-haystack` / Haystack app CD |
 | `heavy-rental/neo4j` | `NEO4J_USER`, `NEO4J_PASSWORD` | `asg-neo4j` (infra/`configure-only` only) |
 
@@ -1799,10 +1801,10 @@ App CD later:    discover ASG → same playbook, one group (portal | rest | hays
 | --- | --- | --- | --- |
 | `portal` | `heavy-rental/portal` (`REST_BASE_URL`, `pk_` only) | nginx :80; write `/api` → `REST_BASE_URL` (CI image has SPA `try_files` only). Fail if URL empty. Health `GET /`. Do not fail solely because `/api` is down. | `256m` / `0.5` |
 | `rest` | `heavy-rental/rest` (Postgres, `HAYSTACK_URL`, Stripe trio) | Tomcat :8080. Health `/actuator/health` or `/`. No Bolt. | `1g` / `1.0` |
-| `haystack` | `heavy-rental/haystack` (Postgres, `NEO4J_URI` not localhost) | uvicorn :8000 + `postgres-haystack-sync` + `neo4j-populate`. **Must not** start `neo4j`. Optional pgvector only on `t3.medium`. Health `/docs` or `/health`. | `768m` / `1.0` + two workers `256m` / `0.25` |
-| `neo4j` | `heavy-rental/neo4j` | **Only** `neo4j:5`, `/data` on EBS, Bolt on private IP. No ALB. App CD does not run this group. | `4g` / `1.5`, heap 512m–1G |
+| `haystack` | `heavy-rental/haystack` (Haystack RDS Postgres, `NEO4J_URI` = Bolt NLB) | uvicorn :8000 + `postgres-haystack-sync` + `neo4j-populate`. **Must not** start `neo4j`. Health `/docs` or `/health`. | `768m` / `1.0` + two workers `256m` / `0.25` |
+| `neo4j` | `heavy-rental/neo4j` | **Only** `neo4j:5`, `/data` on EBS, Bolt on each guest. NLB fronts them. App CD does not run this group. | `4g` / `1.5`, heap 512m–1G |
 
-**RDS logical** (`delegate_to` rest or haystack — not Neo4j, not the runner): `CREATE DATABASE heavy_rental`, roles/grants, optional `vector`. Recommended Academy Haystack DB is a **pgvector container** on `asg-haystack`, not a second RDS.
+**RDS logical** (`delegate_to` rest or haystack — not Neo4j, not the runner): roles/grants, optional `vector`. Terraform already created both instances (`heavy_rental` and `haystack`). Do not treat the sync worker as a third DB.
 
 Ansible must not create the VPC/ASG/ALB/RDS **instance**/IAM, inventory RDS as a host, open `:5432` to the runner, start Neo4j on haystack, or put `sk_` on the portal.
 
@@ -1815,11 +1817,11 @@ Browser  →  public portal ALB :80/:443
               →  asg-portal  (nginx SPA + /api proxy)
                     →  internal REST ALB :8080
                           →  asg-rest
-                                →  RDS :5432          (SoR database heavy_rental)
+                                →  RDS SoR :5432      (heavy_rental, Multi-AZ)
                                 →  internal Haystack ALB :8000   (HAYSTACK_URL)
                                       →  asg-haystack
-                                            →  RDS :5432          (sync/populate; optional Haystack db)
-                                            →  Neo4j Bolt :7687   (asg-neo4j; sg-haystack only)
+                                            →  RDS Haystack :5432 (haystack, Multi-AZ)
+                                            →  Bolt NLB :7687     (asg-neo4j ×2)
 ```
 
 Students use the **public portal ALB DNS** only. Operators use SSM.
@@ -1832,7 +1834,7 @@ Students use the **public portal ALB DNS** only. Operators use SSM.
 | --- | --- | --- | --- | --- |
 | Preview `.tf` | Infra | `plan` | `init`+`plan` | No |
 | New image / secret / after Start Lab | Infra | `configure-only` | **No** | Yes (all four groups) |
-| Pause for the lab day | Infra | `stop` | **No** | No — ASG desired=0 + stop RDS |
+| Pause for the lab day | Infra | `stop` | **No** | No — ASG desired=0 + stop **both** RDS |
 | Wipe the estate | Infra | `destroy` + `confirm_destroy=destroy` | `destroy` | No |
 | New portal / REST / Haystack image only | App CD | `deploy` | **No** | One group only |
 
@@ -1847,7 +1849,7 @@ Students use the **public portal ALB DNS** only. Operators use SSM.
 Same job names and the same communication graph. Differences:
 
 1. Admin has already created the GitHub OIDC provider and `github-actions-infra`. Environment **`paid`** holds `AWS_ROLE_TO_ASSUME` and `AWS_REGION`. No Vocareum keys.
-2. **Terraform apply** uses the **paid** state key — same three-tier VPC; may include Multi-AZ, NAT Gateway, ACM HTTPS on the **portal** ALB, extra IAM, second RDS. RDS and Neo4j stay in the **data** subnets.
+2. **Terraform apply** uses the **paid** state key — same three-tier VPC; may include NAT Gateway, ACM HTTPS on the **portal** ALB, extra IAM. Both Multi-AZ RDS, Bolt NLB, and Neo4j stay in the **data** subnets (same as Academy).
 3. `sync-secrets` / Ansible run in the **paid** account only. Same required SM ids and fields as §8.2, in the **paid** account.
 4. `action=destroy` on **this** workflow wipes **paid** state only. Never run Academy destroy against paid.
 
@@ -1891,15 +1893,15 @@ Paid app CD: `AWS_ROLE_TO_ASSUME` only. **No** `aws_access_key_id` inputs. Workf
 | IAM role creation | ECS/EKS/Fargate and many CDK/Terraform modules die | Only `LabRole` / `LabInstanceProfile` |
 | Service allow-list drift | Educator Readme may differ from the PDF cited here | Re-check Vocareum Readme before locking modules |
 | NAT Gateway cost | Can consume most of a $50 budget | Public-subnet EC2 + tight SGs, or skip NAT |
-| Two RDS + Neo4j 24/7 | Credits vanish | One RDS in the **data** subnet group; Neo4j in Docker on `asg-neo4j`; `action=stop` for all four ASGs + RDS when the lab ends |
-| Fourth ASG (`asg-neo4j`) | Extra instance vs the old sidecar design | Desired=1, `t3.large` is allow-listed. Still 4–5 instances ≪ 9. Fallback (not default): Neo4j back on haystack, **RDS still in data subnets**. |
-| NAT Gateway “because data subnets” | Can consume most of a $50 budget | **Forbidden on Academy.** Shared `t3.nano` NAT instance or VPC endpoints. |
+| Two Multi-AZ RDS + Neo4j 24/7 | Credits vanish | Keep **two** RDS in the **data** subnet group; Neo4j in Docker on `asg-neo4j`; `action=stop` for all four ASGs + **both** RDS when the lab ends |
+| Eight EC2 (desired=2, no NAT instance) | Leaves one slot under the Vocareum cap of 9 | Do not add a 9th EC2. Fallback (not default): `asg-neo4j` desired=1. **RDS still in data subnets**. |
+| Two NAT Gateways 24/7 | Can consume most of a $50 budget | Accepted trade-off (ADR 0010). Only `destroy` stops the charge. Session end / `stop` do not. |
 | Neo4j Marketplace AMI / [Community Edition CFT](https://aws.amazon.com/marketplace/pp/prodview-a5jr6bo72f5aw) | Vocareum forbids Marketplace; vendor stack also creates IAM, a second VPC, and a public NLB/EIP | Academy: `neo4j:5` container only. Paid: do **not** run the vendor CFT. Optional AMI-in-our-data-subnet later. See §6.2b. |
 | Creating an IAM role for Neo4j | Vocareum forbids new roles | Same `LabInstanceProfile` as every other ASG |
 | RDS in app subnets | Mixes data with compute; easier to expose 5432 | `aws_db_subnet_group` = data subnets only |
 | Putting Neo4j on `asg-haystack` as the default | Graph store shares the app host; misses the data-tier requirement | Default is `asg-neo4j` in data subnets |
-| Replacing `asg-neo4j` via ELB health | Stateful graph lost | `max=1`, EC2 health only, scale-in protection; rebuild from `neo4j-populate` |
-| `pgvector` on RDS | Extension may be missing on the Academy engine version | Fallback: `pgvector/pgvector:pg17` container |
+| Replacing `asg-neo4j` via ELB health | Stateful graph lost | EC2 health only, scale-in protection; rebuild from `neo4j-populate`. Two guests are not a cluster |
+| `pgvector` on Haystack RDS | Extension may be missing on the Academy engine version | Confirm on 12.22/11.22; fallback: `pgvector/pgvector` container |
 | Amazon Linux AMI only | Cannot launch Ubuntu AMIs | Docker images stay Debian/Ubuntu; host is Amazon Linux |
 | Stale Environment secrets | Vocareum token expired after the last Start Lab | `assert-lab` before Terraform; update `academy` secrets then re-run |
 | Typing keys on Run workflow | Inputs panel can leak the session token | Rejected design — Environment secrets only |
@@ -1907,7 +1909,7 @@ Paid app CD: `AWS_ROLE_TO_ASSUME` only. **No** `aws_access_key_id` inputs. Workf
 | Putting Vocareum AWS keys in Secrets Manager | Session tokens in the wrong place; leak via instance | GitHub Environment `academy` only for those three names |
 | SSH PEM in `.tf`, Terraform state, or **before EC2 exists** | Leak, or a key nobody can use | Empty secret shells in TF. **`sync-ssh-keys` only after InService.** Never `tls_private_key`. |
 | Public `:22` “because we have PEMs” | Internet can brute-force the ASGs | Deny `:22` from `0.0.0.0/0`. Everyday = SSM. PEM = break-glass + SSM port-forward |
-| `STRIPE_SECRET_KEY` on the portal | Browser / nginx image can leak `sk_` | Portal secret = publishable key only. Secret + webhook on `heavy-rental/rest` only |
+| `STRIPE_API_KEY` on the portal | Browser / nginx image can leak `sk_` | Portal secret = publishable key only. Secret + webhook on `heavy-rental/rest` only |
 | REST or Haystack on the public ALB | Internet can hit the API / LLM stack | Dedicated **internal** ALBs only; SGs deny 8080/8000 from `sg-alb-public` and `0.0.0.0/0` |
 | Lone EC2 without an ASG | Replace/scale is manual; no ELB-driven replace | Launch template + ASG for portal, REST, and Haystack |
 | One workflow for both accounts | Academy keys or LabRole used against a billed account (or the reverse) | Two workflow files, two Environments, two state keys |
@@ -1939,14 +1941,14 @@ Paid app CD: `AWS_ROLE_TO_ASSUME` only. **No** `aws_access_key_id` inputs. Workf
 All phases run through **`aws-infra-academy.yml`**, after Start Lab.
 
 1. Workflow skeleton: Environment `academy` + `workflow_dispatch` (`action` only) + `assert-lab` + `terraform plan`.
-2. `action=apply`: VPC + **public + private-app + private-data** subnets + SGs + **four ASGs** + public portal ALB + **dedicated internal REST ALB** + **dedicated internal Haystack ALB** + RDS in the **data subnet group** + `asg-neo4j` in the data subnets.
-3. Ansible: Docker on each ASG + release images + RDS logical setup. Portal must not receive a public REST URL. Haystack compose must not start Neo4j.
-4. Haystack ASG workers only: optional pgvector + sync + populate, pointed at RDS and **`asg-neo4j` Bolt**. No public `/api` or `/haystack` rule.
+2. `action=apply`: VPC + **public + private-app + private-data** subnets + SGs + **four ASGs at desired=2** + public portal ALB + **dedicated internal REST ALB** + **dedicated internal Haystack ALB** + **Bolt NLB** + **two Multi-AZ RDS** in the **data subnet group** + two NAT Gateways (one per public AZ).
+3. Ansible: Docker on **every** ASG guest + release images + RDS logical setup (roles/grants/extensions). Portal must not receive a public REST URL. Haystack compose must not start Neo4j.
+4. Haystack ASG workers only: sync + populate, pointed at **SoR RDS**, **Haystack RDS**, and the **Bolt NLB**. No public `/api` or `/haystack` rule.
 5. ECR in the lab account (including a copy of `neo4j:5` so the data-subnet host does not need Docker Hub).
-6. `action=stop`: set all four ASG desired=0 (or stop instances) and stop RDS.
-7. `action=destroy`: `terraform destroy` of the Academy state — VPC, ASGs, ALBs, RDS, secret shells, NAT instance. Requires `confirm_destroy=destroy`. See §7.2d.
+6. `action=stop`: set all four ASG desired=0 (or stop instances) and stop **both** RDS. NAT Gateways keep billing.
+7. `action=destroy`: `terraform destroy` of the Academy state — VPC, ASGs, ALBs, NLB, both RDS, secret shells, two NAT Gateways + EIPs. Requires `confirm_destroy=destroy`. See §7.2d.
 
-Do not add a second RDS, NAT Gateway, Marketplace Neo4j AMI, a new IAM role, or EKS on Academy. Do not put REST, Haystack, RDS, or Neo4j on a public address. Do not place RDS or Neo4j in the app subnets.
+Do not add a third RDS, a NAT instance, Marketplace Neo4j AMI, a new IAM role, a 9th EC2, or EKS on Academy. Do not put REST, Haystack, RDS, or Neo4j on a public address. Do not place RDS or Neo4j in the app subnets.
 
 ### 11.2 Paid (separate, after Academy works)
 
@@ -1954,9 +1956,9 @@ All phases run through **`aws-infra-paid.yml`**. Do not promote Academy state.
 
 1. Admin: OIDC provider + `github-actions-infra` + Environment `paid` (reviewers on).
 2. Plan against an empty paid state key.
-3. Apply a **new** VPC (same **three-tier** topology; paid extras allowed — Multi-AZ / second RDS / Bolt NLB still land in the **data** subnets).
+3. Apply a **new** VPC (same **three-tier** topology; paid extras allowed — NAT Gateway / HTTPS / IAM still land in the same tiers; both RDS + Bolt NLB stay in the **data** subnets).
 4. Ansible against paid outputs; images from paid ECR.
-5. Only then consider Multi-AZ, HTTPS, or a second RDS.
+5. Only then consider HTTPS, NAT Gateway, or larger classes.
 6. `action=destroy` on the **paid** workflow wipes **paid** state only.
 
 ---
@@ -1967,7 +1969,7 @@ All phases run through **`aws-infra-paid.yml`**. Do not promote Academy state.
 2. Credit amount ($50 vs $100) and whether the lab is wiped between assignments.
 3. Region preference (`us-east-1` recommended).
 4. Public portal ALB: HTTP-only until a domain exists; then ACM + HTTPS :443 + 80→443 redirect.
-5. Confirm `CREATE EXTENSION vector` on the lab’s RDS Postgres version; if unknown, plan the pgvector container from day one.
+5. Confirm `CREATE EXTENSION vector` on the lab’s Haystack RDS (12.22 / 11.22).
 6. Whether Neo4j Browser must be reachable from the student laptop (if yes: SSM port forward, never `0.0.0.0/7474`).
 7. Who can edit Environment `academy` secrets and who can approve apply (Environment protection)?
 8. Confirm Vocareum AWS Details always includes a session token (almost always yes).
@@ -1983,7 +1985,7 @@ All phases run through **`aws-infra-paid.yml`**. Do not promote Academy state.
 
 The compose estate is a **small number of containers on one bridge network**. This Vocareum lab is **long-lived, credit-capped, and IAM-locked** (`LabRole` only), but it **does** allow ECS, Fargate, and EKS if you use the pre-created roles.
 
-That still selects a **simple three-tier VPC**. **Academy (§6):** four **Auto Scaling groups** (portal / REST / Haystack in **private app** subnets; Neo4j in **private data** subnets), a **public ALB for the portal only**, dedicated **internal** ALBs for REST and Haystack, **one** single-AZ RDS and **one** Neo4j in the data subnet group (`LabRole`, no NAT Gateway, no Marketplace AMI). **Paid (§6P):** the same tiers in a **separate** account — Multi-AZ standby, second RDS, NAT Gateway, HTTPS, and an optional Marketplace AMI in *our* data-subnet ASG. REST, Haystack, RDS, and Neo4j are not internet-facing. **EKS is allowed and still the wrong default.**
+That still selects a **simple three-tier VPC**. **Academy (§6):** four **Auto Scaling groups** at **desired=2** (portal/React, REST/Spring Boot, Haystack in **private app** subnets; Neo4j in **private data** subnets), a **public ALB for the portal only**, dedicated **internal** ALBs for REST and Haystack, an **internal Bolt NLB**, **two Multi-AZ RDS** in the data subnet group, and **two NAT Gateways** (**8 EC2**; `LabRole`, no Marketplace AMI). **Paid (§6P):** the same tiers in a **separate** account — HTTPS, OIDC / created IAM, and an optional Marketplace AMI in *our* data-subnet ASG. REST, Haystack, RDS, and Neo4j are not internet-facing. **EKS is allowed and still the wrong default.**
 
 **Two GitHub Actions pipelines** are the trigger:
 

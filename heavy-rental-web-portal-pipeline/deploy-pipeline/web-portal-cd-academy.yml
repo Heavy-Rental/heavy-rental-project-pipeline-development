@@ -1,0 +1,160 @@
+# =============================================================================
+# Install into: heavy-rental-react-web-portal
+# Path:         .github/workflows/web-portal-cd-academy.yml
+# =============================================================================
+# Reusable only. Sole caller: portal-cd-academy-caller.yml
+# Also mirrored at pipeline-development .github/workflows/web-portal-cd-academy.yml
+# =============================================================================
+
+name: Web Portal CD Academy pipeline
+
+on:
+  workflow_call:
+    inputs:
+      action:
+        required: true
+        type: string
+      aws_environment:
+        required: true
+        type: string
+      image_ref:
+        required: false
+        type: string
+        default: ""
+      image_http_url:
+        required: false
+        type: string
+        default: ""
+
+permissions:
+  contents: read
+
+jobs:
+  assert-lab:
+    name: Assert Vocareum session
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.aws_environment }}
+    timeout-minutes: 5
+    steps:
+      - name: Refuse paid Environment
+        env:
+          ENV_NAME: ${{ inputs.aws_environment }}
+        run: |
+          set -euo pipefail
+          if [ "${ENV_NAME}" != "academy" ]; then
+            echo "::error::This workflow is AWS Academy / Vocareum only. Use Environment academy (got '${ENV_NAME}')."
+            exit 1
+          fi
+
+      - uses: actions/checkout@v7.0.1
+
+      - uses: ./.github/actions/resolve-vocareum-aws
+        with:
+          aws_access_key_id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws_secret_access_key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws_session_token: ${{ secrets.AWS_SESSION_TOKEN }}
+          aws_region: ${{ vars.AWS_REGION || 'us-east-1' }}
+
+      - name: Prove the Vocareum session is live
+        run: |
+          set -euo pipefail
+          if ! ARN=$(aws sts get-caller-identity --query Arn --output text); then
+            echo "::error::sts failed. Start Lab and paste a fresh session token."
+            exit 1
+          fi
+          {
+            echo "### Vocareum / Academy"
+            echo ""
+            echo "Caller: \`${ARN}\`"
+            echo "Action: \`${{ inputs.action }}\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  discover-targets:
+    name: Discover asg-portal
+    needs: [assert-lab]
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.aws_environment }}
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7.0.1
+
+      - uses: ./.github/actions/resolve-vocareum-aws
+        with:
+          aws_access_key_id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws_secret_access_key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws_session_token: ${{ secrets.AWS_SESSION_TOKEN }}
+          aws_region: ${{ vars.AWS_REGION || 'us-east-1' }}
+
+      - name: asg-portal InService + SSM Online + secret shell
+        run: |
+          set -euo pipefail
+          ASG=asg-portal
+          if ! aws autoscaling describe-auto-scaling-groups \
+            --auto-scaling-group-names "${ASG}" \
+            --query 'AutoScalingGroups[0].AutoScalingGroupName' \
+            --output text | grep -qx "${ASG}"; then
+            echo "::error::${ASG} is missing. Run infra CD action=apply first."
+            exit 1
+          fi
+          DESIRED="$(aws autoscaling describe-auto-scaling-groups \
+            --auto-scaling-group-names "${ASG}" \
+            --query 'AutoScalingGroups[0].DesiredCapacity' --output text)"
+          if [ "${DESIRED}" = "0" ]; then
+            echo "::error::${ASG} desired=0. Scale via infra (not this CD). Start Lab if the session ended."
+            exit 1
+          fi
+          mapfile -t IDS < <(aws autoscaling describe-auto-scaling-groups \
+            --auto-scaling-group-names "${ASG}" \
+            --query 'AutoScalingGroups[0].Instances[?LifecycleState==`InService`].InstanceId' \
+            --output text | tr '\t' '\n' | awk 'NF')
+          if [ "${#IDS[@]}" -eq 0 ]; then
+            echo "::error::No InService instances on ${ASG}. Start Lab or wait for the ASG."
+            exit 1
+          fi
+          ONLINE=0
+          for id in "${IDS[@]}"; do
+            ping="$(aws ssm describe-instance-information \
+              --filters "Key=InstanceIds,Values=${id}" \
+              --query 'InstanceInformationList[?PingStatus==`Online`].InstanceId' \
+              --output text || true)"
+            if [ -n "${ping}" ] && [ "${ping}" != "None" ]; then
+              ONLINE=$((ONLINE + 1))
+            fi
+          done
+          if [ "${ONLINE}" -eq 0 ]; then
+            echo "::error::No SSM Online guests on ${ASG}. Start Lab or run infra configure-only."
+            exit 1
+          fi
+          if ! aws secretsmanager describe-secret --secret-id heavy-rental/portal >/dev/null; then
+            echo "::error::heavy-rental/portal is missing. Run infra sync-secrets / apply first."
+            exit 1
+          fi
+          ALB="$(aws elbv2 describe-load-balancers \
+            --query "LoadBalancers[?contains(LoadBalancerName, 'portal')].DNSName | [0]" \
+            --output text 2>/dev/null || echo "")"
+          {
+            echo "### Discover asg-portal"
+            echo ""
+            echo "InService instances: ${#IDS[@]}"
+            echo "SSM Online: ${ONLINE}"
+            echo "Secret \`heavy-rental/portal\`: present (SecretString not printed)."
+            if [ -n "${ALB}" ] && [ "${ALB}" != "None" ]; then
+              echo "Public portal ALB: \`${ALB}\`"
+            fi
+            echo ""
+            echo "Image pull / Ansible compose is **branch 2**."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  not-in-branch-1:
+    name: Compose not on branch 1
+    needs: [discover-targets]
+    if: inputs.action == 'deploy' || inputs.action == 'configure-only'
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Fail closed
+        env:
+          ACTION: ${{ inputs.action }}
+        run: |
+          echo "::error::action=${ACTION} compose is feat/cd-portal-academy-deploy (branch 2). This branch supports assert-lab + discover (use action=verify)."
+          exit 1

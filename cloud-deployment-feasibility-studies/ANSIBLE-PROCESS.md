@@ -1,8 +1,17 @@
 # Ansible process (feasibility studies)
 
-**Status:** Contract only. Playbooks are not in this folder. Infra and app-CD example YAML `ansible` jobs are fail-closed stubs (`exit 1`).
+**Status:** Contract. Live playbooks are in `heavy-rental-project-instructure-and-cloud-deploy` (`ansible/`, `aws-infra-academy.yml` on `HR-162`). Example YAML **in this folder** stays fail-closed.
 
 **Sources:** [`AWS-INFRASTRUCTURE-FEASIBILITY.md`](AWS-INFRASTRUCTURE-FEASIBILITY.md) §7.1a, §6.0c, §6.4a, §6.6; Haystack / REST / portal CD studies (same guest playbook, one group).
+
+### Pinned versions (other project, 2026-08-17)
+
+| Component | Version |
+| --- | --- |
+| Ansible community package | **14.3.1** (`ansible-core` **2.21.3**) |
+| amazon.aws | **>=11.3.0,<12** (`common.text.converters`; connection `amazon.aws.aws_ssm`) |
+| boto3 / botocore on the runner | **>=1.35.0** |
+| Docker Compose on AL2023 | Try RPM `docker-compose-plugin`; else GitHub **v2.39.2** |
 
 ---
 
@@ -30,9 +39,9 @@ Infra CD  action=stop | destroy
 
 ## 2. How it connects
 
-1. Actions runner installs Ansible (or uses an image that has it). Academy runner AWS creds: Vocareum form keys or Environment `academy` (not paid).
-2. Dynamic inventory: four groups — `portal`, `rest`, `haystack`, `neo4j`.
-3. `ansible_connection=aws_ssm` (or `community.aws.aws_ssm`); instance id from the ASG. No public IP. No `ansible_host`.
+1. Actions runner installs Ansible (or uses an image that has it). Academy runner AWS creds: Vocareum form keys (masked via `$GITHUB_EVENT_PATH`) or Environment `academy` (not paid). Guest identity: **`LabInstanceProfile`** / **`LabRole`**.
+2. Dynamic inventory: four groups — `portal`, `rest`, `haystack`, `neo4j`. Discover **all** InService + SSM Online instances (two per ASG at desired=2).
+3. `ansible_connection=amazon.aws.aws_ssm`; instance id from the ASG. No public IP. `ansible_host` is the instance id.
 4. RDS is **not** in inventory (no SSH guest OS).
 5. Everyday path is SSM. SSH PEM (`heavy-rental/ssh/*`) is break-glass only.
 
@@ -41,7 +50,7 @@ Infra CD  action=stop | destroy
 ## 3. Shared guest steps (every ASG)
 
 1. Reach the instance via SSM (`LabInstanceProfile` / paid instance profile).
-2. Install Docker and the compose plugin if missing.
+2. Install Amazon `docker`. Try `docker-compose-plugin`; if `docker compose version` fails, install Compose v2 from GitHub (AL2023 has no Docker CE repo).
 3. `aws secretsmanager get-secret-value` of **that role’s** app secret only.
 4. Map JSON → `.env`; `chmod 600`.
 5. Do **not** copy GitHub `secrets.*` onto the guest. Do **not** fetch `sk_` or PEMs onto `asg-portal`.
@@ -54,18 +63,12 @@ Ansible does **not** invent the URL. The **app CD** (or infra first-compose) job
 
 | Layer | Name | Role |
 | --- | --- | --- |
-| `workflow_dispatch` input `image_ref` | GHCR tag, ECR URI, or empty | Existing input |
-| `workflow_dispatch` input `image_http_url` | Optional **HTTPS** URL of the CI `.tar.gz` | Empty = use Environment default or `image_ref` |
-| Environment **variable** `IMAGE_HTTP_URL` | Default HTTPS tar URL for that `academy` / `paid` Environment | So operators do not retype it every run |
-| Environment **secret** | Only if the URL needs a token (private GitHub Release). **Not** a public path | Never put a bearer token in the URL string |
+| Environment **variable** `PORTAL_IMAGE` | Portal registry tag | Empty = stock `nginx`. Not a secret. |
+| Environment **variable** `REST_IMAGE` / `HAYSTACK_IMAGE` | REST / Haystack tags | Empty = Run `image_ref`; still empty → that play fails |
+| `workflow_dispatch` input `image_ref` | Fallback tag | REST **and** Haystack only. **Not** the portal. |
+| `workflow_dispatch` input `image_http_url` | Optional HTTPS / `s3://` `.tar.gz` | `docker load` on **all** guests. Empty = `vars.IMAGE_HTTP_URL`. Leave empty for normal pulls. |
 
-Resolution order in `resolve-image` / Ansible:
-
-1. Non-empty `inputs.image_http_url` → on the instance: `curl`/`ansible.builtin.get_url` → `docker load`
-2. Else `vars.IMAGE_HTTP_URL` on the Environment → same
-3. Else `inputs.image_ref` looks like `https://…` → treat as tar URL
-4. Else `image_ref` is a registry tag → `docker pull` (paid GHCR/ECR; Academy only if pull works)
-5. Else download the latest Release **tar** onto the runner and SSM/S3 it, then `docker load`
+Academy pull: public GHCR needs no login. ECR tags (`*.dkr.ecr.*`) get `aws ecr get-login-password` on the guest (`LabRole`). Private GHCR is **not** pulled (no token on the guest) — copy to ECR or load a tar. Prefer a **new tag** each redeploy (`compose up` does not `--pull always`).
 
 **Academy preferred HTTP path:** HTTPS object in a **lab S3 bucket** (or S3 VPC endpoint). The runner or Vocareum user puts the CI tar there; the instance uses `LabRole` `GetObject`. Do **not** use a plain `http://` registry. GitHub Release HTTPS is allowed if NAT is up and auth is a secret, not a query string.
 
@@ -84,7 +87,7 @@ curl -fsSL -o /tmp/app.tar.gz "$IMAGE_HTTP_URL"
 docker load < /tmp/app.tar.gz
 ```
 
-Instance still needs outbound HTTPS (NAT instance or S3 endpoint). Stubs stay fail-closed until the other project implements `get_url` + `docker load`.
+Instance still needs outbound HTTPS (same-AZ NAT Gateway or S3 endpoint). Live `get_url` / `aws s3 cp` + `docker load` is in the infra repo `guest_base` role.
 
 ---
 
@@ -92,7 +95,7 @@ Instance still needs outbound HTTPS (NAT instance or S3 endpoint). Stubs stay fa
 
 ### 4.1 `portal` (`asg-portal`)
 
-1. Read `heavy-rental/portal` → `REST_BASE_URL` + `STRIPE_PUBLISHABLE_KEY` only.
+1. Read `heavy-rental/portal` → `REST_BASE_URL` + `STRIPE_PUBLISHABLE_KEY` + `VITE_STRIPE_PUBLISHABLE_KEY` (same `pk_`). Never `STRIPE_API_KEY`.
 2. Write nginx `location /api/` → `REST_BASE_URL` (CI image has SPA `try_files` only). Fail if `REST_BASE_URL` is empty.
 3. Compose **one** nginx on **:80**, `mem_limit: 256m`, `cpus: 0.5`.
 4. Health: `GET /` on `:80`. Do not fail solely because `/api` (REST) is down.
@@ -106,22 +109,21 @@ Instance still needs outbound HTTPS (NAT instance or S3 endpoint). Stubs stay fa
 
 ### 4.3 `haystack` (`asg-haystack`)
 
-1. Read `heavy-rental/haystack` → Postgres fields, `NEO4J_URI` (private IP, not localhost), optional `LLM_API_KEY`.
+1. Read `heavy-rental/haystack` → Haystack RDS Postgres fields, `NEO4J_URI` (Bolt NLB, not localhost, not a guest private IP), optional `LLM_API_KEY`.
 2. Compose:
    - uvicorn (CI image) **:8000** — `768m` / `1.0`
    - `postgres-haystack-sync` — `256m` / `0.25`
    - `neo4j-populate` — `256m` / `0.25`
-3. Optional pgvector container only on `t3.medium` (`512m` / `0.5`). Do not fit it on `t3.small`.
-4. **Must not** start a `neo4j` container.
-5. Sync `SOURCE_HOST` = RDS endpoint. Populate Bolt = `asg-neo4j`.
-6. Health: `GET /docs` or `/health` on `:8000`.
+3. **Must not** start a `neo4j` container. Do not start a pgvector container unless the Haystack RDS cannot load `vector` (credit fallback).
+4. Sync `SOURCE_HOST` = SoR RDS endpoint. `TARGET_HOST` = Haystack RDS endpoint. Populate Bolt = NLB `NEO4J_URI`.
+5. Health: `GET /docs` or `/health` on `:8000`.
 
 ### 4.4 `neo4j` (`asg-neo4j`) — infra / `configure-only` only
 
 1. Read `heavy-rental/neo4j` → user / password.
 2. Compose **only** `neo4j:5`, `/data` on EBS, `mem_limit: 4g`, `cpus: 1.5`, heap 512m–1G.
-3. Bind Bolt to the instance private IP (`sg-haystack` only). No ALB.
-4. App CD does **not** run this group.
+3. Bind Bolt on each guest. Haystack reaches them through the **internal NLB** (`bolt://<nlb-dns>:7687`). No public listener.
+4. App CD does **not** run this group. Two guests are **not** a causal cluster.
 
 ---
 
@@ -129,10 +131,10 @@ Instance still needs outbound HTTPS (NAT instance or S3 endpoint). Stubs stay fa
 
 Run via `delegate_to` a **rest** or **haystack** instance (those SGs can reach `:5432`). Do not `delegate_to` Neo4j. Do not open `:5432` to the Actions runner.
 
-1. `CREATE DATABASE` `heavy_rental` if needed.
-2. Create a Haystack database **only** if using the same RDS with a second db name (option B). Recommended Academy path is a pgvector **container** on `asg-haystack` instead.
-3. Roles and grants.
-4. `CREATE EXTENSION IF NOT EXISTS vector` when Haystack uses that RDS.
+1. Terraform already created both instances (`heavy_rental` on SoR RDS, `haystack` on Haystack RDS). Do not invent a third DB for the sync worker.
+2. Roles and grants on each instance.
+3. `CREATE EXTENSION IF NOT EXISTS vector` on the Haystack RDS.
+4. Credit fallback only: `CREATE DATABASE` on a single instance, or a pgvector container on `asg-haystack`.
 
 ---
 
@@ -144,7 +146,7 @@ Run via `delegate_to` a **rest** or **haystack** instance (those SGs can reach `
 | REST CD | `rest` | New Tomcat image |
 | Haystack CD | `haystack` | New uvicorn image; same sync + populate; still no neo4j |
 
-Discover the ASG (`InService` + SSM Online) first. Fail if the group is missing.
+Discover **every** `InService` + SSM Online instance in the ASG first (two at desired=2). Fail if the group is missing or none are Online.
 
 ---
 
@@ -154,7 +156,7 @@ Discover the ASG (`InService` + SSM Online) first. Fail if the group is missing.
 - Put RDS in inventory as a host
 - Open `:5432` to `0.0.0.0/0` or to the runner
 - Start Neo4j on `asg-haystack`
-- Put `STRIPE_SECRET_KEY` on the portal
+- Put `STRIPE_API_KEY` on the portal
 - Run on `action=stop` or `action=destroy`
 - Mix CodeDeploy and Ansible on the same files without a split
 

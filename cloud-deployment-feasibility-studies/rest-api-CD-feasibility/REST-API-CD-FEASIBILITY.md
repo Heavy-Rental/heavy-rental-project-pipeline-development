@@ -71,9 +71,9 @@ CI Environments: **`integration`** (`REST_API_DB_*`) and **`production`** (`REST
 
 | Piece | Value |
 | --- | --- |
-| Compute | **`asg-rest`**, private app subnets, InService, SSM Online |
+| Compute | **`asg-rest`**, private app subnets, estate default **desired=2**, InService, SSM Online |
 | Ingress | **Internal** ALB `tg-rest` **:8080**. Never public |
-| Data | RDS `heavy_rental` on **:5432** (`sg-rest` → `sg-rds`). Haystack via **internal** Haystack ALB (`HAYSTACK_URL`, `sg-rest` → `sg-alb-haystack` **:8000**). REST does **not** open Bolt. Academy is **one** RDS — not an instance exclusive to this ASG; Haystack may still read `:5432` for sync. |
+| Data | SoR RDS `heavy_rental` on **:5432** (`sg-rest` → `sg-rds`). Haystack via **internal** Haystack ALB (`HAYSTACK_URL`, `sg-rest` → `sg-alb-haystack` **:8000**). REST does **not** open Bolt. Academy has **two** RDS; REST uses the SoR instance only. Haystack may still read SoR `:5432` for sync. |
 | Secret | `heavy-rental/rest` (Postgres fields, Stripe **secret** + webhook + publishable, `HAYSTACK_URL`) |
 | Limits | §6.4a: Tomcat `mem_limit: 1g`, `cpus: 1.0` on `t3.small` |
 
@@ -130,7 +130,7 @@ AWS keys **do not** push GHCR (CI `GITHUB_TOKEN`). On **Academy**, paste the thr
 | --- | --- |
 | GitHub `academy` | **Runner only:** three Vocareum keys + `AWS_REGION`. App passwords optional if SM is already filled |
 | GitHub `paid` | **Runner only:** OIDC. No access keys |
-| AWS `heavy-rental/rest` | **Instance (`LabRole`):** `POSTGRES_*` / `SPRING_DATASOURCE_*`, `HAYSTACK_URL`, `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `STRIPE_PUBLISHABLE_KEY` |
+| AWS `heavy-rental/rest` | **Instance (`LabRole`):** `POSTGRES_*` / `SPRING_DATASOURCE_*`, `HAYSTACK_URL`, `STRIPE_API_KEY`, `STRIPE_WEBHOOK_SECRET`, `STRIPE_PUBLISHABLE_KEY` |
 
 Do not put `sk_` in the image. Do not use CI `REST_API_CLOUD_DB_*` as the RDS hostname — `sync-secrets` **builds** JDBC from Terraform + CD password. Fail deploy if `describe-secret` for `heavy-rental/rest` fails. See AWS study **§8.2** and **§8.7**.
 

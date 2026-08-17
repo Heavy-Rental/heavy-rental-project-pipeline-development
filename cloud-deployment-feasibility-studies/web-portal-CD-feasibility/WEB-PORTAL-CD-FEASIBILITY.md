@@ -4,7 +4,7 @@
 
 **Destinations:** same two AWS accounts as [`../AWS-INFRASTRUCTURE-FEASIBILITY.md`](../AWS-INFRASTRUCTURE-FEASIBILITY.md) — **Academy** (Vocareum) and **Paid**. Separate GitHub Environments (`academy`, `paid`), separate workflows. One run must never touch the other.
 
-**This CD is manually triggered after the cloud estate is already up.** It does **not** create the VPC, `asg-portal`, the public portal ALB, or RDS. If `asg-portal` is missing, the run **fails** and the operator runs infra CD `action=apply` first.
+**This CD is manually triggered after the cloud estate is already up.** It does **not** create the VPC, `asg-portal`, the public portal ALB, or RDS. If `asg-portal` is missing, the run **fails** and the operator runs infra CD `action=apply` first. Until this app CD exists, redeploy the portal with infra **`configure-only`** and Environment **`PORTAL_IMAGE`**.
 
 **The hard problem is not “how to start nginx.”** It is **how the runner learns which EC2s to deploy to** (private app subnets, no public IP, IPs change after Start Lab) **and** how a **static Vite SPA** talks to a **private** REST ALB without exposing REST or baking that URL into the public image.
 
@@ -25,7 +25,7 @@ Portal is the **only public** ALB target. The browser talks to the public portal
 - Deploying REST, Haystack, or Neo4j
 - Running `vite` / `npm run dev` as the AWS process
 - Putting REST or Haystack on the public ALB
-- Putting `STRIPE_SECRET_KEY` / `STRIPE_WEBHOOK_SECRET` on the portal or in the image
+- Putting `STRIPE_API_KEY` / `STRIPE_WEBHOOK_SECRET` on the portal or in the image
 - Baking the **internal** REST ALB URL into a public GHCR / Vite `VITE_*` bundle
 - Using portal CI (which has **no** `academy` / `paid` Environments) as CD auth
 
@@ -88,7 +88,7 @@ CI Environments: **none** for app config. Only `GITHUB_TOKEN` for GHCR. **No Str
 
 | Piece | Value |
 | --- | --- |
-| Compute | Auto Scaling group **`asg-portal`** (private **app** subnets). Desired ≥ 1, **InService** |
+| Compute | Auto Scaling group **`asg-portal`** (private **app** subnets). Estate default **desired=2**, both **InService** |
 | Ingress | **Public** ALB `tg-portal` **:80** (HTTPS `:443` only if an ACM cert exists). **Only** public target. HTTP :80 always |
 | Egress to REST | Instance SG allows portal → **internal** REST ALB `tg-rest` **:8080** |
 | Auth on instance | `LabInstanceProfile` (Academy) or paid instance profile. SSM agent up |
@@ -159,7 +159,7 @@ Gives `REST_BASE_URL` and `STRIPE_PUBLISHABLE_KEY`. It does **not** replace ASG 
 
 Dynamic inventory, **one group** `portal`:
 
-- `ansible_connection=aws_ssm` (or `community.aws.aws_ssm`)
+- `ansible_connection=amazon.aws.aws_ssm`
 - `ansible_aws_ssm_instance_id=<id>` from §5.2
 - No `ansible_host` public IP
 - REST ALB is **not** in inventory; nginx reads `REST_BASE_URL` from the secret
@@ -357,4 +357,5 @@ Actions → Run workflow  (action + environment; optional image_ref)
 - Estate: [`../AWS-INFRASTRUCTURE-FEASIBILITY.md`](../AWS-INFRASTRUCTURE-FEASIBILITY.md) §6 (`asg-portal`, public `tg-portal`), §6.0c secrets, §6.4a limits, §6.6 Communication, §6.10 fallacies (topology **changes**), §7.2c, §7.2e
 - Sibling app CD: [`../haystack-CD-feasibility/HAYSTACK-CD-FEASIBILITY.md`](../haystack-CD-feasibility/HAYSTACK-CD-FEASIBILITY.md), [`../rest-api-CD-feasibility/REST-API-CD-FEASIBILITY.md`](../rest-api-CD-feasibility/REST-API-CD-FEASIBILITY.md)
 - CI: [`../../heavy-rental-web-portal-pipeline/release-pipeline/`](../../heavy-rental-web-portal-pipeline/release-pipeline/)
+- Delivery split: [`IMPLEMENTATION-PLAN.md`](IMPLEMENTATION-PLAN.md)
 - Example workflows: [`web-portal-cd-pipeline.example.yml`](web-portal-cd-pipeline.example.yml), [`web-portal-cd-paid-pipeline.example.yml`](web-portal-cd-paid-pipeline.example.yml)
