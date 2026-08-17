@@ -148,7 +148,7 @@ Preferred: **no** `key_name` on launch templates. PEMs wait until InService.
 | Output | Lands in |
 | --- | --- |
 | Internal REST ALB DNS | `heavy-rental/portal` → `REST_BASE_URL` |
-| Internal Haystack ALB DNS | `heavy-rental/rest` → `HAYSTACK_URL` |
+| Internal Haystack ALB DNS | `heavy-rental/rest` → `HAYSTACK_BASE_URL` |
 | SoR RDS endpoint hostname + port | `heavy-rental/rest` → `POSTGRES_HOST` / `_PORT` / URL |
 | Haystack RDS endpoint hostname + port | `heavy-rental/haystack` → `POSTGRES_HOST` / `_PORT` / URL |
 | Bolt NLB DNS (`neo4j_uri`) | `heavy-rental/haystack` → `NEO4J_URI` (`bolt://<nlb-dns>:7687`) |

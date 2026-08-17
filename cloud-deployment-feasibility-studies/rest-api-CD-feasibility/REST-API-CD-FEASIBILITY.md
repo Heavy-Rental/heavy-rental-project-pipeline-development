@@ -4,7 +4,7 @@
 
 **Destinations:** same two AWS accounts as [`../AWS-INFRASTRUCTURE-FEASIBILITY.md`](../AWS-INFRASTRUCTURE-FEASIBILITY.md) — **Academy** and **Paid**. Environments `academy` / `paid`. One run must never touch the other.
 
-**Manually triggered after the estate is up.** It does **not** create the VPC, `asg-rest`, the internal REST ALB, or RDS. If `asg-rest` is missing, **fail** and run infra CD `action=apply` first. Branch **1** (discover only) lives in `heavy-rental-rest-api/deploy-pipeline/`. Until branch **2** (compose) exists, redeploy REST with infra **`configure-only`** and Environment **`REST_IMAGE`**.
+**Manually triggered after the estate is up.** It does **not** create the VPC, `asg-rest`, the internal REST ALB, or RDS. If `asg-rest` is missing, **fail** and run infra CD `action=apply` first. Live Academy workflow (discover **and** compose) is in `heavy-rental-rest-api/deploy-pipeline/`. Infra **`configure-only`** + **`REST_IMAGE`** remains a fallback if this CD is not copied into the Spring repo.
 
 **The hard problem** is discovering the **private** EC2 (no public IP; IDs change after Start Lab). Do not type instance IDs on the form.
 
@@ -16,7 +16,7 @@
 
 **Re-run the guest compose playbook** on an **already created** `asg-rest` EC2 with the **Tomcat + WAR image** REST CI Release already built. Infra Terraform created the instance; infra Ansible did the first compose. This pipeline is a **later, manual** compose run (new image only). No new EC2.
 
-The Academy **skeleton** (branch 1: `assert-lab` + discover, compose jobs fail-closed) is in [`../../heavy-rental-rest-api/deploy-pipeline/`](../../heavy-rental-rest-api/deploy-pipeline/). Compose still belongs to **infra** until REST CD branch 2. See [`IMPLEMENTATION-PLAN.md`](IMPLEMENTATION-PLAN.md).
+The Academy workflow (branch 1 discover + branch 2 compose) is in [`../../heavy-rental-rest-api/deploy-pipeline/`](../../heavy-rental-rest-api/deploy-pipeline/). Infra still does **first** compose on `apply`. This CD **re-runs** `guest_base` + `rest` for a new image or a secret refresh. See [`IMPLEMENTATION-PLAN.md`](IMPLEMENTATION-PLAN.md).
 
 ### Non-goals
 
@@ -34,7 +34,7 @@ The Academy **skeleton** (branch 1: `assert-lab` + discover, compose jobs fail-c
 | --- | --- | --- |
 | **REST CI** | `heavy-rental-rest-api/` | Fast Feedback → Integration → **Release** (WAR + **Docker tar** + GHCR off PR) |
 | **Infra CD** | `aws-infra-*.example.yml` | VPC, four ASGs, ALBs, RDS, SM, first compose |
-| **REST app CD (this study)** | Live skeleton: `heavy-rental-rest-api/deploy-pipeline/`. Examples in this folder stay stubs. | Manual deploy of **this** image onto existing `asg-rest`. Branch 1 = discover only. Branch 2 (not built) = compose. |
+| **REST app CD (this study)** | Live: `heavy-rental-rest-api/deploy-pipeline/`. Examples in this folder stay stubs. | Manual deploy of **this** image onto existing `asg-rest` (`resolve-image` → Ansible `--limit rest` → SSM `GET :8080`). |
 
 ### 2.1 Sequence
 
@@ -77,8 +77,8 @@ CI Environments: **`integration`** (`REST_API_DB_*`) and **`production`** (`REST
 | --- | --- |
 | Compute | **`asg-rest`**, private app subnets, estate default **desired=2**, InService, SSM Online |
 | Ingress | **Internal** ALB `tg-rest` **:8080**. Never public |
-| Data | SoR RDS `heavy_rental` on **:5432** (`sg-rest` → `sg-rds`). Haystack via **internal** Haystack ALB (`HAYSTACK_URL`, `sg-rest` → `sg-alb-haystack` **:8000**). REST does **not** open Bolt. Academy has **two** RDS; REST uses the SoR instance only. Haystack may still read SoR `:5432` for sync. |
-| Secret | `heavy-rental/rest` (Postgres fields, Stripe **secret** + webhook + publishable, `HAYSTACK_URL`) |
+| Data | SoR RDS `heavy_rental` on **:5432** (`sg-rest` → `sg-rds`). Haystack via **internal** Haystack ALB (`HAYSTACK_BASE_URL`, `sg-rest` → `sg-alb-haystack` **:8000**). REST does **not** open Bolt. Academy has **two** RDS; REST uses the SoR instance only. Haystack may still read SoR `:5432` for sync. |
+| Secret | `heavy-rental/rest` (Postgres fields, Stripe **secret** + webhook + publishable, `HAYSTACK_BASE_URL`) |
 | Limits | §6.4a: Tomcat `mem_limit: 1g`, `cpus: 1.0` on `t3.small` |
 
 ---
@@ -124,7 +124,7 @@ Guest (LabRole): get-secret-value + docker load / ecr pull / HTTPS tar
 Paid runner: OIDC only — fail if AWS_ACCESS_KEY_ID is set
 ```
 
-AWS keys **do not** push GHCR (CI `GITHUB_TOKEN`). On **Academy**, paste the three keys on the form (or Environment fallback). **Never** on paid, on the EC2, or in Secrets Manager. Infra must have created `heavy-rental/rest` and filled `POSTGRES_*`, `HAYSTACK_URL`, and Stripe fields — this CD only reads them.
+AWS keys **do not** push GHCR (CI `GITHUB_TOKEN`). On **Academy**, paste the three keys on the form (or Environment fallback). **Never** on paid, on the EC2, or in Secrets Manager. Infra must have created `heavy-rental/rest` and filled `POSTGRES_*`, `HAYSTACK_BASE_URL`, and Stripe fields — this CD only reads them.
 
 ---
 
@@ -134,7 +134,7 @@ AWS keys **do not** push GHCR (CI `GITHUB_TOKEN`). On **Academy**, paste the thr
 | --- | --- |
 | GitHub `academy` | **Runner only:** three Vocareum keys + `AWS_REGION`. App passwords optional if SM is already filled |
 | GitHub `paid` | **Runner only:** OIDC. No access keys |
-| AWS `heavy-rental/rest` | **Instance (`LabRole`):** `POSTGRES_*` / `SPRING_DATASOURCE_*`, `HAYSTACK_URL`, `STRIPE_API_KEY`, `STRIPE_WEBHOOK_SECRET`, `STRIPE_PUBLISHABLE_KEY` |
+| AWS `heavy-rental/rest` | **Instance (`LabRole`):** `POSTGRES_*` / `SPRING_DATASOURCE_*`, `HAYSTACK_BASE_URL`, `STRIPE_API_KEY`, `STRIPE_WEBHOOK_SECRET`, `STRIPE_PUBLISHABLE_KEY` |
 
 Do not put `sk_` in the image. Do not use CI `REST_API_CLOUD_DB_*` as the RDS hostname — `sync-secrets` **builds** JDBC from Terraform + CD password. Fail deploy if `describe-secret` for `heavy-rental/rest` fails. See AWS study **§8.2** and **§8.7**.
 
@@ -163,9 +163,9 @@ Image source is configured on the **GitHub Actions** form (`image_ref`, optional
 
 ## 9. Checklist
 
-**Live (branch 1):** discover `asg-rest` in [`../../heavy-rental-rest-api/deploy-pipeline/`](../../heavy-rental-rest-api/deploy-pipeline/). Example YAML **in this folder** stays fail-closed.
+**Live:** estate first-compose (`guest_base` / `rest`) **and** REST app CD branch 2 in [`../../heavy-rental-rest-api/deploy-pipeline/`](../../heavy-rental-rest-api/deploy-pipeline/) (same roles, `--limit rest`). Example YAML **in this folder** stays fail-closed.
 
-**Still stubs (REST app CD branch 2):** image pull/load + compose re-run from this CD. Infra first-compose (`guest_base` / `rest`) already exists. Delivery split: [`IMPLEMENTATION-PLAN.md`](IMPLEMENTATION-PLAN.md).
+**Still later:** paid/OIDC REST CD; Haystack app CD. Delivery split: [`IMPLEMENTATION-PLAN.md`](IMPLEMENTATION-PLAN.md).
 
 ---
 
@@ -174,5 +174,5 @@ Image source is configured on the **GitHub Actions** form (`image_ref`, optional
 - Estate: [`../AWS-INFRASTRUCTURE-FEASIBILITY.md`](../AWS-INFRASTRUCTURE-FEASIBILITY.md) §6 `asg-rest`, §6.0c, §6.4a, §7.2e
 - Sibling app CD: [`../haystack-CD-feasibility/HAYSTACK-CD-FEASIBILITY.md`](../haystack-CD-feasibility/HAYSTACK-CD-FEASIBILITY.md), [`../web-portal-CD-feasibility/WEB-PORTAL-CD-FEASIBILITY.md`](../web-portal-CD-feasibility/WEB-PORTAL-CD-FEASIBILITY.md)
 - Delivery split: [`IMPLEMENTATION-PLAN.md`](IMPLEMENTATION-PLAN.md)
-- Live Academy skeleton: [`../../heavy-rental-rest-api/deploy-pipeline/`](../../heavy-rental-rest-api/deploy-pipeline/)
+- Live Academy CD: [`../../heavy-rental-rest-api/deploy-pipeline/`](../../heavy-rental-rest-api/deploy-pipeline/)
 - CI: [`../../heavy-rental-rest-api/release-pipeline/`](../../heavy-rental-rest-api/release-pipeline/)

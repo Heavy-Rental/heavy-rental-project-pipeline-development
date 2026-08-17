@@ -1,5 +1,5 @@
 # REST app CD (Academy) — STUDY STUB (exit 1). Not live YAML.
-# Live skeleton: ../../heavy-rental-rest-api/deploy-pipeline/
+# Live workflow: ../../heavy-rental-rest-api/deploy-pipeline/
 # Order: infra Terraform creates EC2 → infra Ansible first compose
 #        → THIS workflow re-runs compose on asg-rest with a new CI Tomcat image.
 # Vocareum-only. Paid is rest-api-cd-paid (OIDC — no key fields).
