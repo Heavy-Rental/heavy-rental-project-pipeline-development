@@ -71,7 +71,7 @@ Artifacts:
 ## A — Approach
 
 - Clone REST/mobile **orchestration** (header comments, `assert-caller` case on `github.workflow_ref`, Semgrep-safe source resolver, `APP_PATH: app`, artifact names).
-- Replace toolchain: `actions/setup-python@v5` **3.12** + `astral-sh/setup-uv@v5` (cache on `uv.lock`).
+- Replace toolchain: `actions/setup-python` **v7.0.0** (SHA-pinned) **3.12** + `astral-sh/setup-uv` **v10.0.1** (SHA-pinned, cache on `uv.lock`).
 - Integration resolve: `uv lock --check` then `uv sync --frozen --all-groups`, then a Haystack/FastAPI smoke (`create_app`, `build_indexing_pipeline`, `build_intake_front_pipeline`).
 - QC: `uv run ruff check app tests` then `uv run pytest tests/` with CI-safe Haystack env.
 - Security: Semgrep `p/python` `p/owasp-top-ten` `p/security-audit` `p/secrets`; `uvx pip-audit` report-only; Trivy FS two-pass + CRITICAL gate; CodeQL `python`.
@@ -132,7 +132,7 @@ Job `name:` values (branch protection):
 - `set -euo pipefail` on every multi-line `run:`.
 - No `secrets: inherit`.
 - No `environment:` on caller `uses:` jobs (invalid) and none on haystack QC.
-- `actions/checkout@v4`, `actions/setup-python@v5`, `astral-sh/setup-uv@v5`, `actions/cache@v4`, `actions/upload-artifact@v4`, `aquasecurity/trivy-action@v0.36.0`, `github/codeql-action/*@v3`.
+- Third-party `uses:` MUST be SHA-pinned (40-char commit + `# tag` comment). Allowed: `actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1` # v7.0.1 (`persist-credentials: false`), `actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97` # v7.0.0, `astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d` # v10.0.1, `actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9` # v6.1.0, `actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a` # v7.0.1, `aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25` # v0.36.0, `github/codeql-action/*@ff2f1c621b7f889edc0d3c761ac2e6a3f8cdb0dd` # v4.37.7, `docker/login-action@dbcb813823bdd20940b903addbd779551569679f` # v4.6.0 (release only). Mutable tags (`@v4`, `@v5`, `@v3`, `@v0.36.0`) are forbidden.
 - uv invocations always `--frozen` for install (`uv sync --frozen --all-groups`).
 - Write `$GITHUB_STEP_SUMMARY` tables for source resolution, Integration, QC, gate, packaging.
 - SARIF is the security report standard; pip-audit JSON is a Python extra report; console tables are logs only.
