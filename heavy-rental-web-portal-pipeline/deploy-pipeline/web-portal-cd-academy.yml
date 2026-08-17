@@ -25,6 +25,13 @@ on:
         required: false
         type: string
         default: ""
+    secrets:
+      AWS_ACCESS_KEY_ID:
+        required: false
+      AWS_SECRET_ACCESS_KEY:
+        required: false
+      AWS_SESSION_TOKEN:
+        required: false
 
 permissions:
   contents: read
@@ -49,7 +56,9 @@ jobs:
             exit 1
           fi
 
-      - uses: actions/checkout@v7.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - uses: ./.github/actions/resolve-vocareum-aws
         with:
@@ -60,6 +69,8 @@ jobs:
 
       - name: Prove the Vocareum session is live
         id: sts
+        env:
+          ACTION: ${{ inputs.action }}
         run: |
           set -euo pipefail
           if ! ARN=$(aws sts get-caller-identity --query Arn --output text); then
@@ -74,7 +85,7 @@ jobs:
             echo ""
             echo "Caller: \`${ARN}\`"
             echo "Account: \`${ACCOUNT}\`"
-            echo "Action: \`${{ inputs.action }}\`"
+            echo "Action: \`${ACTION}\`"
           } >> "$GITHUB_STEP_SUMMARY"
 
   discover-targets:
@@ -84,7 +95,9 @@ jobs:
     environment: ${{ inputs.aws_environment }}
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v7.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - uses: ./.github/actions/resolve-vocareum-aws
         with:
@@ -233,7 +246,9 @@ jobs:
     environment: ${{ inputs.aws_environment }}
     timeout-minutes: 45
     steps:
-      - uses: actions/checkout@v7.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - uses: ./.github/actions/resolve-vocareum-aws
         with:
@@ -312,7 +327,9 @@ jobs:
     environment: ${{ inputs.aws_environment }}
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v7.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - uses: ./.github/actions/resolve-vocareum-aws
         with:
