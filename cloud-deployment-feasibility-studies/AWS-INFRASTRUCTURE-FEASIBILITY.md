@@ -332,7 +332,11 @@ Never put Vocareum `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` / `AWS_SESSION_
 
 | Secrets Manager id | ASG | JSON fields |
 | --- | --- | --- |
+<<<<<<< Updated upstream
 | `heavy-rental/portal` | `asg-portal` | `REST_BASE_URL` (internal REST ALB). **Stripe:** `STRIPE_PUBLISHABLE_KEY` and `VITE_STRIPE_PUBLISHABLE_KEY` (same `pk_`). **Never** `STRIPE_API_KEY` or `STRIPE_WEBHOOK_SECRET` on the portal. |
+=======
+| `heavy-rental/portal` | `asg-portal` | `REST_BASE_URL` (internal REST ALB Terraform output). **Stripe (portal):** `STRIPE_PUBLISHABLE_KEY` (from GitHub Environment). **Never** `STRIPE_API_KEY` or `STRIPE_WEBHOOK_SECRET` on the portal — those are REST-only. |
+>>>>>>> Stashed changes
 | `heavy-rental/rest` | `asg-rest` | **Postgres (all of):** `POSTGRES_HOST` (RDS endpoint hostname from Terraform — data-subnet address, not public), `POSTGRES_PORT` (`5432`), `POSTGRES_DATABASE` (`heavy_rental`), `POSTGRES_USERNAME`, `POSTGRES_PASSWORD`, `POSTGRES_URL` / `SPRING_DATASOURCE_URL` (`jdbc:postgresql://<host>:<port>/<database>`). Also `SPRING_DATASOURCE_USERNAME` / `SPRING_DATASOURCE_PASSWORD` (same user/password). `HAYSTACK_URL` (internal Haystack ALB). **Stripe (REST):** `STRIPE_API_KEY`, `STRIPE_WEBHOOK_SECRET`, `STRIPE_PUBLISHABLE_KEY` (same publishable key as the portal). |
 | `heavy-rental/haystack` | `asg-haystack` | Same Postgres **field set** for the **Haystack RDS** (`POSTGRES_HOST` = Haystack instance endpoint, `POSTGRES_DATABASE` = `haystack`). `DATABASE_URL` (`postgresql://user:pass@host:port/db`). `NEO4J_URI` from the **internal Bolt NLB** (`bolt://<nlb-dns>:7687` — not localhost, not a guest private IP), `NEO4J_USER`, `NEO4J_PASSWORD`, `LLM_API_KEY` if used. No Stripe. |
 | `heavy-rental/neo4j` | `asg-neo4j` | `NEO4J_USER`, `NEO4J_PASSWORD`. No Postgres password dump, no Stripe, no LLM key. |
@@ -434,7 +438,11 @@ GitHub Environments are **per repository**. They are **not** defined the same wa
 | Haystack CI (Fast Feedback, Integration, Release) | **None** | No DB / Neo4j / LLM secrets | Workflows **fail** if `LLM_API_KEY` is set |
 | Portal CI | **None** for app config | `GITHUB_TOKEN` for GHCR | No Stripe in CI |
 | Mobile CI | **None** for AWS | APK only | Not deployed to the VPC |
+<<<<<<< Updated upstream
 | **Infra CD Academy** (this study) | **`academy`** | Secrets: `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_SESSION_TOKEN`, `SPRING_DATASOURCE_PASSWORD`, `NEO4J_PASSWORD`, `STRIPE_PUBLISHABLE_KEY`, `STRIPE_API_KEY`, `STRIPE_WEBHOOK_SECRET`. Variables: `AWS_REGION`, optional `PORTAL_IMAGE` / `REST_IMAGE` / `HAYSTACK_IMAGE` | Vocareum keys for the **runner** only. Live YAML: other project `aws-infra-academy.yml`. Example in this folder is a stub. |
+=======
+| **Infra CD Academy** (this study) | **`academy`** | Secrets: `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_SESSION_TOKEN`, `SPRING_DATASOURCE_PASSWORD`, `NEO4J_PASSWORD`, `STRIPE_PUBLISHABLE_KEY`, `STRIPE_API_KEY`, `STRIPE_WEBHOOK_SECRET`. Variable: `AWS_REGION` | Vocareum keys for the **runner** only. App passwords feed `sync-secrets`. Example: `aws-infra-pipeline.example.yml` |
+>>>>>>> Stashed changes
 | **Infra CD Paid** | **`paid`** | Variables: `AWS_ROLE_TO_ASSUME`, `AWS_REGION`. Same **app** secrets as academy (Postgres password, Neo4j, Stripe). **No** Vocareum access keys | OIDC only |
 | **Portal / REST / Haystack app CD (Academy)** | **`academy`** (same **names** as infra; copy onto each app-CD repo) | Secrets (fallback): **`AWS_ACCESS_KEY_ID`**, **`AWS_SECRET_ACCESS_KEY`**, **`AWS_SESSION_TOKEN`**. Variable: `AWS_REGION`. Optional `IMAGE_HTTP_URL` | **Vocareum only.** Runner may paste the three keys on Run workflow (they change every Start Lab) or use Environment fallback. Never on paid. Never in SM / on EC2 |
 | **Portal / REST / Haystack app CD (Paid)** | **`paid`** | Variables: `AWS_ROLE_TO_ASSUME`, `AWS_REGION`. Optional `IMAGE_HTTP_URL`. **No** `AWS_ACCESS_KEY_ID` | OIDC only. Paid YAML **fails** if an access key is set |
@@ -1754,7 +1762,11 @@ REST also gets Stripe `sk_` + `whsec_` + `pk_`. Neo4j secret is user/password on
 
 | Secret id (Terraform shell) | Required JSON fields (`sync-secrets`) | Who reads |
 | --- | --- | --- |
+<<<<<<< Updated upstream
 | `heavy-rental/portal` | `REST_BASE_URL`, `STRIPE_PUBLISHABLE_KEY`, `VITE_STRIPE_PUBLISHABLE_KEY` (same `pk_`) | `asg-portal` / portal app CD |
+=======
+| `heavy-rental/portal` | `REST_BASE_URL`, `STRIPE_PUBLISHABLE_KEY` | `asg-portal` / portal app CD |
+>>>>>>> Stashed changes
 | `heavy-rental/rest` | `POSTGRES_HOST`, `POSTGRES_PORT`, `POSTGRES_DATABASE`, `POSTGRES_USERNAME`, `POSTGRES_PASSWORD`, `POSTGRES_URL` / `SPRING_DATASOURCE_*`, `HAYSTACK_URL`, `STRIPE_API_KEY`, `STRIPE_WEBHOOK_SECRET`, `STRIPE_PUBLISHABLE_KEY` | `asg-rest` / REST app CD |
 | `heavy-rental/haystack` | Same Postgres field set (or Haystack db name), `NEO4J_URI`, `NEO4J_USER`, `NEO4J_PASSWORD` | `asg-haystack` / Haystack app CD |
 | `heavy-rental/neo4j` | `NEO4J_USER`, `NEO4J_PASSWORD` | `asg-neo4j` (infra/`configure-only` only) |

@@ -41,7 +41,11 @@ Infra CD  action=stop | destroy
 
 1. Actions runner installs Ansible (or uses an image that has it). Academy runner AWS creds: Vocareum form keys (masked via `$GITHUB_EVENT_PATH`) or Environment `academy` (not paid). Guest identity: **`LabInstanceProfile`** / **`LabRole`**.
 2. Dynamic inventory: four groups — `portal`, `rest`, `haystack`, `neo4j`. Discover **all** InService + SSM Online instances (two per ASG at desired=2).
+<<<<<<< Updated upstream
 3. `ansible_connection=amazon.aws.aws_ssm`; instance id from the ASG. No public IP. `ansible_host` is the instance id.
+=======
+3. `ansible_connection=aws_ssm` (or `community.aws.aws_ssm`); instance id from the ASG. No public IP. No `ansible_host`.
+>>>>>>> Stashed changes
 4. RDS is **not** in inventory (no SSH guest OS).
 5. Everyday path is SSM. SSH PEM (`heavy-rental/ssh/*`) is break-glass only.
 
@@ -87,7 +91,11 @@ curl -fsSL -o /tmp/app.tar.gz "$IMAGE_HTTP_URL"
 docker load < /tmp/app.tar.gz
 ```
 
+<<<<<<< Updated upstream
 Instance still needs outbound HTTPS (same-AZ NAT Gateway or S3 endpoint). Live `get_url` / `aws s3 cp` + `docker load` is in the infra repo `guest_base` role.
+=======
+Instance still needs outbound HTTPS (same-AZ NAT Gateway or S3 endpoint). Stubs stay fail-closed until the other project implements `get_url` + `docker load`.
+>>>>>>> Stashed changes
 
 ---
 
