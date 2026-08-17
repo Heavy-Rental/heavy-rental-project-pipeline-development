@@ -1,5 +1,5 @@
 # Haystack app CD (Academy) — STUDY STUB (exit 1). Not live YAML.
-# Live skeleton: ../../haystack-fast-api-pipeline/deploy-pipeline/
+# Live workflow: ../../haystack-fast-api-pipeline/deploy-pipeline/
 # Order: infra Terraform creates EC2 → infra Ansible first compose
 #        → THIS workflow re-runs compose on asg-haystack with a new CI image.
 # Vocareum-only. Paid is haystack-cd-paid (OIDC — no key fields).

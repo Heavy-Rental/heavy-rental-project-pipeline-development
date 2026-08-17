@@ -2,9 +2,9 @@
 
 **Contract:** [`HAYSTACK-CD-FEASIBILITY.md`](HAYSTACK-CD-FEASIBILITY.md), [`../ANSIBLE-PROCESS.md`](../ANSIBLE-PROCESS.md) §4.3, AWS study §6.0c / §6.4a.  
 **Live estate:** `heavy-rental-project-instructure-and-cloud-deploy` (`HR-162` configure). First compose on `asg-haystack` (uvicorn + sync + populate, **no** Neo4j container) already exists there.  
-**This plan is the delivery split.** Live YAML (branch 1 skeleton) is in `haystack-fast-api-pipeline/deploy-pipeline/`.
+**This plan is the delivery split.** Live YAML is in `haystack-fast-api-pipeline/deploy-pipeline/`.
 
-**Status:** Infra branches 1–3 exist. Portal CD and REST CD branch 2 exist. Haystack CD **branch 1** (discover) is in `deploy-pipeline/` (`add-haystack-cd-academy-skeleton`). Compose is branch 2. Paid Haystack CD is later.
+**Status:** Infra branches 1–3 exist. Portal CD and REST CD branch 2 exist. Haystack CD **branch 1** (discover) and **branch 2** (compose) are in `deploy-pipeline/` (`add-haystack-cd-academy-deploy`). Paid Haystack CD is later.
 
 Conflict order if that repo uses OpenSpec: OpenSpec → OpenSPDD → ADR → YAML / Ansible.
 
@@ -16,7 +16,7 @@ Manually deploy a **CI-built uvicorn image** onto the **existing** `asg-haystack
 
 - Image: **`python:3.12-slim-bookworm`** + uv + uvicorn `app.main:app` on **`:8000`**, GHCR `ghcr.io/<owner>/haystack-fast-api`.
 - Internal Haystack ALB `:8000` only. Never on the public portal listener.
-- Guest reads `heavy-rental/haystack` (Haystack RDS `POSTGRES_*`, `NEO4J_URI` = Bolt **NLB** — not localhost, not a guest IP — user/password, optional `LLM_API_KEY`). Password is **not** in the image.
+- Guest reads `heavy-rental/haystack` (Haystack RDS `POSTGRES_*` including app aliases `POSTGRES_HOSTNAME` / `POSTGRES_DB` / `POSTGRES_USER`, `DATABASE_URL`, `FLEET_BACKEND=sql`, `NEO4J_BACKEND=bolt`, `NEO4J_URI` = Bolt **NLB** — not localhost, not a guest IP — user/password, optional `LLM_API_KEY`). Password is **not** in the image.
 - Compose **uvicorn + postgres-haystack-sync + neo4j-populate**. **Must not** start a `neo4j` container.
 - No `uv build` / `docker build` on the guest.
 
@@ -76,8 +76,8 @@ develop
 4. Resolve keys like infra / portal / REST CD (`$GITHUB_EVENT_PATH`, mask, Environment fallback). Refuse Environment ≠ `academy`.
 5. **`assert-lab`:** `sts get-caller-identity`. Output lab state bucket name for later SSM (`heavy-rental-tfstate-${ACCOUNT}-academy`).
 6. **`discover-targets`:** InService IDs on `asg-haystack`; keep SSM Online. Fail if none or desired=0. `describe-secret heavy-rental/haystack` (do not echo SecretString). Fail if the shell is missing. Do **not** print instance IPs or the internal Haystack ALB URL.
-7. `deploy` / `configure-only` ansible job **fails closed** (`exit 1` — “branch 2”).
-8. **`verify`** is discover-only on this branch (no `GET :8000`) so an empty uvicorn from infra is not required to pass this PR.
+7. `deploy` / `configure-only` ansible job **failed closed** on branch 1. **Superseded** by §6.
+8. **`verify`** was discover-only on branch 1. **Superseded** by §6 SSM `GET :8000`.
 
 ### Done when (branch 1)
 
@@ -112,9 +112,9 @@ Start Lab → Run workflow → `assert-lab` + `discover-targets` green. No image
 4. **`configure-only`:** skip resolve-image. Use Environment `HAYSTACK_IMAGE` or Run `image_ref`. Still **fail** if both empty.
 5. **`verify`:** SSM `GET http://127.0.0.1:8000/docs` or `GET /health` (200–302). Do **not** fail solely because SoR RDS or Bolt is down if uvicorn answers. Do **not** print instance IPs or the internal ALB DNS.
 
-### Done when
+### Done when (branch 2)
 
-`action=deploy` with a public GHCR or ECR tag updates **both** `asg-haystack` guests. Internal ALB `:8000` serves the new uvicorn. Sync and populate still run. No Neo4j container. `verify` is green if uvicorn answers.
+`action=deploy` with a public GHCR or ECR tag updates **both** `asg-haystack` guests. Internal ALB `:8000` serves the new uvicorn. Sync and populate still run. No Neo4j container. `verify` is green if uvicorn answers. **Shipped** in `deploy-pipeline/` (`haystack-cd-academy.yml` + `ansible/`).
 
 ---
 
@@ -125,7 +125,9 @@ Start Lab → Run workflow → `assert-lab` + `discover-targets` green. No image
 | Paid Haystack CD (`haystack-cd-paid.yml`) | OIDC; no Vocareum keys |
 | `--pull always` / digest pins | Optional hardening |
 
-Infra **`apply`** still first-composes Haystack. Infra **`configure-only`** does **not** compose Haystack (app CD owns that). Until branch 2 ships, there is no Haystack-only image redeploy path.
+Infra **`apply`** still first-composes Haystack. Infra **`configure-only`** does **not** compose Haystack. After that, use this app CD.
+
+The live app repo is **not** ready to deploy (no Release/CD on `develop`, no GHCR image, sidecar modules missing). See [`PREPARE-HAYSTACK-REPO.md`](../../haystack-fast-api-pipeline/docs/PREPARE-HAYSTACK-REPO.md).
 
 ---
 
@@ -153,3 +155,4 @@ Infra **`apply`** still first-composes Haystack. Infra **`configure-only`** does
 - Infra operate: estate `docs/BOOTSTRAP.md` / `docs/ARCHITECTURE.md`
 - Ansible contract: [`../ANSIBLE-PROCESS.md`](../ANSIBLE-PROCESS.md) §4.3
 - CI: [`../../haystack-fast-api-pipeline/release-pipeline/`](../../haystack-fast-api-pipeline/release-pipeline/)
+- App-repo readiness: [`../../haystack-fast-api-pipeline/docs/PREPARE-HAYSTACK-REPO.md`](../../haystack-fast-api-pipeline/docs/PREPARE-HAYSTACK-REPO.md)

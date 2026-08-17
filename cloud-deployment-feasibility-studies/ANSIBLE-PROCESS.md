@@ -73,7 +73,7 @@ Ansible does **not** invent the URL. The **app CD** (or infra first-compose) job
 | `workflow_dispatch` input `image_ref` | Registry tag | Infra: REST **and** Haystack fallback only (portal uses `PORTAL_IMAGE`). Portal **app** CD `action=deploy`: tag if `PORTAL_IMAGE` is empty. |
 | `workflow_dispatch` input `image_http_url` | Optional HTTPS / `s3://` `.tar.gz` | `docker load` on **all** guests. Empty = `vars.IMAGE_HTTP_URL`. Leave empty for normal pulls. |
 
-CI image names (Release; do not rebuild on the guest): portal **`nginx:1.27-alpine`** → `ghcr.io/<owner>/heavy-rental-web-portal` (Node **22** at build); REST **`tomcat:10.1-jdk21-temurin`** → `ghcr.io/<owner>/heavy-rental-rest-api` (Java **21**); Haystack **`python:3.12-slim-bookworm`** → `ghcr.io/<owner>/haystack-fast-api`. Portal CD (`heavy-rental-web-portal-pipeline/deploy-pipeline/ansible/`) copies estate `guest_base` + `portal` and re-runs `--limit portal`. REST CD (`heavy-rental-rest-api/deploy-pipeline/ansible/`) copies estate `guest_base` + `rest` and re-runs `--limit rest`. Haystack CD branch 1 (`haystack-fast-api-pipeline/deploy-pipeline/`) is discover only — it does **not** replace infra first-compose.
+CI image names (Release; do not rebuild on the guest): portal **`nginx:1.27-alpine`** → `ghcr.io/<owner>/heavy-rental-web-portal` (Node **22** at build); REST **`tomcat:10.1-jdk21-temurin`** → `ghcr.io/<owner>/heavy-rental-rest-api` (Java **21**); Haystack **`python:3.12-slim-bookworm`** → `ghcr.io/<owner>/haystack-fast-api`. Portal CD (`heavy-rental-web-portal-pipeline/deploy-pipeline/ansible/`) copies estate `guest_base` + `portal` and re-runs `--limit portal`. REST CD (`heavy-rental-rest-api/deploy-pipeline/ansible/`) copies estate `guest_base` + `rest` and re-runs `--limit rest`. Haystack CD (`haystack-fast-api-pipeline/deploy-pipeline/ansible/`) copies estate `guest_base` + `haystack` and re-runs `--limit haystack` (no Neo4j container). It does **not** replace infra first-compose on `apply`.
 
 Academy pull: public GHCR needs no login. ECR tags (`*.dkr.ecr.*`) get `aws ecr get-login-password` on the guest (`LabRole`). Private GHCR is **not** pulled (no token on the guest) — copy to ECR or load a tar. Prefer a **new tag** each redeploy (`compose up` does not `--pull always`).
 
@@ -120,7 +120,7 @@ Instance still needs outbound HTTPS (same-AZ NAT Gateway or S3 endpoint). Stubs 
 
 ### 4.3 `haystack` (`asg-haystack`)
 
-1. Read `heavy-rental/haystack` → Haystack RDS Postgres fields, `NEO4J_URI` (Bolt NLB, not localhost, not a guest private IP), optional `LLM_API_KEY`.
+1. Read `heavy-rental/haystack` → Haystack RDS Postgres fields plus app aliases `POSTGRES_HOSTNAME` / `POSTGRES_DB` / `POSTGRES_USER`, `DATABASE_URL`, `FLEET_BACKEND=sql`, `NEO4J_BACKEND=bolt`, `NEO4J_URI` (Bolt NLB, not localhost, not a guest private IP), optional `LLM_API_KEY`.
 2. Compose:
    - uvicorn (CI image) **:8000** — `768m` / `1.0`
    - `postgres-haystack-sync` — `256m` / `0.25`
@@ -155,7 +155,7 @@ Run via `delegate_to` a **rest** or **haystack** instance (those SGs can reach `
 | --- | --- | --- |
 | Portal CD (`deploy-pipeline/ansible/`) | `portal` | New nginx + `dist/` image; keep `/api` proxy |
 | REST CD (`deploy-pipeline/ansible/`) | `rest` | New Tomcat image; refresh `.env` from `heavy-rental/rest` |
-| Haystack CD (`deploy-pipeline/` skeleton) | `haystack` | Branch 2: new uvicorn image; same sync + populate; still no neo4j. Branch 1 is discover only. |
+| Haystack CD (`deploy-pipeline/ansible/`) | `haystack` | New uvicorn image; same sync + populate; still no neo4j |
 
 Discover **every** `InService` + SSM Online instance in the ASG first (two at desired=2). Fail if the group is missing or none are Online.
 
