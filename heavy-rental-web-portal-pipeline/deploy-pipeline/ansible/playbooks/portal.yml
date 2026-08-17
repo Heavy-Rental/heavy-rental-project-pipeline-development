@@ -1,0 +1,14 @@
+---
+# Portal app CD only. Do not add rest / haystack / neo4j plays.
+- name: Shared guest bootstrap
+  hosts: portal
+  become: true
+  gather_facts: true
+  roles:
+    - guest_base
+
+- name: Portal (React / nginx)
+  hosts: portal
+  become: true
+  roles:
+    - portal

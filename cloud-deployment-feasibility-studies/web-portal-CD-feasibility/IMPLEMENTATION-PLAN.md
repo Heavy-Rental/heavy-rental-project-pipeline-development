@@ -2,9 +2,9 @@
 
 **Contract:** [`WEB-PORTAL-CD-FEASIBILITY.md`](WEB-PORTAL-CD-FEASIBILITY.md), [`../ANSIBLE-PROCESS.md`](../ANSIBLE-PROCESS.md), AWS study §6.0c / §6.4a / §6.6.  
 **Live estate:** `heavy-rental-project-instructure-and-cloud-deploy` (`HR-162` configure). First compose and `/api` proxy already exist there.  
-**This plan does not implement YAML.** It is the delivery split for the portal **app CD** repo.
+**This plan is the delivery split.** Live YAML is in `heavy-rental-web-portal-pipeline/deploy-pipeline/`.
 
-**Status:** Infra branches 1–3 exist. Portal CD skeleton is on `HR-165-implement-cd-pipeline-for-react-web-portal`. Paid portal CD is later.
+**Status:** Infra branches 1–3 exist. Portal CD **branch 1** (discover) and **branch 2** (compose) are in `deploy-pipeline/` (`add-portal-cd-academy-deploy`). Paid portal CD is later.
 
 Conflict order if that repo uses OpenSpec: OpenSpec → OpenSPDD → ADR → YAML / Ansible.
 
@@ -27,7 +27,7 @@ Manually deploy a **CI-built nginx + Vite `dist/` image** onto the **existing** 
 | Piece | Location |
 | --- | --- |
 | Workflow | Packaged in `heavy-rental-web-portal-pipeline/deploy-pipeline/` (caller + reusable). Copy into the React repo `.github/` like Release CI. |
-| Ansible | **Reuse** infra `ansible/roles/guest_base` + `roles/portal` (`--limit portal`). Copy or submodule — do not invent a second compose contract |
+| Ansible | Copied into `deploy-pipeline/ansible/` from infra `guest_base` + `portal` (`--limit portal`). Do not invent a second compose contract |
 | Inventory | Same idea as infra `inventory/aws_ssm.py`, **portal group only** (`asg-portal`) |
 | Auth | Environment **`academy`** (same secret **names** as infra). Vocareum keys: `$GITHUB_EVENT_PATH` + `::add-mask::`. Never `${{ inputs.aws_* }}` in `env:` |
 
@@ -74,12 +74,12 @@ develop
 4. Resolve keys like infra (`$GITHUB_EVENT_PATH`, mask, Environment fallback). Refuse Environment ≠ `academy`.
 5. **`assert-lab`:** `sts get-caller-identity`.
 6. **`discover-targets`:** InService IDs on `asg-portal`; keep SSM Online. Fail if none. Optional: public portal ALB DNS in the job summary (not instance IPs). `describe-secret heavy-rental/portal` (do not echo SecretString). Fail if the shell is missing.
-7. `deploy` / `configure-only` ansible job **fails closed** (`exit 1` — “branch 2”).
-8. **`verify`** may run a stub or a real `GET /` via SSM if discover is enough; prefer stub until branch 2 so an empty nginx from infra is not required to pass this PR.
+7. `deploy` / `configure-only` ansible job **failed closed** on branch 1 (`exit 1` — “branch 2”). **Superseded** by §6.
+8. **`verify`** was discover-only on branch 1. **Superseded** by §6 SSM `GET /`.
 
-### Done when
+### Done when (branch 1)
 
-Start Lab → Run workflow → `assert-lab` + `discover-targets` green. No image pull. No terraform.
+Start Lab → Run workflow → `assert-lab` + `discover-targets` green. No image pull. No terraform. **Shipped.**
 
 ---
 
@@ -108,9 +108,9 @@ Start Lab → Run workflow → `assert-lab` + `discover-targets` green. No image
 3. **`ansible-playbook … --limit portal`:** `guest_base` + `portal` only. `/api` → `REST_BASE_URL`. §6.4a `256m` / `0.5`. Fail if `REST_BASE_URL` empty. Refuse `STRIPE_API_KEY` / `STRIPE_WEBHOOK_SECRET` / PEM on the portal `.env`.
 4. **`verify`:** SSM `GET /` on `:80` (200–302). Do **not** fail solely because `/api` (REST) is down. Summary may print **public** portal ALB DNS only.
 
-### Done when
+### Done when (branch 2)
 
-`action=deploy` with a public GHCR or ECR tag updates **both** `asg-portal` guests. Public ALB `:80` serves the new SPA. `/api` still proxies to the internal REST ALB. `verify` is green if nginx answers.
+`action=deploy` with a public GHCR or ECR tag updates **both** `asg-portal` guests. Public ALB `:80` serves the new SPA. `/api` still proxies to the internal REST ALB. `verify` is green if nginx answers. **Shipped** in `deploy-pipeline/` (`web-portal-cd-academy.yml` + `ansible/`).
 
 ---
 
@@ -122,7 +122,7 @@ Start Lab → Run workflow → `assert-lab` + `discover-targets` green. No image
 | REST / Haystack app CD | Same pattern, different group |
 | `--pull always` / digest pins | Optional hardening |
 
-Infra `configure-only` + `PORTAL_IMAGE` remains a valid fallback if this CD is not merged yet.
+Infra `configure-only` + `PORTAL_IMAGE` remains a valid fallback if this CD is not copied into the React repo yet.
 
 ---
 

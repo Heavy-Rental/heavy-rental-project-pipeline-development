@@ -1,5 +1,5 @@
-# Portal app CD (Academy). Not CI. Not terraform apply.
-# Copy to: .github/workflows/web-portal-cd-academy.yml
+# Portal app CD (Academy) — STUDY STUB (exit 1). Not live YAML.
+# Live workflow: ../../heavy-rental-web-portal-pipeline/deploy-pipeline/
 # Order: infra Terraform creates EC2 → infra Ansible first compose
 #        → THIS workflow re-runs compose on asg-portal with a new CI nginx image.
 # nginx /api → REST_BASE_URL (internal REST ALB). No Vite server. No sk_ on portal.

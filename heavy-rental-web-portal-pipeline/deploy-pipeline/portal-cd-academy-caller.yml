@@ -6,14 +6,12 @@
 #   deploy-pipeline/web-portal-cd-academy.yml
 #     → .github/workflows/web-portal-cd-academy.yml
 #   deploy-pipeline/resolve-vocareum-aws/action.yml
-#     → .github/workflows/../actions/resolve-vocareum-aws/action.yml
-#        (.github/actions/resolve-vocareum-aws/action.yml)
+#     → .github/actions/resolve-vocareum-aws/action.yml
+#   deploy-pipeline/ansible/
+#     → deploy-pipeline/ansible/   (keep this path)
 #
-# Portal app CD (Academy) — branch 1 skeleton (HR-165).
-# Not CI. Not terraform. Compose / GHCR pull is branch 2.
-#
-# After infra apply + Start Lab: Run this workflow (action=verify) to prove
-# asg-portal is InService + SSM Online. deploy/configure-only fail closed.
+# Portal app CD (Academy) — branch 2 compose (HR-165).
+# Not CI. Not terraform. Re-runs guest_base + portal on existing asg-portal.
 # =============================================================================
 
 name: Web Portal CD (Academy)
@@ -22,7 +20,7 @@ on:
   workflow_dispatch:
     inputs:
       action:
-        description: deploy / configure-only wait for branch 2. verify = discover only.
+        description: deploy a CI image, refresh .env /api, or health only
         required: true
         type: choice
         default: verify
@@ -36,12 +34,12 @@ on:
         type: environment
         default: academy
       image_ref:
-        description: GHCR/ECR tag (unused on branch 1)
+        description: Public GHCR or ECR tag (required for deploy unless PORTAL_IMAGE is set)
         required: false
         type: string
         default: ""
       image_http_url:
-        description: HTTPS tar.gz (unused on branch 1)
+        description: HTTPS or s3:// CI image tar.gz (empty = vars.IMAGE_HTTP_URL)
         required: false
         type: string
         default: ""

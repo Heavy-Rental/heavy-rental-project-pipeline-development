@@ -3,7 +3,7 @@
 # Path:         .github/workflows/web-portal-cd-academy.yml
 # =============================================================================
 # Reusable only. Sole caller: portal-cd-academy-caller.yml
-# Also mirrored at pipeline-development .github/workflows/web-portal-cd-academy.yml
+# Also copy deploy-pipeline/ansible/ → deploy-pipeline/ansible/ (keep path).
 # =============================================================================
 
 name: Web Portal CD Academy pipeline
@@ -35,6 +35,9 @@ jobs:
     runs-on: ubuntu-latest
     environment: ${{ inputs.aws_environment }}
     timeout-minutes: 5
+    outputs:
+      account_id: ${{ steps.sts.outputs.account_id }}
+      bucket: ${{ steps.sts.outputs.bucket }}
     steps:
       - name: Refuse paid Environment
         env:
@@ -56,16 +59,21 @@ jobs:
           aws_region: ${{ vars.AWS_REGION || 'us-east-1' }}
 
       - name: Prove the Vocareum session is live
+        id: sts
         run: |
           set -euo pipefail
           if ! ARN=$(aws sts get-caller-identity --query Arn --output text); then
             echo "::error::sts failed. Start Lab and paste a fresh session token."
             exit 1
           fi
+          ACCOUNT=$(aws sts get-caller-identity --query Account --output text)
+          echo "account_id=${ACCOUNT}" >> "$GITHUB_OUTPUT"
+          echo "bucket=heavy-rental-tfstate-${ACCOUNT}-academy" >> "$GITHUB_OUTPUT"
           {
             echo "### Vocareum / Academy"
             echo ""
             echo "Caller: \`${ARN}\`"
+            echo "Account: \`${ACCOUNT}\`"
             echo "Action: \`${{ inputs.action }}\`"
           } >> "$GITHUB_STEP_SUMMARY"
 
@@ -141,20 +149,233 @@ jobs:
             if [ -n "${ALB}" ] && [ "${ALB}" != "None" ]; then
               echo "Public portal ALB: \`${ALB}\`"
             fi
-            echo ""
-            echo "Image pull / Ansible compose is **branch 2**."
           } >> "$GITHUB_STEP_SUMMARY"
 
-  not-in-branch-1:
-    name: Compose not on branch 1
-    needs: [discover-targets]
-    if: inputs.action == 'deploy' || inputs.action == 'configure-only'
+  resolve-image:
+    name: Resolve CI image
+    needs: [assert-lab]
+    if: inputs.action == 'deploy'
     runs-on: ubuntu-latest
-    timeout-minutes: 2
+    environment: ${{ inputs.aws_environment }}
+    timeout-minutes: 10
+    outputs:
+      portal_image: ${{ steps.resolve.outputs.portal_image }}
+      image_http_url: ${{ steps.resolve.outputs.image_http_url }}
     steps:
-      - name: Fail closed
+      - name: Choose tar URL or registry tag
+        id: resolve
+        env:
+          IMAGE_REF_INPUT: ${{ inputs.image_ref }}
+          IMAGE_HTTP_INPUT: ${{ inputs.image_http_url }}
+          IMAGE_HTTP_VAR: ${{ vars.IMAGE_HTTP_URL }}
+          PORTAL_IMAGE_VAR: ${{ vars.PORTAL_IMAGE }}
+        run: |
+          set -euo pipefail
+          HTTP_URL="${IMAGE_HTTP_INPUT:-}"
+          if [ -z "${HTTP_URL}" ]; then
+            HTTP_URL="${IMAGE_HTTP_VAR:-}"
+          fi
+          TAG="${IMAGE_REF_INPUT:-}"
+          if [ -z "${TAG}" ]; then
+            TAG="${PORTAL_IMAGE_VAR:-}"
+          fi
+          if [ -z "${HTTP_URL}" ] && [ -z "${TAG}" ]; then
+            echo "::error::action=deploy needs image_ref, Environment PORTAL_IMAGE, or image_http_url / IMAGE_HTTP_URL. Do not silently use stock nginx."
+            exit 1
+          fi
+          if [ -n "${TAG}" ] && [[ "${TAG}" =~ ^https?:// ]]; then
+            echo "::error::image_ref is an HTTP URL. Put the tar on image_http_url instead."
+            exit 1
+          fi
+          if [ -z "${TAG}" ]; then
+            echo "::error::docker load still needs a compose tag (image_ref or PORTAL_IMAGE) that matches the loaded image name."
+            exit 1
+          fi
+          if [[ "${TAG}" == ghcr.io/* ]]; then
+            OWNER_REPO_TAG="${TAG#ghcr.io/}"
+            REPO="${OWNER_REPO_TAG%:*}"
+            REF="${OWNER_REPO_TAG##*:}"
+            if [ "${REF}" = "${OWNER_REPO_TAG}" ]; then
+              REF=latest
+            fi
+            TOKEN="$(curl -fsSL "https://ghcr.io/token?service=ghcr.io&scope=repository:${REPO}:pull" | jq -r '.token // empty' || true)"
+            CODE="$(curl -sS -o /dev/null -w '%{http_code}' \
+              -H "Authorization: Bearer ${TOKEN}" \
+              -H 'Accept: application/vnd.oci.image.index.v1+json, application/vnd.docker.distribution.manifest.v2+json' \
+              "https://ghcr.io/v2/${REPO}/manifests/${REF}" || echo 000)"
+            if [ "${CODE}" = "401" ] || [ "${CODE}" = "403" ]; then
+              echo "::error::${TAG} is not pullable without a token (private GHCR). Copy to ECR or pass image_http_url. Do not put a PAT on the guest."
+              exit 1
+            fi
+            if [ "${CODE}" != "200" ]; then
+              echo "::error::Cannot read ${TAG} from GHCR (HTTP ${CODE}). Use a public tag, ECR, or image_http_url."
+              exit 1
+            fi
+          fi
+          echo "portal_image=${TAG}" >> "$GITHUB_OUTPUT"
+          echo "image_http_url=${HTTP_URL}" >> "$GITHUB_OUTPUT"
+          {
+            echo "### Resolve image"
+            echo ""
+            echo "portal_image: \`${TAG}\`"
+            if [ -n "${HTTP_URL}" ]; then
+              echo "image_http_url: set (not printed)."
+            else
+              echo "image_http_url: empty (registry pull)."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  ansible-portal:
+    name: Compose playbook on asg-portal
+    needs: [assert-lab, discover-targets, resolve-image]
+    if: always() && needs.assert-lab.result == 'success' && needs.discover-targets.result == 'success' && (inputs.action == 'deploy' || inputs.action == 'configure-only') && (needs.resolve-image.result == 'success' || needs.resolve-image.result == 'skipped')
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.aws_environment }}
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7.0.1
+
+      - uses: ./.github/actions/resolve-vocareum-aws
+        with:
+          aws_access_key_id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws_secret_access_key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws_session_token: ${{ secrets.AWS_SESSION_TOKEN }}
+          aws_region: ${{ vars.AWS_REGION || 'us-east-1' }}
+
+      - name: Session Manager plugin
+        run: |
+          set -euo pipefail
+          curl -fsSL "https://s3.amazonaws.com/session-manager-downloads/plugin/latest/ubuntu_64bit/session-manager-plugin.deb" -o /tmp/ssm.deb
+          sudo dpkg -i /tmp/ssm.deb
+
+      - name: Install Ansible 14.3.1
+        run: |
+          set -euo pipefail
+          python3 -m pip install --user "ansible==14.3.1" "boto3>=1.35.0" "botocore>=1.35.0"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          export PATH="$HOME/.local/bin:$PATH"
+          ansible-galaxy collection install -r deploy-pipeline/ansible/requirements.yml
+
+      - name: ansible-playbook --limit portal
         env:
           ACTION: ${{ inputs.action }}
+          RESOLVED_IMAGE: ${{ needs.resolve-image.outputs.portal_image }}
+          RESOLVED_HTTP: ${{ needs.resolve-image.outputs.image_http_url }}
+          PORTAL_IMAGE_VAR: ${{ vars.PORTAL_IMAGE }}
+          IMAGE_HTTP_VAR: ${{ vars.IMAGE_HTTP_URL }}
+          IMAGE_HTTP_INPUT: ${{ inputs.image_http_url }}
+          AWS_REGION: ${{ vars.AWS_REGION || 'us-east-1' }}
+          BUCKET: ${{ needs.assert-lab.outputs.bucket }}
+        working-directory: deploy-pipeline/ansible
         run: |
-          echo "::error::action=${ACTION} compose is feat/cd-portal-academy-deploy (branch 2). This branch supports assert-lab + discover (use action=verify)."
-          exit 1
+          set -euo pipefail
+          chmod +x inventory/aws_ssm.py
+          if [ "${ACTION}" = "deploy" ]; then
+            PORTAL="${RESOLVED_IMAGE:-}"
+            HTTP_URL="${RESOLVED_HTTP:-}"
+          else
+            PORTAL="${PORTAL_IMAGE_VAR:-}"
+            if [ -z "${PORTAL}" ]; then PORTAL="nginx"; fi
+            HTTP_URL="${IMAGE_HTTP_INPUT:-}"
+            if [ -z "${HTTP_URL}" ]; then
+              HTTP_URL="${IMAGE_HTTP_VAR:-}"
+            fi
+          fi
+          if [ -z "${PORTAL}" ]; then
+            echo "::error::portal_image is empty."
+            exit 1
+          fi
+          ansible-playbook playbooks/portal.yml \
+            --limit portal \
+            -e "portal_image=${PORTAL}" \
+            -e "image_http_url=${HTTP_URL}" \
+            -e "aws_region=${AWS_REGION}" \
+            -e "ansible_aws_ssm_bucket_name=${BUCKET}"
+          {
+            echo "### Ansible portal"
+            echo ""
+            echo "Compose via SSM, \`--limit portal\`. Image: \`${PORTAL}\`."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  verify:
+    name: Health GET /
+    needs: [assert-lab, discover-targets, ansible-portal]
+    if: >-
+      always()
+      && needs.assert-lab.result == 'success'
+      && needs.discover-targets.result == 'success'
+      && (
+        (inputs.action == 'verify' && needs.ansible-portal.result == 'skipped')
+        || ((inputs.action == 'deploy' || inputs.action == 'configure-only') && needs.ansible-portal.result == 'success')
+      )
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.aws_environment }}
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7.0.1
+
+      - uses: ./.github/actions/resolve-vocareum-aws
+        with:
+          aws_access_key_id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws_secret_access_key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws_session_token: ${{ secrets.AWS_SESSION_TOKEN }}
+          aws_region: ${{ vars.AWS_REGION || 'us-east-1' }}
+
+      - name: SSM GET / on asg-portal
+        run: |
+          set -euo pipefail
+          ASG=asg-portal
+          mapfile -t IDS < <(aws autoscaling describe-auto-scaling-groups \
+            --auto-scaling-group-names "${ASG}" \
+            --query 'AutoScalingGroups[0].Instances[?LifecycleState==`InService`].InstanceId' \
+            --output text | tr '\t' '\n' | awk 'NF')
+          ONLINE=()
+          for id in "${IDS[@]}"; do
+            ping="$(aws ssm describe-instance-information \
+              --filters "Key=InstanceIds,Values=${id}" \
+              --query 'InstanceInformationList[?PingStatus==`Online`].InstanceId' \
+              --output text || true)"
+            if [ -n "${ping}" ] && [ "${ping}" != "None" ]; then
+              ONLINE+=("${id}")
+            fi
+          done
+          if [ "${#ONLINE[@]}" -eq 0 ]; then
+            echo "::error::No SSM Online guests to health-check."
+            exit 1
+          fi
+          OK=0
+          for id in "${ONLINE[@]}"; do
+            CMD_ID="$(aws ssm send-command \
+              --instance-ids "${id}" \
+              --document-name AWS-RunShellScript \
+              --parameters 'commands=["curl -sS -o /dev/null -w %{http_code} http://127.0.0.1/"]' \
+              --query Command.CommandId --output text)"
+            if ! aws ssm wait command-executed --command-id "${CMD_ID}" --instance-id "${id}"; then
+              echo "::warning::SSM command did not finish on a guest (id omitted)."
+              continue
+            fi
+            CODE="$(aws ssm get-command-invocation \
+              --command-id "${CMD_ID}" \
+              --instance-id "${id}" \
+              --query StandardOutputContent --output text | tr -d '[:space:]')"
+            case "${CODE}" in
+              200|301|302) OK=$((OK + 1)) ;;
+              *) echo "::warning::GET / returned '${CODE}' on a guest (id omitted)." ;;
+            esac
+          done
+          if [ "${OK}" -eq 0 ]; then
+            echo "::error::No portal guest answered GET / with 200–302. /api (REST) is not required for this job."
+            exit 1
+          fi
+          ALB="$(aws elbv2 describe-load-balancers \
+            --query "LoadBalancers[?contains(LoadBalancerName, 'portal')].DNSName | [0]" \
+            --output text 2>/dev/null || echo "")"
+          {
+            echo "### Verify portal :80"
+            echo ""
+            echo "Guests with GET / 200–302: ${OK} / ${#ONLINE[@]}"
+            echo "A failing \`/api\` (REST) does not fail this job."
+            if [ -n "${ALB}" ] && [ "${ALB}" != "None" ]; then
+              echo "Public portal ALB: \`${ALB}\`"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
