@@ -128,17 +128,18 @@ The guest (`LabRole`) reads `heavy-rental/rest`. CI `REST_API_CLOUD_DB_*` is nev
 
 `application.properties` in the Spring repo does **not** use every name the estate study lists. Stripe names match. These do not:
 
-| App reads | Typical estate / study name |
+| App reads | `heavy-rental/rest` after this patch |
 | --- | --- |
-| `POSTGRES_HOSTNAME` | `POSTGRES_HOST` |
-| `POSTGRES_DB` | `POSTGRES_DATABASE` |
-| `POSTGRES_USER` / `POSTGRES_PASSWORD` / `POSTGRES_PORT` | same or `SPRING_DATASOURCE_*` |
-| `HAYSTACK_BASE_URL` | `HAYSTACK_URL` |
-| `APP_JWT_SECRET` (≥ 32 characters) | not in the REST CD secret list |
-| `APP_CORS_ALLOWED_ORIGINS` | portal public origin; default is localhost only |
-| `STRIPE_API_KEY` / `STRIPE_WEBHOOK_SECRET` / `STRIPE_PUBLISHABLE_KEY` | same — OK |
+| `POSTGRES_HOSTNAME` | written (same value as `POSTGRES_HOST`) |
+| `POSTGRES_DB` | written (same value as `POSTGRES_DATABASE`) |
+| `POSTGRES_USER` | written (same value as `POSTGRES_USERNAME`) |
+| `POSTGRES_PASSWORD` / `POSTGRES_PORT` | written |
+| `HAYSTACK_BASE_URL` | written (internal Haystack ALB). Estate no longer uses `HAYSTACK_URL` |
+| `APP_JWT_SECRET` (≥ 32 characters) | **not** written — set in SM or the app keeps the insecure default |
+| `APP_CORS_ALLOWED_ORIGINS` | **not** written — portal `/api` is same-origin |
+| `STRIPE_API_KEY` / `STRIPE_WEBHOOK_SECRET` / `STRIPE_PUBLISHABLE_KEY` | written |
 
-If `heavy-rental/rest` only has `POSTGRES_HOST` and `HAYSTACK_URL`, Tomcat can still start but JDBC/Haystack fall back to compose defaults (`db`, `haystack-fast-api`). Fix in infra `sync-secrets` (write **both** names) or in the app (accept both). Also put `APP_JWT_SECRET` in that AWS secret.
+Re-run infra `configure-only` after this patch so guests get a new `.env`. `APP_JWT_SECRET` is still a separate follow-up.
 
 ---
 

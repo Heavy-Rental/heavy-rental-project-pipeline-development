@@ -9,7 +9,7 @@ After discover (and after ansible-rest when that job ran), `action=verify`, `dep
 - GIVEN at least one guest returns an accepted status
 - WHEN verify runs
 - THEN the job succeeds
-- AND a failing Haystack (`HAYSTACK_URL`) SHALL NOT fail this job by itself
+- AND a failing Haystack (`HAYSTACK_BASE_URL`) SHALL NOT fail this job by itself
 
 #### Scenario: No Tomcat
 - GIVEN every guest fails both URLs or SSM command execution fails

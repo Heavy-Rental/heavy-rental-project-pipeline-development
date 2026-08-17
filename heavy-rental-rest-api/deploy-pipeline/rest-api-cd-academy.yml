@@ -369,5 +369,5 @@ jobs:
             echo "### Verify REST :8080"
             echo ""
             echo "Guests with GET :8080 accepted: ${OK} / ${#ONLINE[@]}"
-            echo "A failing Haystack (\`HAYSTACK_URL\`) does not fail this job."
+            echo "A failing Haystack (\`HAYSTACK_BASE_URL\`) does not fail this job."
           } >> "$GITHUB_STEP_SUMMARY"

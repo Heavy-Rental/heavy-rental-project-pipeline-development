@@ -112,7 +112,7 @@ Instance still needs outbound HTTPS (same-AZ NAT Gateway or S3 endpoint). Stubs 
 
 ### 4.2 `rest` (`asg-rest`)
 
-1. Read `heavy-rental/rest` → `POSTGRES_*` / `SPRING_DATASOURCE_*`, `HAYSTACK_URL`, Stripe secret + webhook + publishable.
+1. Read `heavy-rental/rest` → `POSTGRES_*` / `SPRING_DATASOURCE_*` (plus `POSTGRES_HOSTNAME` / `POSTGRES_DB` / `POSTGRES_USER`), `HAYSTACK_BASE_URL`, Stripe secret + webhook + publishable.
 2. Compose Tomcat on **:8080**, `mem_limit: 1g`, `cpus: 1.0`.
 3. Health: `GET /actuator/health` or `/`.
 4. No Bolt. No public listener.

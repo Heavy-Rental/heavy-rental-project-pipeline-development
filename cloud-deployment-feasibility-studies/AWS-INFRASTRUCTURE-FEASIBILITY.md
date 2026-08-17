@@ -337,7 +337,7 @@ Never put Vocareum `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` / `AWS_SESSION_
 =======
 | `heavy-rental/portal` | `asg-portal` | `REST_BASE_URL` (internal REST ALB Terraform output). **Stripe (portal):** `STRIPE_PUBLISHABLE_KEY` (from GitHub Environment). **Never** `STRIPE_API_KEY` or `STRIPE_WEBHOOK_SECRET` on the portal — those are REST-only. |
 >>>>>>> Stashed changes
-| `heavy-rental/rest` | `asg-rest` | **Postgres (all of):** `POSTGRES_HOST` (RDS endpoint hostname from Terraform — data-subnet address, not public), `POSTGRES_PORT` (`5432`), `POSTGRES_DATABASE` (`heavy_rental`), `POSTGRES_USERNAME`, `POSTGRES_PASSWORD`, `POSTGRES_URL` / `SPRING_DATASOURCE_URL` (`jdbc:postgresql://<host>:<port>/<database>`). Also `SPRING_DATASOURCE_USERNAME` / `SPRING_DATASOURCE_PASSWORD` (same user/password). `HAYSTACK_URL` (internal Haystack ALB). **Stripe (REST):** `STRIPE_API_KEY`, `STRIPE_WEBHOOK_SECRET`, `STRIPE_PUBLISHABLE_KEY` (same publishable key as the portal). |
+| `heavy-rental/rest` | `asg-rest` | **Postgres (all of):** `POSTGRES_HOST` (RDS endpoint hostname from Terraform — data-subnet address, not public), `POSTGRES_PORT` (`5432`), `POSTGRES_DATABASE` (`heavy_rental`), `POSTGRES_USERNAME`, `POSTGRES_PASSWORD`, `POSTGRES_URL` / `SPRING_DATASOURCE_URL` (`jdbc:postgresql://<host>:<port>/<database>`). Also `SPRING_DATASOURCE_USERNAME` / `SPRING_DATASOURCE_PASSWORD` (same user/password). App aliases: `POSTGRES_HOSTNAME`, `POSTGRES_DB`, `POSTGRES_USER`. `HAYSTACK_BASE_URL` (internal Haystack ALB). **Stripe (REST):** `STRIPE_API_KEY`, `STRIPE_WEBHOOK_SECRET`, `STRIPE_PUBLISHABLE_KEY` (same publishable key as the portal). |
 | `heavy-rental/haystack` | `asg-haystack` | Same Postgres **field set** for the **Haystack RDS** (`POSTGRES_HOST` = Haystack instance endpoint, `POSTGRES_DATABASE` = `haystack`). `DATABASE_URL` (`postgresql://user:pass@host:port/db`). `NEO4J_URI` from the **internal Bolt NLB** (`bolt://<nlb-dns>:7687` — not localhost, not a guest private IP), `NEO4J_USER`, `NEO4J_PASSWORD`, `LLM_API_KEY` if used. No Stripe. |
 | `heavy-rental/neo4j` | `asg-neo4j` | `NEO4J_USER`, `NEO4J_PASSWORD`. No Postgres password dump, no Stripe, no LLM key. |
 
@@ -507,7 +507,7 @@ Internal REST/Haystack ALBs stay HTTP inside the VPC. Do **not** enable HTTPS on
   - `sg-alb-rest`: 8080 from `sg-portal` only (and from `sg-alb-rest` health)
   - `sg-alb-haystack`: 8000 from `sg-rest` only
   - `sg-portal`: 80 from `sg-alb-public`
-  - `sg-rest`: 8080 from `sg-alb-rest`; egress `5432` to `sg-rds` **and `8000` to `sg-alb-haystack`** (Tomcat → `HAYSTACK_URL`). No egress `7687` (REST does not talk Bolt)
+  - `sg-rest`: 8080 from `sg-alb-rest`; egress `5432` to `sg-rds` **and `8000` to `sg-alb-haystack`** (Tomcat → `HAYSTACK_BASE_URL`). No egress `7687` (REST does not talk Bolt)
   - `sg-haystack`: 8000 from `sg-alb-haystack`; egress `5432` to `sg-rds` and `7687` to `sg-neo4j`; `8089` stays on the Haystack instance SG for the populate worker
   - `sg-rds`: **5432 from `sg-rest` and `sg-haystack` only** — not from `sg-portal`, `sg-alb-public`, `sg-neo4j`, or `0.0.0.0/0`
   - `sg-neo4j`: **7687 from `sg-haystack` and from the Bolt NLB / VPC CIDR**; optional `7474` from `sg-haystack` for SSM-forwarded Browser
@@ -669,7 +669,7 @@ Browser  →  public portal ALB :80/:443
                     →  internal REST ALB :8080
                           →  asg-rest
                                 →  RDS SoR :5432      (heavy_rental, Multi-AZ)
-                                →  internal Haystack ALB :8000   (HAYSTACK_URL)
+                                →  internal Haystack ALB :8000   (HAYSTACK_BASE_URL)
                                       →  asg-haystack
                                             →  RDS Haystack :5432 (haystack, Multi-AZ)
                                             →  Bolt NLB :7687     (asg-neo4j ×2; not a cluster)
@@ -1751,12 +1751,12 @@ These are **not** Terraform and **not** Ansible.
 | Terraform output | Lands in |
 | --- | --- |
 | Internal REST ALB DNS | `heavy-rental/portal` → `REST_BASE_URL` (+ `STRIPE_PUBLISHABLE_KEY` only) |
-| Internal Haystack ALB DNS | `heavy-rental/rest` → `HAYSTACK_URL` |
+| Internal Haystack ALB DNS | `heavy-rental/rest` → `HAYSTACK_BASE_URL` |
 | SoR RDS endpoint hostname + port | `heavy-rental/rest` → `POSTGRES_*` / URL |
 | Haystack RDS endpoint hostname + port | `heavy-rental/haystack` → `POSTGRES_*` / URL |
 | Bolt NLB DNS | `heavy-rental/haystack` → `NEO4J_URI` (`bolt://<nlb-dns>:7687`) |
 
-REST also gets Stripe `sk_` + `whsec_` + `pk_`. Neo4j secret is user/password only. **`sync-secrets` fails** if host, database, password, or port is empty, or if portal is missing `REST_BASE_URL`, or if REST is missing `HAYSTACK_URL` when Haystack is in use. Do not echo SecretString, `sk_`, or PEMs. Do not write Vocareum AWS keys into Secrets Manager.
+REST also gets Stripe `sk_` + `whsec_` + `pk_`. Neo4j secret is user/password only. **`sync-secrets` fails** if host, database, password, or port is empty, or if portal is missing `REST_BASE_URL`, or if REST is missing `HAYSTACK_BASE_URL` when Haystack is in use. Do not echo SecretString, `sk_`, or PEMs. Do not write Vocareum AWS keys into Secrets Manager.
 
 **Required AWS Secrets Manager parameters before any app CD `deploy`:**
 
@@ -1767,7 +1767,7 @@ REST also gets Stripe `sk_` + `whsec_` + `pk_`. Neo4j secret is user/password on
 =======
 | `heavy-rental/portal` | `REST_BASE_URL`, `STRIPE_PUBLISHABLE_KEY` | `asg-portal` / portal app CD |
 >>>>>>> Stashed changes
-| `heavy-rental/rest` | `POSTGRES_HOST`, `POSTGRES_PORT`, `POSTGRES_DATABASE`, `POSTGRES_USERNAME`, `POSTGRES_PASSWORD`, `POSTGRES_URL` / `SPRING_DATASOURCE_*`, `HAYSTACK_URL`, `STRIPE_API_KEY`, `STRIPE_WEBHOOK_SECRET`, `STRIPE_PUBLISHABLE_KEY` | `asg-rest` / REST app CD |
+| `heavy-rental/rest` | `POSTGRES_HOST` / `POSTGRES_HOSTNAME`, `POSTGRES_DATABASE` / `POSTGRES_DB`, `POSTGRES_USERNAME` / `POSTGRES_USER`, `POSTGRES_PORT`, `POSTGRES_PASSWORD`, `POSTGRES_URL` / `SPRING_DATASOURCE_*`, `HAYSTACK_BASE_URL`, Stripe trio | `asg-rest` / REST app CD |
 | `heavy-rental/haystack` | Same Postgres field set (or Haystack db name), `NEO4J_URI`, `NEO4J_USER`, `NEO4J_PASSWORD` | `asg-haystack` / Haystack app CD |
 | `heavy-rental/neo4j` | `NEO4J_USER`, `NEO4J_PASSWORD` | `asg-neo4j` (infra/`configure-only` only) |
 
@@ -1812,7 +1812,7 @@ App CD later:    discover ASG → same playbook, one group (portal | rest | hays
 | Group | Secret | Compose | Limits |
 | --- | --- | --- | --- |
 | `portal` | `heavy-rental/portal` (`REST_BASE_URL`, `pk_` only) | nginx :80; write `/api` → `REST_BASE_URL` (CI image has SPA `try_files` only). Fail if URL empty. Health `GET /`. Do not fail solely because `/api` is down. | `256m` / `0.5` |
-| `rest` | `heavy-rental/rest` (Postgres, `HAYSTACK_URL`, Stripe trio) | Tomcat :8080. Health `/actuator/health` or `/`. No Bolt. | `1g` / `1.0` |
+| `rest` | `heavy-rental/rest` (Postgres, `HAYSTACK_BASE_URL`, Stripe trio) | Tomcat :8080. Health `/actuator/health` or `/`. No Bolt. | `1g` / `1.0` |
 | `haystack` | `heavy-rental/haystack` (Haystack RDS Postgres, `NEO4J_URI` = Bolt NLB) | uvicorn :8000 + `postgres-haystack-sync` + `neo4j-populate`. **Must not** start `neo4j`. Health `/docs` or `/health`. | `768m` / `1.0` + two workers `256m` / `0.25` |
 | `neo4j` | `heavy-rental/neo4j` | **Only** `neo4j:5`, `/data` on EBS, Bolt on each guest. NLB fronts them. App CD does not run this group. | `4g` / `1.5`, heap 512m–1G |
 
@@ -1830,7 +1830,7 @@ Browser  →  public portal ALB :80/:443
                     →  internal REST ALB :8080
                           →  asg-rest
                                 →  RDS SoR :5432      (heavy_rental, Multi-AZ)
-                                →  internal Haystack ALB :8000   (HAYSTACK_URL)
+                                →  internal Haystack ALB :8000   (HAYSTACK_BASE_URL)
                                       →  asg-haystack
                                             →  RDS Haystack :5432 (haystack, Multi-AZ)
                                             →  Bolt NLB :7687     (asg-neo4j ×2)

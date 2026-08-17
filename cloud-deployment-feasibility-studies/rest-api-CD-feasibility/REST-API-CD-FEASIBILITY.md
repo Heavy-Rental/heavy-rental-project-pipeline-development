@@ -77,8 +77,8 @@ CI Environments: **`integration`** (`REST_API_DB_*`) and **`production`** (`REST
 | --- | --- |
 | Compute | **`asg-rest`**, private app subnets, estate default **desired=2**, InService, SSM Online |
 | Ingress | **Internal** ALB `tg-rest` **:8080**. Never public |
-| Data | SoR RDS `heavy_rental` on **:5432** (`sg-rest` → `sg-rds`). Haystack via **internal** Haystack ALB (`HAYSTACK_URL`, `sg-rest` → `sg-alb-haystack` **:8000**). REST does **not** open Bolt. Academy has **two** RDS; REST uses the SoR instance only. Haystack may still read SoR `:5432` for sync. |
-| Secret | `heavy-rental/rest` (Postgres fields, Stripe **secret** + webhook + publishable, `HAYSTACK_URL`) |
+| Data | SoR RDS `heavy_rental` on **:5432** (`sg-rest` → `sg-rds`). Haystack via **internal** Haystack ALB (`HAYSTACK_BASE_URL`, `sg-rest` → `sg-alb-haystack` **:8000**). REST does **not** open Bolt. Academy has **two** RDS; REST uses the SoR instance only. Haystack may still read SoR `:5432` for sync. |
+| Secret | `heavy-rental/rest` (Postgres fields, Stripe **secret** + webhook + publishable, `HAYSTACK_BASE_URL`) |
 | Limits | §6.4a: Tomcat `mem_limit: 1g`, `cpus: 1.0` on `t3.small` |
 
 ---
@@ -124,7 +124,7 @@ Guest (LabRole): get-secret-value + docker load / ecr pull / HTTPS tar
 Paid runner: OIDC only — fail if AWS_ACCESS_KEY_ID is set
 ```
 
-AWS keys **do not** push GHCR (CI `GITHUB_TOKEN`). On **Academy**, paste the three keys on the form (or Environment fallback). **Never** on paid, on the EC2, or in Secrets Manager. Infra must have created `heavy-rental/rest` and filled `POSTGRES_*`, `HAYSTACK_URL`, and Stripe fields — this CD only reads them.
+AWS keys **do not** push GHCR (CI `GITHUB_TOKEN`). On **Academy**, paste the three keys on the form (or Environment fallback). **Never** on paid, on the EC2, or in Secrets Manager. Infra must have created `heavy-rental/rest` and filled `POSTGRES_*`, `HAYSTACK_BASE_URL`, and Stripe fields — this CD only reads them.
 
 ---
 
@@ -134,7 +134,7 @@ AWS keys **do not** push GHCR (CI `GITHUB_TOKEN`). On **Academy**, paste the thr
 | --- | --- |
 | GitHub `academy` | **Runner only:** three Vocareum keys + `AWS_REGION`. App passwords optional if SM is already filled |
 | GitHub `paid` | **Runner only:** OIDC. No access keys |
-| AWS `heavy-rental/rest` | **Instance (`LabRole`):** `POSTGRES_*` / `SPRING_DATASOURCE_*`, `HAYSTACK_URL`, `STRIPE_API_KEY`, `STRIPE_WEBHOOK_SECRET`, `STRIPE_PUBLISHABLE_KEY` |
+| AWS `heavy-rental/rest` | **Instance (`LabRole`):** `POSTGRES_*` / `SPRING_DATASOURCE_*`, `HAYSTACK_BASE_URL`, `STRIPE_API_KEY`, `STRIPE_WEBHOOK_SECRET`, `STRIPE_PUBLISHABLE_KEY` |
 
 Do not put `sk_` in the image. Do not use CI `REST_API_CLOUD_DB_*` as the RDS hostname — `sync-secrets` **builds** JDBC from Terraform + CD password. Fail deploy if `describe-secret` for `heavy-rental/rest` fails. See AWS study **§8.2** and **§8.7**.
 

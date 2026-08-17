@@ -16,7 +16,7 @@ Manually deploy a **CI-built Tomcat + WAR image** onto the **existing** `asg-res
 
 - Image: **`tomcat:10.1-jdk21-temurin`** + `ROOT.war`, Java **21**, GHCR `ghcr.io/<owner>/heavy-rental-rest-api`.
 - Internal REST ALB `:8080` only. Never on the public portal listener.
-- Guest reads `heavy-rental/rest` (Postgres / JDBC, `HAYSTACK_URL`, Stripe secret + webhook + publishable). Password is **not** in the image.
+- Guest reads `heavy-rental/rest` (Postgres / JDBC, `HAYSTACK_BASE_URL`, Stripe secret + webhook + publishable). Password is **not** in the image.
 - No Bolt on REST. No `docker build` / Maven on the guest.
 
 **Non-goals:** `terraform apply`; `mvn package` / `docker build`; portal / Haystack / Neo4j deploy; `stop` / `destroy` (infra CD); paid / OIDC; instance IDs on the Run form; CI Environments `integration` / `production` as CD auth.
@@ -41,7 +41,7 @@ Academy only in this minimum. Paid = later workflow, OIDC, **no** key fields.
 Before any `deploy`:
 
 1. Infra `action=apply` has created `asg-rest` (and the **internal** REST ALB).
-2. Infra `sync-secrets` has filled `heavy-rental/rest` (`POSTGRES_*` / `SPRING_DATASOURCE_*`, `HAYSTACK_URL`, `STRIPE_API_KEY`, `STRIPE_WEBHOOK_SECRET`, `STRIPE_PUBLISHABLE_KEY`).
+2. Infra `sync-secrets` has filled `heavy-rental/rest` (`POSTGRES_*` / `SPRING_DATASOURCE_*`, `HAYSTACK_BASE_URL`, `STRIPE_API_KEY`, `STRIPE_WEBHOOK_SECRET`, `STRIPE_PUBLISHABLE_KEY`).
 3. Guests are **InService** and **SSM Online** (Start Lab if the session ended). If desired=0, run infra (scale / `configure-only`) first — this CD must not change ASG desired.
 
 Discover with AWS API (`asg-rest`). Do not paste instance IDs.
@@ -109,7 +109,7 @@ Start Lab → Run workflow → `assert-lab` + `discover-targets` green. No image
 2. Runner: Ansible **14.3.1**, `amazon.aws` **>=11.3.0,<12**, `boto3/botocore>=1.35.0`, Session Manager plugin. Connection **`amazon.aws.aws_ssm`**. S3 bucket for the plugin = lab state bucket (same as infra / portal CD).
 3. **`ansible-playbook … --limit rest`:** `guest_base` + `rest` only. §6.4a `1g` / `1.0`. Fail if `rest_image` empty. No Bolt. No public listener. Stripe `sk_` stays in `heavy-rental/rest` on the guest `.env` — **not** in the image and **not** on `asg-portal`.
 4. **`configure-only`:** skip resolve-image. Use Environment `REST_IMAGE` or Run `image_ref`. Still **fail** if both empty (do not invent a Tomcat tag).
-5. **`verify`:** SSM `GET http://127.0.0.1:8080/actuator/health` or `GET /` (200–302, and 401/403 if the app is up but locked). Do **not** fail solely because Haystack (`HAYSTACK_URL`) is down. Do **not** print instance IPs or `REST_BASE_URL`. Internal ALB DNS is optional and not required.
+5. **`verify`:** SSM `GET http://127.0.0.1:8080/actuator/health` or `GET /` (200–302, and 401/403 if the app is up but locked). Do **not** fail solely because Haystack (`HAYSTACK_BASE_URL`) is down. Do **not** print instance IPs or `REST_BASE_URL`. Internal ALB DNS is optional and not required.
 
 ### Done when (branch 2)
 
