@@ -1,0 +1,811 @@
+# =============================================================================
+# Heavy Rental Web Portal — Release CI Pipeline (reusable)
+# =============================================================================
+# Stages:
+#   1. Integration       — checkout, Node 22, npm ci, install health
+#   2. Quality Control   — ESLint + TypeScript (needs Integration)
+#   3. Security Testing  — Semgrep + npm audit + Trivy (needs Integration)
+#   4. CodeQL Analysis   — GitHub CodeQL for JavaScript/TypeScript (needs Integration)
+#   5. Packaging         — Vite dist/ zip (needs Integration + QC + Security + CodeQL)
+#   Security report format (standard): SARIF 2.1.0
+#     - Semgrep → semgrep.sarif
+#     - npm audit → npm-audit.sarif (converted from audit JSON)
+#     - Trivy FS → trivy-fs.sarif
+#     - CodeQL → GitHub Code Scanning (native SARIF via analyze)
+#
+# Same gates as integration-pipeline.yml, plus production build + versioned
+# archive artifacts for deploy pipelines to consume.
+#
+# Packaging output (Vite SPA static deploy):
+#   npm run build → dist/ (index.html + assets/*.js|*.css|…)
+#   Deploy archive: .zip of dist/ contents (web-server static root), not tar.gz.
+#
+# Application:
+#   https://github.com/SA62-team1/heavy-rental-react-web-portal
+#   React 19 + TypeScript + Vite 8 (npm)
+#
+# How the portal uses this on release
+# -----------------------------------
+# Install both files into the React web portal repository:
+#
+#   .github/workflows/release-pipeline.yml       ← this file (reusable only)
+#   .github/workflows/portal-release-caller.yml  ← sole allowed entry point
+#
+# This file exposes only workflow_call (no push / PR / workflow_dispatch).
+# A gate job rejects any caller other than portal-release-caller.yml.
+#
+# Invoked via portal-release-caller.yml when:
+#   - a GitHub Release is published, or
+#   - a pull request is opened/updated from develop → master
+#
+# The caller invokes this workflow with:
+#   uses: ./.github/workflows/release-pipeline.yml
+#
+# Also mirrored in the pipeline-development repo for discovery/testing:
+#   .github/workflows/web-portal-release.yml
+# Keep this file and that mirror in sync when developing here.
+#
+# Local validation (from pipeline-development repo root, in the devcontainer):
+#   actionlint heavy-rental-web-portal-pipeline/release-pipeline/release-pipeline.yml
+#   actionlint .github/workflows/web-portal-release.yml
+# =============================================================================
+
+name: Web Portal Release CI
+
+# Reusable only — no push, pull_request, or workflow_dispatch.
+# Sole allowed caller: .github/workflows/portal-release-caller.yml (enforced below).
+on:
+  workflow_call:
+    inputs:
+      app_repository:
+        description: >
+          Override application repository (owner/name). Leave empty to use the
+          calling repository (required when the portal invokes this workflow).
+        required: false
+        type: string
+        default: ""
+      app_ref:
+        description: >
+          Override git ref (branch/tag/SHA). Leave empty to use the calling
+          workflow's commit (github.sha) — correct for release / develop→master PR.
+        required: false
+        type: string
+        default: ""
+
+# One run per release tag or develop→master PR; do not cancel in-flight packaging
+concurrency:
+  group: web-portal-release-${{ github.workflow }}-${{ github.repository }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  pull-requests: read
+  # Required for github/codeql-action/analyze
+  security-events: write
+  actions: read
+
+env:
+  NODE_VERSION: "22"
+  APP_PATH: app
+  DEFAULT_APP_REPOSITORY: SA62-team1/heavy-rental-react-web-portal
+  DEFAULT_APP_REF: master
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # 0. Caller gate — only portal-release-caller.yml may invoke this workflow
+  # ---------------------------------------------------------------------------
+  assert-caller:
+    name: Assert caller
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Allow only portal-release-caller.yml
+        env:
+          # github context is that of the caller workflow for reusable workflows
+          WORKFLOW_REF: ${{ github.workflow_ref }}
+        run: |
+          set -euo pipefail
+          echo "github.workflow_ref=${WORKFLOW_REF}"
+          echo "github.event_name=${{ github.event_name }}"
+          echo "github.workflow=${{ github.workflow }}"
+          case "${WORKFLOW_REF}" in
+            */.github/workflows/portal-release-caller.yml@*)
+              echo "Allowed caller: portal-release-caller.yml"
+              {
+                echo "### Caller gate"
+                echo ""
+                echo "Invoked by \`portal-release-caller.yml\` — OK."
+              } >> "$GITHUB_STEP_SUMMARY"
+              ;;
+            *)
+              echo "::error::release-pipeline.yml may only be invoked by .github/workflows/portal-release-caller.yml (got: ${WORKFLOW_REF})"
+              exit 1
+              ;;
+          esac
+
+  # ---------------------------------------------------------------------------
+  # 1. Integration — fetch source, install dependencies, verify install health
+  # ---------------------------------------------------------------------------
+  integration:
+    name: Integration
+    runs-on: ubuntu-latest
+    needs: [assert-caller]
+    timeout-minutes: 15
+    outputs:
+      app_repository: ${{ steps.meta.outputs.app_repository }}
+      app_ref: ${{ steps.meta.outputs.app_ref }}
+      checkout_mode: ${{ steps.meta.outputs.checkout_mode }}
+      node-modules-cache-hit: ${{ steps.cache-node-modules.outputs.cache-hit }}
+    steps:
+      - name: Resolve application source (same-repo caller vs remote override)
+        id: meta
+        run: |
+          set -euo pipefail
+          # This workflow is workflow_call-only; github.* reflects the caller event.
+          EVENT="${{ github.event_name }}"
+          INPUT_REPO="${{ inputs.app_repository }}"
+          INPUT_REF="${{ inputs.app_ref }}"
+
+          if [ -n "$INPUT_REPO" ] && [ "$INPUT_REPO" != "${{ github.repository }}" ]; then
+            APP_REPO="$INPUT_REPO"
+            APP_REF="${INPUT_REF:-${{ env.DEFAULT_APP_REF }}}"
+            MODE=remote
+          else
+            # portal-release-caller.yml in the same repo: use this commit
+            APP_REPO="${{ github.repository }}"
+            APP_REF="${INPUT_REF:-${{ github.sha }}}"
+            MODE=caller
+          fi
+
+          echo "app_repository=$APP_REPO" >> "$GITHUB_OUTPUT"
+          echo "app_ref=$APP_REF" >> "$GITHUB_OUTPUT"
+          echo "checkout_mode=$MODE" >> "$GITHUB_OUTPUT"
+          {
+            echo "### Source resolution"
+            echo ""
+            echo "| Field | Value |"
+            echo "| --- | --- |"
+            echo "| Event | \`$EVENT\` |"
+            echo "| Mode | \`$MODE\` |"
+            echo "| Repository | \`$APP_REPO\` |"
+            echo "| Ref | \`$APP_REF\` |"
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "Integrating application: $APP_REPO @ $APP_REF (mode=$MODE)"
+
+      - name: Checkout calling repository (release / push head)
+        if: steps.meta.outputs.checkout_mode == 'caller'
+        uses: actions/checkout@v4
+        with:
+          path: ${{ env.APP_PATH }}
+
+      - name: Checkout remote application repository
+        if: steps.meta.outputs.checkout_mode == 'remote'
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ steps.meta.outputs.app_repository }}
+          ref: ${{ steps.meta.outputs.app_ref }}
+          path: ${{ env.APP_PATH }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: ${{ env.APP_PATH }}/package-lock.json
+
+      - name: Cache node_modules
+        id: cache-node-modules
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.APP_PATH }}/node_modules
+          key: node-modules-${{ runner.os }}-node${{ env.NODE_VERSION }}-${{ hashFiles(format('{0}/package-lock.json', env.APP_PATH)) }}
+          restore-keys: |
+            node-modules-${{ runner.os }}-node${{ env.NODE_VERSION }}-
+
+      - name: Install dependencies (npm ci)
+        if: steps.cache-node-modules.outputs.cache-hit != 'true'
+        working-directory: ${{ env.APP_PATH }}
+        run: npm ci
+
+      - name: Report dependency cache status
+        run: |
+          if [ "${{ steps.cache-node-modules.outputs.cache-hit }}" = "true" ]; then
+            echo "node_modules restored from cache (skipped npm ci)."
+          else
+            echo "node_modules cache miss — installed with npm ci; cache will be saved at job end."
+          fi
+          echo "Lockfile hash key uses package-lock.json + Node ${{ env.NODE_VERSION }} + ${{ runner.os }}"
+
+      - name: Verify install integrity
+        working-directory: ${{ env.APP_PATH }}
+        run: |
+          set -euo pipefail
+          echo "==> Node / npm versions"
+          node --version
+          npm --version
+          echo "==> package.json scripts"
+          npm run | head -n 50 || true
+          echo "==> Dependency tree (top level)"
+          npm ls --depth=0
+          test -f package-lock.json
+          test -d node_modules
+          echo "Integration checks passed."
+
+      - name: Upload lockfile fingerprint for downstream jobs
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-integration-metadata
+          path: |
+            ${{ env.APP_PATH }}/package.json
+            ${{ env.APP_PATH }}/package-lock.json
+          retention-days: 7
+
+  # ---------------------------------------------------------------------------
+  # 2. Quality control — lint + TypeScript project build (typecheck)
+  # ---------------------------------------------------------------------------
+  quality-control:
+    name: Quality Control
+    runs-on: ubuntu-latest
+    needs: integration
+    timeout-minutes: 15
+    steps:
+      - name: Checkout calling repository (release / push head)
+        if: needs.integration.outputs.checkout_mode == 'caller'
+        uses: actions/checkout@v4
+        with:
+          path: ${{ env.APP_PATH }}
+
+      - name: Checkout remote application repository
+        if: needs.integration.outputs.checkout_mode == 'remote'
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ needs.integration.outputs.app_repository }}
+          ref: ${{ needs.integration.outputs.app_ref }}
+          path: ${{ env.APP_PATH }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: ${{ env.APP_PATH }}/package-lock.json
+
+      - name: Cache node_modules
+        id: cache-node-modules
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.APP_PATH }}/node_modules
+          key: node-modules-${{ runner.os }}-node${{ env.NODE_VERSION }}-${{ hashFiles(format('{0}/package-lock.json', env.APP_PATH)) }}
+          restore-keys: |
+            node-modules-${{ runner.os }}-node${{ env.NODE_VERSION }}-
+
+      - name: Install dependencies (npm ci)
+        if: steps.cache-node-modules.outputs.cache-hit != 'true'
+        working-directory: ${{ env.APP_PATH }}
+        run: npm ci
+
+      - name: ESLint (static analysis)
+        working-directory: ${{ env.APP_PATH }}
+        run: npm run lint
+
+      - name: TypeScript typecheck (tsc -b)
+        working-directory: ${{ env.APP_PATH }}
+        run: npx tsc -b --pretty false
+
+  # ---------------------------------------------------------------------------
+  # 3. Security testing — SAST + SCA + filesystem vulnerability scan
+  # ---------------------------------------------------------------------------
+  security-testing:
+    name: Security Testing
+    runs-on: ubuntu-latest
+    needs: integration
+    timeout-minutes: 25
+    steps:
+      - name: Checkout calling repository (release / push head)
+        if: needs.integration.outputs.checkout_mode == 'caller'
+        uses: actions/checkout@v4
+        with:
+          path: ${{ env.APP_PATH }}
+
+      - name: Checkout remote application repository
+        if: needs.integration.outputs.checkout_mode == 'remote'
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ needs.integration.outputs.app_repository }}
+          ref: ${{ needs.integration.outputs.app_ref }}
+          path: ${{ env.APP_PATH }}
+
+      - name: Create security reports directory
+        run: mkdir -p "${{ github.workspace }}/security-reports"
+
+      # --- SAST: static analysis (standard report format: SARIF) ---
+      - name: Setup Python (Semgrep)
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Semgrep
+        run: pip install --quiet semgrep
+
+      - name: SAST — Semgrep (TypeScript / React / OWASP) → SARIF
+        working-directory: ${{ env.APP_PATH }}
+        run: |
+          set -euo pipefail
+          REPORT_DIR="${{ github.workspace }}/security-reports"
+          # Standard security report format: SARIF 2.1.0
+          semgrep scan \
+            --config=p/typescript \
+            --config=p/react \
+            --config=p/javascript \
+            --config=p/owasp-top-ten \
+            --config=p/security-audit \
+            --metrics=off \
+            --sarif \
+            --output="${REPORT_DIR}/semgrep.sarif" \
+            . || true
+          # Gate CI: fail on ERROR findings (console only; report remains SARIF)
+          echo "==> SAST gate (ERROR severity)"
+          semgrep scan \
+            --config=p/typescript \
+            --config=p/react \
+            --config=p/javascript \
+            --config=p/owasp-top-ten \
+            --config=p/security-audit \
+            --metrics=off \
+            --severity=ERROR \
+            --error \
+            --text \
+            .
+          echo "SAST (Semgrep) passed — SARIF report: security-reports/semgrep.sarif"
+
+      # --- SCA: dependency vulnerabilities (npm audit → SARIF) ---
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: ${{ env.APP_PATH }}/package-lock.json
+
+      - name: Cache node_modules
+        id: cache-node-modules
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.APP_PATH }}/node_modules
+          key: node-modules-${{ runner.os }}-node${{ env.NODE_VERSION }}-${{ hashFiles(format('{0}/package-lock.json', env.APP_PATH)) }}
+          restore-keys: |
+            node-modules-${{ runner.os }}-node${{ env.NODE_VERSION }}-
+
+      - name: Install dependencies (npm ci)
+        if: steps.cache-node-modules.outputs.cache-hit != 'true'
+        working-directory: ${{ env.APP_PATH }}
+        run: npm ci
+
+      - name: SCA — npm audit (high / critical) → SARIF
+        working-directory: ${{ env.APP_PATH }}
+        run: |
+          set -euo pipefail
+          REPORT_DIR="${{ github.workspace }}/security-reports"
+          mkdir -p "${REPORT_DIR}"
+          set +e
+          npm audit --audit-level=high --json > "${REPORT_DIR}/npm-audit.json" 2>"${REPORT_DIR}/npm-audit-stderr.txt"
+          AUDIT_EXIT=$?
+          set -e
+          python3 <<'PY'
+          import json
+          from pathlib import Path
+          report_dir = Path("${{ github.workspace }}/security-reports")
+          src = report_dir / "npm-audit.json"
+          out = report_dir / "npm-audit.sarif"
+          try:
+              data = json.loads(src.read_text(encoding="utf-8") or "{}")
+          except Exception as e:
+              print(f"::warning::Could not parse npm audit JSON: {e}")
+              data = {}
+          results = []
+          vulns = data.get("vulnerabilities") or {}
+          if isinstance(vulns, dict):
+              for name, v in vulns.items():
+                  if not isinstance(v, dict):
+                      continue
+                  severity = (v.get("severity") or "warning").lower()
+                  level = {
+                      "critical": "error", "high": "error",
+                      "moderate": "warning", "medium": "warning",
+                      "low": "note", "info": "note",
+                  }.get(severity, "warning")
+                  via = v.get("via") or []
+                  title = name
+                  help_uri = ""
+                  if via and isinstance(via[0], dict):
+                      title = via[0].get("title") or name
+                      help_uri = via[0].get("url") or ""
+                  msg = f"{name}: {title} (severity={severity}, range={v.get('range', '')})"
+                  results.append({
+                      "ruleId": f"npm-audit/{name}",
+                      "level": level,
+                      "message": {"text": msg},
+                      "locations": [{
+                          "physicalLocation": {
+                              "artifactLocation": {"uri": "package-lock.json"},
+                          }
+                      }],
+                      **({"properties": {"helpUri": help_uri}} if help_uri else {}),
+                  })
+          advisories = data.get("advisories") or {}
+          if isinstance(advisories, dict):
+              for adv_id, a in advisories.items():
+                  if not isinstance(a, dict):
+                      continue
+                  severity = (a.get("severity") or "warning").lower()
+                  level = {
+                      "critical": "error", "high": "error",
+                      "moderate": "warning", "medium": "warning",
+                      "low": "note", "info": "note",
+                  }.get(severity, "warning")
+                  module = a.get("module_name") or "dependency"
+                  title = a.get("title") or module
+                  msg = f"{module}: {title} (severity={severity})"
+                  results.append({
+                      "ruleId": f"npm-audit/{adv_id}",
+                      "level": level,
+                      "message": {"text": msg},
+                      "locations": [{
+                          "physicalLocation": {
+                              "artifactLocation": {"uri": "package-lock.json"},
+                          }
+                      }],
+                  })
+          sarif = {
+              "$schema": "https://json.schemastore.org/sarif-2.1.0.json",
+              "version": "2.1.0",
+              "runs": [{
+                  "tool": {
+                      "driver": {
+                          "name": "npm-audit",
+                          "informationUri": "https://docs.npmjs.com/cli/commands/npm-audit",
+                          "rules": [],
+                      }
+                  },
+                  "results": results,
+              }],
+          }
+          out.write_text(json.dumps(sarif, indent=2), encoding="utf-8")
+          print(f"Wrote SARIF report: {out} ({len(results)} result(s))")
+          PY
+          if [ "${AUDIT_EXIT}" -ne 0 ]; then
+            echo "::error::npm audit found high or critical vulnerabilities. See npm-audit.sarif"
+            npm audit --audit-level=high || true
+            exit "${AUDIT_EXIT}"
+          fi
+          echo "npm audit passed — SARIF report: security-reports/npm-audit.sarif"
+
+      # --- Filesystem / supply-chain scan (standard report format: SARIF) ---
+      - name: Trivy filesystem scan (SARIF)
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          scan-type: fs
+          scan-ref: ${{ env.APP_PATH }}
+          severity: HIGH,CRITICAL
+          exit-code: "1"
+          format: sarif
+          output: security-reports/trivy-fs.sarif
+          ignore-unfixed: true
+
+      - name: Trivy filesystem scan (console table)
+        if: always()
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          scan-type: fs
+          scan-ref: ${{ env.APP_PATH }}
+          severity: HIGH,CRITICAL
+          exit-code: "0"
+          format: table
+          ignore-unfixed: true
+
+      # --- Publish SARIF security reports to GitHub Code Scanning ---
+      - name: Upload Semgrep SARIF to Code Scanning
+        if: always() && hashFiles('security-reports/semgrep.sarif') != ''
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: security-reports/semgrep.sarif
+          checkout_path: ${{ env.APP_PATH }}
+          category: web-portal-release-semgrep
+        continue-on-error: true
+
+      - name: Upload npm audit SARIF to Code Scanning
+        if: always() && hashFiles('security-reports/npm-audit.sarif') != ''
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: security-reports/npm-audit.sarif
+          checkout_path: ${{ env.APP_PATH }}
+          category: web-portal-release-npm-audit
+        continue-on-error: true
+
+      - name: Upload Trivy SARIF to Code Scanning
+        if: always() && hashFiles('security-reports/trivy-fs.sarif') != ''
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: security-reports/trivy-fs.sarif
+          checkout_path: ${{ env.APP_PATH }}
+          category: web-portal-release-trivy-fs
+        continue-on-error: true
+
+      - name: Upload security reports (SARIF)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-security-reports-sarif
+          path: |
+            security-reports/*.sarif
+          retention-days: 30
+          if-no-files-found: warn
+
+  # ---------------------------------------------------------------------------
+  # 4. CodeQL analysis — GitHub CodeQL for JavaScript / TypeScript
+  #    Runs after Integration; parallel with QC and Security.
+  #    Packaging waits for CodeQL (and QC + Security) to succeed.
+  #    Results appear under the repository Security → Code scanning alerts.
+  # ---------------------------------------------------------------------------
+  codeql:
+    name: CodeQL Analysis
+    runs-on: ubuntu-latest
+    needs: [integration]
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      security-events: write
+      actions: read
+    steps:
+      - name: Checkout calling repository (release / push head)
+        if: needs.integration.outputs.checkout_mode == 'caller'
+        uses: actions/checkout@v4
+        with:
+          path: ${{ env.APP_PATH }}
+
+      - name: Checkout remote application repository
+        if: needs.integration.outputs.checkout_mode == 'remote'
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ needs.integration.outputs.app_repository }}
+          ref: ${{ needs.integration.outputs.app_ref }}
+          path: ${{ env.APP_PATH }}
+
+      - name: Initialize CodeQL (JavaScript / TypeScript)
+        uses: github/codeql-action/init@v3
+        with:
+          languages: javascript-typescript
+          source-root: ${{ env.APP_PATH }}
+          # security-and-quality: security rules + maintainability / reliability
+          queries: security-and-quality
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: ${{ env.APP_PATH }}/package-lock.json
+
+      - name: Cache node_modules
+        id: cache-node-modules
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.APP_PATH }}/node_modules
+          key: node-modules-${{ runner.os }}-node${{ env.NODE_VERSION }}-${{ hashFiles(format('{0}/package-lock.json', env.APP_PATH)) }}
+          restore-keys: |
+            node-modules-${{ runner.os }}-node${{ env.NODE_VERSION }}-
+
+      - name: Install dependencies for CodeQL (npm ci)
+        if: steps.cache-node-modules.outputs.cache-hit != 'true'
+        working-directory: ${{ env.APP_PATH }}
+        run: npm ci
+
+      # Optional build improves extraction for TypeScript projects that emit JS
+      - name: Build for CodeQL (TypeScript project build)
+        working-directory: ${{ env.APP_PATH }}
+        run: |
+          set -euo pipefail
+          # Prefer tsc project build; fall back to vite build if no tsc -b setup
+          if npx tsc -b --pretty false 2>/dev/null; then
+            echo "TypeScript project build completed for CodeQL."
+          elif npm run build --if-present; then
+            echo "npm run build completed for CodeQL."
+          else
+            echo "No build step available; CodeQL will analyze sources as-is."
+          fi
+
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@v3
+        with:
+          category: "web-portal-release-codeql-js"
+
+      - name: CodeQL summary
+        if: always()
+        run: |
+          {
+            echo "### CodeQL Analysis"
+            echo ""
+            echo "Language: JavaScript / TypeScript"
+            echo "Query suite: security-and-quality"
+            echo "Category: web-portal-release-codeql-js"
+            echo ""
+            echo "View results: repository → Security → Code scanning alerts"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  # ---------------------------------------------------------------------------
+  # 5. Packaging — Vite production build + versioned .zip for static web deploy
+  # ---------------------------------------------------------------------------
+  # Vite SPA deploy model:
+  #   - build output dir: dist/ (default; index.html is the document root)
+  #   - deploy unit:      .zip of dist/ *contents* (extract → web server root)
+  #   - extension:        .zip  (static hosting / zip-deploy / CDN upload)
+  # Do not ship source, node_modules, or a tar.gz for this SPA package.
+  # ---------------------------------------------------------------------------
+  packaging:
+    name: Packaging
+    runs-on: ubuntu-latest
+    # Integration first; packaging waits for QC, Security, and CodeQL
+    needs: [integration, quality-control, security-testing, codeql]
+    timeout-minutes: 20
+    env:
+      # Vite default outDir — change only if portal vite.config sets build.outDir
+      VITE_DIST_DIR: dist
+      # Deploy archive extension for static Vite SPA web-server deployment
+      PACKAGE_EXT: zip
+    steps:
+      - name: Checkout calling repository (release / push head)
+        if: needs.integration.outputs.checkout_mode == 'caller'
+        uses: actions/checkout@v4
+        with:
+          path: ${{ env.APP_PATH }}
+
+      - name: Checkout remote application repository
+        if: needs.integration.outputs.checkout_mode == 'remote'
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ needs.integration.outputs.app_repository }}
+          ref: ${{ needs.integration.outputs.app_ref }}
+          path: ${{ env.APP_PATH }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: ${{ env.APP_PATH }}/package-lock.json
+
+      - name: Cache node_modules
+        id: cache-node-modules
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.APP_PATH }}/node_modules
+          key: node-modules-${{ runner.os }}-node${{ env.NODE_VERSION }}-${{ hashFiles(format('{0}/package-lock.json', env.APP_PATH)) }}
+          restore-keys: |
+            node-modules-${{ runner.os }}-node${{ env.NODE_VERSION }}-
+
+      - name: Install dependencies (npm ci)
+        if: steps.cache-node-modules.outputs.cache-hit != 'true'
+        working-directory: ${{ env.APP_PATH }}
+        run: npm ci
+
+      - name: Production build (tsc -b && vite build)
+        working-directory: ${{ env.APP_PATH }}
+        run: npm run build
+        env:
+          CI: true
+
+      - name: Verify Vite build output (static SPA for web server)
+        working-directory: ${{ env.APP_PATH }}
+        run: |
+          set -euo pipefail
+          DIST="${VITE_DIST_DIR}"
+
+          echo "==> Expect Vite static SPA under ${DIST}/"
+          test -d "${DIST}"
+          test -f "${DIST}/index.html"
+
+          # Vite emits hashed JS/CSS under dist/assets/ (or flat files in dist/)
+          JS_COUNT="$(find "${DIST}" -type f \( -name '*.js' -o -name '*.mjs' \) | wc -l | tr -d ' ')"
+          CSS_COUNT="$(find "${DIST}" -type f -name '*.css' | wc -l | tr -d ' ')"
+          if [ "${JS_COUNT}" -lt 1 ]; then
+            echo "::error::No JavaScript bundles found under ${DIST}/ — Vite build looks incomplete."
+            find "${DIST}" -type f | sort | head -n 100 || true
+            exit 1
+          fi
+
+          # Reject packaging wrong artifact types (source tarballs, Node server bundles, etc.)
+          if [ -f "${DIST}/package.json" ] || [ -d "${DIST}/node_modules" ]; then
+            echo "::error::${DIST}/ looks like source/runtime, not a Vite static build."
+            exit 1
+          fi
+
+          echo "==> ${DIST} layout (sample)"
+          find "${DIST}" -maxdepth 3 -type f | sort | head -n 80
+          echo "==> counts: js/mjs=${JS_COUNT} css=${CSS_COUNT}"
+          du -sh "${DIST}"
+          echo "Vite static build verified (index.html + JS present)."
+
+      - name: Create release package (.zip for Vite static web deploy)
+        id: package
+        working-directory: ${{ env.APP_PATH }}
+        run: |
+          set -euo pipefail
+          DIST="${VITE_DIST_DIR}"
+          VERSION="$(node -p "require('./package.json').version")"
+          SHORT_SHA="$(git rev-parse --short HEAD 2>/dev/null || echo unknown)"
+          RUN_ID="${{ github.run_number }}"
+
+          # Versioned + stable names; both are .zip of dist/ contents (document root).
+          ARCHIVE_NAME="heavy-rental-web-portal-v${VERSION}-build${RUN_ID}-${SHORT_SHA}.${PACKAGE_EXT}"
+          STABLE_NAME="heavy-rental-web-portal-dist.${PACKAGE_EXT}"
+          ARCHIVE_PATH="${{ github.workspace }}/${ARCHIVE_NAME}"
+          STABLE_PATH="${{ github.workspace }}/${STABLE_NAME}"
+
+          # zip from inside dist so extract lands index.html at archive root (web server root).
+          # Requires zip(1) on ubuntu-latest runners.
+          (
+            cd "${DIST}"
+            zip -r "${ARCHIVE_PATH}" .
+          )
+
+          # Validate archive extension and that index.html is at zip root
+          case "${ARCHIVE_NAME}" in
+            *.zip) ;;
+            *)
+              echo "::error::Expected .${PACKAGE_EXT} package for Vite static deploy, got: ${ARCHIVE_NAME}"
+              exit 1
+              ;;
+          esac
+          if ! unzip -l "${ARCHIVE_PATH}" | awk '{print $NF}' | grep -qx 'index.html'; then
+            echo "::error::Package must contain index.html at archive root for static web-server deploy."
+            unzip -l "${ARCHIVE_PATH}" | head -n 40 || true
+            exit 1
+          fi
+
+          cp "${ARCHIVE_PATH}" "${STABLE_PATH}"
+
+          # Record magic / type for deploy consumers
+          file "${ARCHIVE_PATH}" || true
+          ls -lh "${ARCHIVE_PATH}" "${STABLE_PATH}"
+
+          {
+            echo "archive_name=${ARCHIVE_NAME}"
+            echo "stable_name=${STABLE_NAME}"
+            echo "package_ext=${PACKAGE_EXT}"
+            echo "version=${VERSION}"
+            echo "short_sha=${SHORT_SHA}"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Upload dist directory
+        uses: actions/upload-artifact@v4
+        with:
+          name: web-portal-dist
+          path: ${{ env.APP_PATH }}/${{ env.VITE_DIST_DIR }}/
+          retention-days: 14
+
+      - name: Upload packaged archive (.zip)
+        uses: actions/upload-artifact@v4
+        with:
+          name: web-portal-package
+          path: |
+            ${{ github.workspace }}/${{ steps.package.outputs.archive_name }}
+            ${{ github.workspace }}/${{ steps.package.outputs.stable_name }}
+          retention-days: 14
+
+      - name: Packaging summary
+        run: |
+          {
+            echo "### Packaging complete (Vite static SPA)"
+            echo ""
+            echo "| Field | Value |"
+            echo "| --- | --- |"
+            echo "| Application | \`${{ needs.integration.outputs.app_repository }}\` |"
+            echo "| Ref | \`${{ needs.integration.outputs.app_ref }}\` |"
+            echo "| Version | \`${{ steps.package.outputs.version }}\` |"
+            echo "| Commit | \`${{ steps.package.outputs.short_sha }}\` |"
+            echo "| Package format | \`.${{ steps.package.outputs.package_ext }}\` (static web-server deploy) |"
+            echo "| Versioned archive | \`${{ steps.package.outputs.archive_name }}\` |"
+            echo "| Stable archive | \`${{ steps.package.outputs.stable_name }}\` |"
+            echo "| Artifacts | \`web-portal-dist\`, \`web-portal-package\` |"
+            echo ""
+            echo "Deploy: unzip so \`index.html\` is the web root (nginx/IIS/S3/Azure static)."
+          } >> "$GITHUB_STEP_SUMMARY"
