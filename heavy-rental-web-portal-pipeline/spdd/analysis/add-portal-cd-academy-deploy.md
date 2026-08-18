@@ -12,4 +12,4 @@ Copy estate `guest_base` + `portal`. Pipeline `resolve-image` chooses tag or tar
 
 ## Success
 
-`action=deploy` with a public GHCR or ECR tag updates both portal guests. `verify` is green if nginx answers.
+`action=deploy` with a public GHCR or ECR tag updates both portal guests. `verify` is green if nginx answers. `configure-only` rewrites `/opt/heavy-rental/.env` from `heavy-rental/portal` (`REST_BASE_URL` required; refuse `sk_` / webhook / PEM) and remounts `/api`. GitHub `academy` is Vocareum + `PORTAL_IMAGE` / `IMAGE_HTTP_URL` only (stock nginx allowed). Checkout `.env.api` is ignored. No `npm`. Operator: `docs/BOOTSTRAP.md`, ADR 0008.

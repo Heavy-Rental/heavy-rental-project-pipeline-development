@@ -2,7 +2,7 @@
 
 ## Context
 
-Study `HAYSTACK-CD-FEASIBILITY.md` §5 / `IMPLEMENTATION-PLAN.md` §5. Infra `HR-162` already composes Haystack. This repo’s Release pipeline builds `ghcr.io/<owner>/haystack-fast-api:<tag>` (off PR) and a `.tar.gz` artifact.
+Study `HAYSTACK-CD-FEASIBILITY.md` §5 / `IMPLEMENTATION-PLAN.md` §5. Infra `HR-162` already composes Haystack. This repo’s Release pipeline builds `ghcr.io/<owner>/haystack_recommender:<tag>` (off PR) and a `.tar.gz` artifact.
 
 ## Decisions
 

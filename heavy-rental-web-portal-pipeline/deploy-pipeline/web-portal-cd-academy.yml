@@ -281,6 +281,7 @@ jobs:
           IMAGE_HTTP_INPUT: ${{ inputs.image_http_url }}
           AWS_REGION: ${{ vars.AWS_REGION || 'us-east-1' }}
           BUCKET: ${{ needs.assert-lab.outputs.bucket }}
+          VITE_STRIPE_PUBLISHABLE_KEY: ${{ vars.VITE_STRIPE_PUBLISHABLE_KEY }}
         working-directory: deploy-pipeline/ansible
         run: |
           set -euo pipefail
@@ -300,12 +301,18 @@ jobs:
             echo "::error::portal_image is empty."
             exit 1
           fi
+          PK="${VITE_STRIPE_PUBLISHABLE_KEY:-}"
+          if [ -n "${PK}" ] && printf '%s' "${PK}" | grep -Eq '^(sk_|whsec_)'; then
+            echo "::error::VITE_STRIPE_PUBLISHABLE_KEY must be a publishable pk_ key, not sk_ / whsec_."
+            exit 1
+          fi
           ansible-playbook playbooks/portal.yml \
             --limit portal \
             -e "portal_image=${PORTAL}" \
             -e "image_http_url=${HTTP_URL}" \
             -e "aws_region=${AWS_REGION}" \
-            -e "ansible_aws_ssm_bucket_name=${BUCKET}"
+            -e "ansible_aws_ssm_bucket_name=${BUCKET}" \
+            -e "vite_stripe_publishable_key=${PK}"
           {
             echo "### Ansible portal"
             echo ""

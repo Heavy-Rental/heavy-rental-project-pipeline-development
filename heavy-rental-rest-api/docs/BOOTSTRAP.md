@@ -21,6 +21,7 @@ Same **names** as infra CD (copy onto this repo):
 - Variable: `AWS_REGION` = `us-east-1`
 - Variable: `REST_IMAGE` — registry tag (public GHCR or ECR). **Required** for `deploy` / `configure-only` unless `image_ref` / `image_http_url` is set. There is no stock Tomcat.
 - Optional variable: `IMAGE_HTTP_URL` — HTTPS or `s3://` CI tar for `docker load`
+- Optional pricing variables (empty = SM / Spring defaults): `DYNAMIC_PRICING_ENABLED`, `PRICING_DEFAULT_DISTANCE_KM`, `PRICING_ORIGIN_POSTAL_CODE`, `PRICING_DISTANCE_LOOKUP_ENABLED`
 
 Do **not** point this workflow at CI Environments `integration` or `production`. Infra must already have applied the estate and `sync-secrets` (`heavy-rental/rest`).
 
@@ -35,4 +36,4 @@ Do **not** point this workflow at CI Environments `integration` or `production`.
 
 The **runner** still needs Vocareum keys. The **EC2** uses `LabRole`, not those keys.
 
-CI already builds `ghcr.io/<owner>/heavy-rental-rest-api:<tag>` on non-PR Release and a docker tar artifact.
+CI already builds `ghcr.io/<owner>/heavy_rental_rest_api:<x.y.z>` and `:latest` on non-PR Release and a docker tar artifact.

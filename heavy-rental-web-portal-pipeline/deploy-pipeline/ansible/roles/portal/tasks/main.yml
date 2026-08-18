@@ -9,6 +9,36 @@
       PORTAL_IMAGE must be a registry tag (ECR: ACCOUNT.dkr.ecr.us-east-1.amazonaws.com/repo:tag).
       Do not put an HTTPS URL here. Private GHCR needs a token; use ECR (LabRole can pull) or image_http_url + docker load.
 
+- name: Overlay academy Stripe pk_ onto guest .env
+  when: (vite_stripe_publishable_key | default('') | trim | length) > 0
+  ansible.builtin.shell: |
+    set -euo pipefail
+    python3 - <<'PY'
+    from pathlib import Path
+    path = Path("{{ env_path }}")
+    pk = """{{ vite_stripe_publishable_key | default('') }}""".strip()
+    if not pk or pk.startswith("sk_") or pk.startswith("whsec_"):
+        raise SystemExit("vite_stripe_publishable_key must be a pk_ value")
+    data = {}
+    order = []
+    for line in path.read_text().splitlines():
+        if not line or line.lstrip().startswith("#") or "=" not in line:
+            continue
+        key, _, val = line.partition("=")
+        if key not in data:
+            order.append(key)
+        data[key] = val
+    for key in ("VITE_STRIPE_PUBLISHABLE_KEY", "STRIPE_PUBLISHABLE_KEY"):
+        data[key] = pk
+        if key not in order:
+            order.append(key)
+    path.write_text("".join(f"{k}={data[k]}\n" for k in order))
+    PY
+    chmod 600 "{{ env_path }}"
+  args:
+    executable: /bin/bash
+  no_log: true
+
 - name: REST_BASE_URL must be set
   ansible.builtin.command:
     argv: [grep, -E, "^REST_BASE_URL=https?://.+", "{{ env_path }}"]

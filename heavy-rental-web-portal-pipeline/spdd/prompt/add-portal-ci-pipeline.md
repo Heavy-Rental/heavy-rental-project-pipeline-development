@@ -12,7 +12,7 @@ When reality diverges, fix this prompt first — then update the YAML.
 - Three-pipeline GitHub Flow family for the React portal.
 - Fast Feedback: Integration only.
 - Integration CI: Assert caller → Integration → (QC ∥ Security ∥ CodeQL ∥ REST Endpoint Tests) → GitHub Flow CI Gate.
-- Release: same gates except REST Endpoint Tests, plus Packaging (`npm run build` without `VITE_*` lab URLs, `dist/` zip, nginx try_files image, GHCR off PR). Scan `dist/` and the image for secrets / localhost:8080|8000. CD mounts `/api`.
+- Release: same gates except REST Endpoint Tests, plus Packaging (Node 22, `npm ci`, seed/scan `.env.production`, `tsc -b` + `vite build --mode api`, empty `VITE_API_TARGET`, `dist/` zip, nginx try_files, GHCR off PR). Scan for `sk_`, localhost, `heavy-rental-rest-api`. CD mounts `/api` from SM `REST_BASE_URL`.
 - Node 22 + `npm ci`. No GitHub Environment secrets for v1 CI.
 - Authoring path: `heavy-rental-web-portal-pipeline/integration_pipeline/`.
 - This family stops at packaging. Academy CD is `deploy-pipeline/`.
@@ -76,12 +76,12 @@ Job `name:` values:
 
 - **DO NOT** apply Terraform or compose onto `asg-portal` in this family.
 - **DO NOT** call a live Spring / Haystack URL from CI.
-- **DO NOT** pass `VITE_*` REST/Haystack/API URLs or `STRIPE_API_KEY` (`sk_`) into Release `npm run build`.
-- **DO NOT** bake `REST_BASE_URL` / `VITE_*` / `STRIPE_` / `AWS_` into the nginx image (`ENV`/`ARG`/`COPY .env`/`--build-arg`).
+- **DO NOT** pass `VITE_*` REST/Haystack/API URLs or `STRIPE_API_KEY` (`sk_`) into Release `vite build`. **DO** pass academy `VITE_STRIPE_PUBLISHABLE_KEY` (`pk_` only) into that build.
+- **DO NOT** bake `REST_BASE_URL` / `VITE_*` / `STRIPE_` / `AWS_` into the nginx image (`ENV`/`ARG`/`COPY .env`/`--build-arg`). A Vite `.env.production` is a **build** input only.
 - **DO NOT** generate nginx `proxy_pass` to a hostname in the Release image (CD mounts `/api`).
 - **DO NOT** fail REST Endpoint Tests solely because mock scripts are missing.
 - **DO NOT** `docker push` on pull_request events.
 - **DO NOT** put `on: push` on reusable files.
-- **DO NOT** use Java, Maven, uv, or Android SDK as the app toolchain.
+- **DO NOT** use Java, Maven, uv, yarn, pnpm, or Android SDK as the portal toolchain (`npm ci` only).
 - **DO NOT** cancel in-progress Release runs.
 - **DO NOT** rename `integration_pipeline/` as part of this documentation change.

@@ -20,14 +20,14 @@ workflow_dispatch (Environment academy + Vocareum keys)
  discover-targets    SSM inventory asg-haystack (InService + Online)
       │
       ├── action=verify           skip compose; SSM GET :8000/docs or /health
-      ├── action=configure-only   refresh .env from SM + aliases; needs image
+      ├── action=configure-only   refresh .env from SM + aliases + Profile overlay; needs image
       └── action=deploy           resolve-image → ansible haystack → verify
 ```
 
 | Action | Compose? | Image required? |
 | --- | --- | --- |
 | `verify` | No | No |
-| `configure-only` | Yes (refresh `.env`) | `HAYSTACK_IMAGE` or `image_ref` (or tar **and** matching tag). **No stock uvicorn.** |
+| `configure-only` | Yes (refresh guest `.env` + overlay; does **not** rebuild the image) | `HAYSTACK_IMAGE` or `image_ref` (or tar **and** matching tag). **No stock uvicorn.** |
 | `deploy` | Yes | Same as configure-only. Prefer a **new** tag. |
 
 `verify` waits on uvicorn `:8000` only. Sidecar crash-loops (`postgres-haystack-sync`, `neo4j-populate`) do not fail the job.
@@ -41,6 +41,10 @@ workflow_dispatch (Environment academy + Vocareum keys)
 | `POSTGRES_*` / `DATABASE_URL` | Haystack RDS (uvicorn) | Infra `sync-secrets` |
 | `SOURCE_HOST` / `SOURCE_PORT` / `SOURCE_DATABASE` | SoR / REST RDS (`heavy_rental`) | Infra `sync-secrets` |
 | `TARGET_HOST` / `TARGET_PORT` / `TARGET_DATABASE` | Haystack RDS (same host as `POSTGRES_*`) | Infra `sync-secrets` |
+| `NEO4J_URI` | Bolt NLB | Infra Terraform → `sync-secrets` |
+| `NEO4J_POPULATE_URL` | Compose worker `http://neo4j-populate:8089/v1/populate` | Infra `sync-secrets` (not an ALB) |
+| `FLEET_BACKEND` / `NEO4J_BACKEND` | `sql` / `bolt` | Infra SM; Haystack Environment may overlay |
+| `NEED_DECOMPOSER`, `LLM_*`, `INDEXING_*`, `PRICING_SCHEMA`, `KG_*`, `APP_ENV`, … | Product Profile A/B | Image `/app/.env` from `.env.prod`; Haystack Environment `academy` overlay (ADR 0009) |
 
 Haystack CD SHALL map SM → `.env` and MAY add FastAPI aliases (`POSTGRES_HOSTNAME`, …). It SHALL NOT invent `SOURCE_*` / `TARGET_*`, SHALL NOT copy `heavy-rental/rest`, and SHALL NOT bake RDS DNS into the image or the workflow YAML. No `SOURCE_USER` / `SOURCE_PASSWORD` in SM today — same Academy master password on both instances.
 
@@ -65,6 +69,8 @@ assert-lab
 | Variable | `AWS_REGION` | Defaults to `us-east-1` |
 | Variable | `HAYSTACK_IMAGE` | Public GHCR or ECR tag |
 | Variable | `IMAGE_HTTP_URL` | Optional HTTPS or `s3://` CI tar |
+| Secret (optional) | `LLM_API_KEY` | Overlay onto `.env`; never on the Run form |
+| Variables (optional) | `APP_NAME`, `APP_ENV`, `LOG_LEVEL`, `NEED_DECOMPOSER`, `LLM_*`, `INDEXING_*` (incl. `INDEXING_ST_MODEL`), `PRICING_SCHEMA`, `KG_*`, `PROJECT_AGENT_*`, `RECOMMEND_FANOUT_CAP`, … | Product Profile; empty leaves SM / image `/app/.env` / app default. **Not** `NEO4J_URI` / `NEO4J_POPULATE_URL` |
 
 Run form: `aws_environment=academy`, Vocareum keys, optional `image_ref` / `image_http_url`.
 
@@ -105,4 +111,4 @@ actionlint haystack-fast-api-pipeline/deploy-pipeline/haystack-cd-academy-caller
 
 - OpenSpec: [`../../openspec/changes/add-haystack-cd-academy-skeleton/`](../../openspec/changes/add-haystack-cd-academy-skeleton/), [`../../openspec/changes/add-haystack-cd-academy-deploy/`](../../openspec/changes/add-haystack-cd-academy-deploy/)
 - OpenSPDD: [`../../spdd/analysis/add-haystack-cd-academy-deploy.md`](../../spdd/analysis/add-haystack-cd-academy-deploy.md)
-- ADRs 0001–0004: [`../../docs/adr/`](../../docs/adr/)
+- ADRs 0001–0004, 0009: [`../../docs/adr/`](../../docs/adr/)

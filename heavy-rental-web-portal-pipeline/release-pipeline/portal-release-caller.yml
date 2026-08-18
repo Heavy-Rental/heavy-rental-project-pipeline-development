@@ -43,7 +43,8 @@
 #   2. Security Testing      (needs Integration)
 #   2. CodeQL Analysis       (needs Integration; JS/TS Code Scanning)
 #   3. Packaging             (needs Integration + QC + Security + CodeQL)
-#      → Vite dist/ .zip + Docker (nginx) image → GHCR on release
+#      → Vite dist/ .zip + Docker (nginx) image
+#        → GHCR heavy_rental_web_portal:<semver> and :latest on release
 #
 # Setup
 # -----

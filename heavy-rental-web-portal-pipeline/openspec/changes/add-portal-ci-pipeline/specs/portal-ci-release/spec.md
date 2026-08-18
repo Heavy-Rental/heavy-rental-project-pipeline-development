@@ -24,7 +24,13 @@ Packaging SHALL run `npm run build` and SHALL fail if `dist/` is missing, `dist/
 - AND at least one `.js` or `.mjs` file exists under `dist/`
 
 ### Requirement: Zip plus nginx image
-Packaging SHALL zip the `dist/` contents and SHALL build `nginx:1.27-alpine` serving that static tree (SPA try_files). It SHALL save a gzipped image tar.
+Packaging SHALL zip the `dist/` contents and SHALL always generate and build an `nginx:1.27-alpine` image serving that static tree (SPA try_files on port 80). It SHALL NOT use an application `Dockerfile` as the GHCR/CD image. It SHALL save a gzipped image tar.
+
+#### Scenario: App Dockerfile is not the deploy image
+- GIVEN the React repo contains a `Dockerfile`
+- WHEN Packaging prepares the image
+- THEN that file is moved aside
+- AND the generated nginx + Vite `dist/` Dockerfile is used for `docker build`
 
 #### Scenario: Image tar is non-empty
 - GIVEN `docker build` succeeds
@@ -32,7 +38,13 @@ Packaging SHALL zip the `dist/` contents and SHALL build `nginx:1.27-alpine` ser
 - THEN a gzipped tar artifact exists and is non-empty
 
 ### Requirement: GHCR push only off pull requests
-Packaging SHALL push `ghcr.io/{owner}/heavy-rental-web-portal` with the versioned tag and `:latest` when the event is not a pull request. On a `develop` → `master` pull request it SHALL skip the push and still upload the tar.
+Packaging SHALL push the image to `ghcr.io/<owner>/heavy_rental_web_portal` tagged with a new `x.y.z` semver and `:latest` when the event is not a pull request. The semver SHALL be the highest existing `x.y.z` tag on that GHCR package with the patch incremented; if no such tag exists, it SHALL be `1.0.0`. Packaging SHALL NOT overwrite an existing `x.y.z` tag. On a `develop` → `master` pull request it SHALL skip the push and still upload the tar.
+
+#### Scenario: Published release pushes
+- GIVEN a published GitHub Release triggered the release pipeline
+- AND the highest GHCR `heavy_rental_web_portal` semver tag is `1.0.1` or none exist
+- WHEN Packaging finishes the Docker build
+- THEN `docker push` runs for `ghcr.io/<owner>/heavy_rental_web_portal:1.0.2` (or `1.0.0` when none exist) and `:latest`
 
 #### Scenario: PR skips registry push
 - GIVEN a pull request from `develop` to `master` triggered the release pipeline
@@ -40,8 +52,31 @@ Packaging SHALL push `ghcr.io/{owner}/heavy-rental-web-portal` with the versione
 - THEN no `docker push` runs
 - AND the gzipped image tar is still uploaded
 
+### Requirement: Vite production profile is scanned before npm run build
+Packaging SHALL seed `.env.production` from the app checkout (`.env.production` or `docs/samples/.env.production`) or generated empty-backend defaults. It SHALL fail if that file assigns `sk_`, `whsec_`, `REST_BASE_URL` / `HAYSTACK_BASE_URL` / non-empty `VITE_*` backend URLs (except a same-origin path), `APP_JWT_SECRET`, `POSTGRES_*`, or lab `localhost:8080` / `8000`. Packaging SHALL run `npx tsc -b` then `npx vite build --mode api` so `import.meta.env.MODE` is `api` (Spring login, rental-plan cart, deposit). It SHALL pass empty process-env `VITE_API_TARGET`, `VITE_API_URL`, `VITE_REST_*`, and `VITE_HAYSTACK_*` (overrides app `.env.api` compose hostname). Packaging SHALL NOT `COPY` `.env` / `.env.production` into the nginx image.
+
+#### Scenario: Lab URL in .env.production fails
+- GIVEN app `.env.production` contains `VITE_REST_BASE_URL=http://localhost:8080`
+- WHEN Packaging scans the file
+- THEN the job fails before `npm run build`
+
+#### Scenario: Academy image is Vite mode api
+- GIVEN Packaging builds the SPA
+- WHEN `vite build` runs
+- THEN the command includes `--mode api`
+- AND process env `VITE_API_TARGET` is empty
+
+### Requirement: Academy Stripe publishable key is baked at Packaging
+Packaging SHALL use Environment `academy` and SHALL pass non-empty `vars.VITE_STRIPE_PUBLISHABLE_KEY` into `vite build --mode api` as process env. Empty SHALL warn and SHALL NOT fail. A value starting with `sk_` or `whsec_` SHALL fail. Packaging SHALL NOT pass `STRIPE_API_KEY`.
+
+#### Scenario: Academy pk_ is injected
+- GIVEN Environment `academy` variable `VITE_STRIPE_PUBLISHABLE_KEY` is `pk_test_example`
+- WHEN Packaging runs `vite build --mode api`
+- THEN process env `VITE_STRIPE_PUBLISHABLE_KEY` is that value
+- AND `STRIPE_API_KEY` is empty
+
 ### Requirement: Vite build does not inline lab backends
-`npm run build` SHALL NOT be given `VITE_*` REST/Haystack/API base URLs or Stripe `sk_` / AWS keys. Packaging SHALL fail if `dist/` contains `sk_live_` / `sk_test_`, AWS secret material, `jdbc:postgresql://`, or `localhost:8080` / `localhost:8000` / `127.0.0.1:8080` / `127.0.0.1:8000`. Stripe `pk_` SHALL NOT fail the scan.
+The Vite build SHALL NOT be given `VITE_*` REST/Haystack/API base URLs, `VITE_API_TARGET` hostnames, or Stripe `sk_` / AWS keys. Packaging SHALL fail if `dist/` contains `sk_live_` / `sk_test_`, AWS secret material, `jdbc:postgresql://`, `heavy-rental-rest-api`, `localhost:8080` / `localhost:8000` / `127.0.0.1:4010`, or `127.0.0.1:8080` / `127.0.0.1:8000`. Stripe `pk_` SHALL NOT fail the scan.
 
 #### Scenario: Lab URL in the bundle fails
 - GIVEN `dist/assets/*.js` contains `http://localhost:8080`
@@ -56,11 +91,20 @@ The generated `nginx-spa.conf` SHALL serve `try_files` for the SPA and SHALL NOT
 - WHEN the file is checked
 - THEN it has no `proxy_pass http` or `proxy_pass https`
 
-### Requirement: Image is cloud-ready after build
-After `docker build`, Packaging SHALL inspect `Config.Env` (no baked REST/Vite/Stripe/AWS keys), SHALL confirm `/usr/share/nginx/html/index.html` exists, and SHALL re-scan that tree for the same secret/lab-URL patterns. Packaging SHALL NOT leave nginx running.
+### Requirement: Image is cloud-ready and deployable after build
+After `docker build`, Packaging SHALL inspect `Config.Env` (no baked REST/Vite/Stripe/AWS keys), SHALL confirm the image exposes `80/tcp`, SHALL confirm `/usr/share/nginx/html/index.html` and at least one JS bundle exist, and SHALL re-scan that tree for the same secret/lab-URL patterns. Packaging SHALL start the image, confirm `GET /` and a missing client route (`GET /spa-fallback-check`) on port 80 return HTML, and SHALL stop the container. Packaging SHALL NOT leave nginx running.
 
 #### Scenario: index.html present and env clean
 - GIVEN the image built
 - WHEN Packaging proves the image
 - THEN `index.html` exists in the html root
+- AND at least one `.js` or `.mjs` file exists under the html root
 - AND `Config.Env` does not contain `REST_BASE_URL`
+- AND `80/tcp` is exposed
+
+#### Scenario: Nginx serves the SPA
+- GIVEN the image built
+- WHEN Packaging starts the container
+- THEN `GET /` on port 80 returns HTML
+- AND `GET /spa-fallback-check` returns HTML
+- AND the container is removed before Packaging finishes

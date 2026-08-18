@@ -9,7 +9,8 @@ Conflict order: **OpenSpec → OpenSPDD → ADR → YAML**.
 | [0005](0005-haystack-ci-reusable-caller.md) | Reusable workflows plus a sole-allowed caller |
 | [0006](0006-haystack-ci-python-uv.md) | Toolchain is CPython 3.12 + uv |
 | [0007](0007-haystack-ci-stops-at-packaging.md) | CI family stops at packaging |
-| [0008](0008-haystack-ci-release-image-env-driven.md) | Release image takes DB and sync config from the environment |
+| [0008](0008-haystack-ci-release-image-env-driven.md) | Estate from env; product defaults from sanitized `.env.prod` → `/app/.env` |
+| [0009](0009-haystack-project-profile-vs-infra-estate.md) | Profile knobs on the Haystack project (guest overlay, not image); `NEO4J_URI` / `NEO4J_POPULATE_URL` from AWS |
 
 ## CD family (`add-haystack-cd-academy-*`)
 
@@ -18,4 +19,5 @@ Conflict order: **OpenSpec → OpenSPDD → ADR → YAML**.
 | [0001](0001-haystack-cd-academy-only.md) | Haystack app CD is Academy / Vocareum first |
 | [0002](0002-vocareum-keys-masked.md) | Vocareum keys from the event payload, masked |
 | [0003](0003-reuse-infra-haystack-ansible.md) | Reuse infra Haystack Ansible (copy, do not fork) |
-| [0004](0004-haystack-env-aliases-and-uv-sidecars.md) | App env aliases and uv sidecar commands |
+| [0004](0004-haystack-env-aliases-and-uv-sidecars.md) | App env aliases, Profile overlay, and uv sidecar commands |
+| [0009](0009-haystack-project-profile-vs-infra-estate.md) | Also CD: academy vars overlay guest `.env` only; they do not change GHCR |

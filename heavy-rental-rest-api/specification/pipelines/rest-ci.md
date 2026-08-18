@@ -50,7 +50,7 @@ QC “Package WAR” on Integration CI is **build verification**, not a deploy.
 | SAST | Semgrep `p/java` + OWASP / security-audit / secrets (`p/spring` is gone) |
 | SCA / FS | Trivy FS SARIF; CRITICAL unfixed fails |
 | Code scanning | CodeQL `java-kotlin` |
-| Image | `tomcat:10.1-jdk21-temurin` + `ROOT.war`. No baked `POSTGRES_*` / `SPRING_DATASOURCE_*` / `HAYSTACK_*` / Stripe / JWT; dummy `docker run -e` proves runtime env. |
+| Image | Always-generated `tomcat:10.1-jdk21-temurin` + `ROOT.war` + `SPRING_PROFILES_ACTIVE=prod`. WAR must include `application-prod.properties` (hyphen). No baked `POSTGRES_*` / Stripe / JWT. Packaging proves dummy `-e`, `WEB-INF`, profile env, and Tomcat TCP `:8080`. |
 
 ## Secrets
 

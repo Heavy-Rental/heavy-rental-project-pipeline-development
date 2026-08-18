@@ -4,6 +4,7 @@
 - **Date:** 2026-08-17
 - **Change:** `add-haystack-cd-academy-deploy`
 - **Amends:** [0003](0003-reuse-infra-haystack-ansible.md) (same three services; env post-process + sidecar entrypoint)
+- **Related:** [0009](0009-haystack-project-profile-vs-infra-estate.md)
 
 ## Context
 
@@ -11,7 +12,7 @@
 
 ## Decision
 
-After `guest_base` maps SM → `.env`, the haystack role fills **missing** aliases and Academy live flags only. Sidecar commands are `uv run python -m postgres_haystack_sync` and `uv run python -m neo4j_populate`. Services, limits, and the no-`neo4j` check stay as estate. Ansible fails if uvicorn never answers; sidecar crash-loops do not fail `verify`.
+After `guest_base` maps SM → `.env`, the haystack role fills **missing** aliases and Academy live flags only, then overlays **Haystack Environment `academy`** Profile knobs (`APP_ENV`, `NEED_DECOMPOSER`, `LLM_*`, `INDEXING_*`, `PRICING_SCHEMA`, `KG_*`, `PROJECT_AGENT_*`, …) when those GitHub variables/secrets are non-empty. Empty vars leave SM / image `/app/.env` (from `.env.prod`) / app defaults. The overlay SHALL NOT write `NEO4J_URI`, `NEO4J_POPULATE_URL`, `NEO4J_PASSWORD`, `POSTGRES_*`, `SOURCE_*`, or `TARGET_*`. Sidecar commands are `uv run python -m postgres_haystack_sync` and `uv run python -m neo4j_populate`. Services, limits, and the no-`neo4j` check stay as estate. Ansible fails if uvicorn never answers; sidecar crash-loops do not fail `verify`.
 
 `SOURCE_HOST` / `SOURCE_PORT` / `SOURCE_DATABASE` (SoR RDS) and `TARGET_HOST` / `TARGET_PORT` / `TARGET_DATABASE` (Haystack RDS) stay infra `sync-secrets` output. This CD does not invent them, alias them, or read `heavy-rental/rest`.
 

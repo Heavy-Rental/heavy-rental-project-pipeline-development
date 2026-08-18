@@ -25,7 +25,7 @@ Operate comes after deploy. It requires knowledge of the infrastructure; it does
 | --- | --- | --- |
 | **OpenSpec** | [`../openspec/`](../openspec/) | Observable behavior: requirements and GIVEN/WHEN/THEN scenarios |
 | **OpenSPDD** | [`../spdd/`](../spdd/) | Implementation contract: REASONS Canvas (how to write the YAML, what not to invent) |
-| **ADR** | [`../docs/adr/`](../docs/adr/) | Why: caller gate, uv toolchain, env-driven Release image, Academy-only CD, masked Vocareum keys, reused Ansible |
+| **ADR** | [`../docs/adr/`](../docs/adr/) | Why: caller gate, uv toolchain, sanitized `.env.prod` → `/app/.env` (0008), estate vs project knobs (0009 — academy overlay is guest `.env`, not the image), Academy-only CD, masked Vocareum keys, reused Ansible |
 
 Conflict order: **OpenSpec scenarios → OpenSPDD Safeguards → ADR → YAML**. If the YAML cannot satisfy a scenario without breaking a safeguard, stop and update the spec first.
 
@@ -40,6 +40,7 @@ Conflict order: **OpenSpec scenarios → OpenSPDD Safeguards → ADR → YAML**.
 - REASONS Canvas: [`../spdd/prompt/add-haystack-ci-pipeline.md`](../spdd/prompt/add-haystack-ci-pipeline.md)
 - Walkthrough: [`pipelines/haystack-ci.md`](pipelines/haystack-ci.md)
 - Image contract: [ADR 0008](../docs/adr/0008-haystack-ci-release-image-env-driven.md)
+- Estate vs Profile knobs: [ADR 0009](../docs/adr/0009-haystack-project-profile-vs-infra-estate.md)
 
 ### CD family — skeleton then deploy
 
