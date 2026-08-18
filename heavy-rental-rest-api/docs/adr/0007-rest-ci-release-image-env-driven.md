@@ -7,7 +7,7 @@
 
 ## Context
 
-Academy compose runs the Release Tomcat image with `env_file: .env` from `heavy-rental/rest` (Postgres aliases, `HAYSTACK_BASE_URL`, Stripe). Baking `REST_API_CLOUD_DB_*` or a JDBC URL into the image would pin every tag to one QC host. The `spring-datasource.env` workflow artifact is a deploy helper without a password; it is not the Academy contract.
+Academy compose runs the Release Tomcat image with `env_file: .env` from `heavy-rental/rest` (Postgres aliases, `HAYSTACK_BASE_URL`, Stripe). Baking a JDBC URL into the image would pin every tag to one host. The `spring-datasource.env` workflow artifact is a localhost QC template without a password; it is not the Academy contract.
 
 ## Decision
 
@@ -17,4 +17,4 @@ Release Packaging **always generates** `tomcat:10.1-jdk21-temurin` + `ROOT.war` 
 
 - The same image tag works on Docker Desktop (`docker run -p 8080:8080 -e …`), compose, or any Academy lab once env is injected.
 - An app `java -jar` Dockerfile is moved aside; it is not pushed to GHCR.
-- `REST_API_CLOUD_DB_*` stay on Environment `production` for QC only.
+- Release QC uses `REST_API_DB_*` on Environment `production` for local Docker only. Guest RDS stays in `heavy-rental/rest`.

@@ -2,7 +2,7 @@
 
 This workflow discovers `asg-portal` and can re-run portal compose (branch 2). It does **not** run Terraform or create the ASG. The Release image is a **React + Vite static SPA** (`npm run build` → nginx). This CD mounts nginx `/api` → `REST_BASE_URL`.
 
-Specification index: [`../specification/README.md`](../specification/README.md). CD walkthrough: [`../specification/pipelines/portal-cd.md`](../specification/pipelines/portal-cd.md). App-repo checklist: [`PREPARE-PORTAL-REPO.md`](PREPARE-PORTAL-REPO.md). Vite production sample: [`samples/.env.production`](samples/.env.production).
+Specification index: [`../specification/README.md`](../specification/README.md). CD walkthrough: [`../specification/pipelines/portal-cd.md`](../specification/pipelines/portal-cd.md). App-repo checklist: [`PREPARE-PORTAL-REPO.md`](PREPARE-PORTAL-REPO.md). GHCR publish (login skipped on PR, no `GITHUB_TOKEN` secret): [`GHCR-RELEASE.md`](GHCR-RELEASE.md). Vite production sample: [`samples/.env.production`](samples/.env.production).
 
 Install from **`deploy-pipeline/`** into the React repo (same paths as PREPARE §4):
 
@@ -81,5 +81,5 @@ The **runner** uses Vocareum keys. The **EC2** uses `LabRole`.
 - Expect GitHub `VITE_*` vars to reconfigure the running SPA
 - Type instance IDs on the Run form
 - Run `terraform apply` from this workflow
-- Expect GHCR from a `develop` → `master` PR alone (publish a GitHub Release)
+- Expect GHCR from a `develop` → `master` PR alone (publish a GitHub Release — [`GHCR-RELEASE.md`](GHCR-RELEASE.md))
 - Treat a green `verify` as proof that `/api` reached REST

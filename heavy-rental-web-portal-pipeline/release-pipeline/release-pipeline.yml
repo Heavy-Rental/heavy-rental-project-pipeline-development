@@ -98,7 +98,7 @@ permissions:
 env:
   NODE_VERSION: "22"
   APP_PATH: app
-  DEFAULT_APP_REPOSITORY: SA62-team1/heavy-rental-react-web-portal
+  DEFAULT_APP_REPOSITORY: Heavy-Rental/heavy-rental-react-web-portal
   DEFAULT_APP_REF: master
   IMAGE_NAME: heavy_rental_web_portal
   NGINX_BASE_IMAGE: nginx:1.27-alpine
