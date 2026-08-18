@@ -12,7 +12,7 @@ The portal pipeline is copied into the React repo. A git submodule of the whole 
 
 ## Decision
 
-Copy estate `ansible/roles/guest_base` and `ansible/roles/portal` into `deploy-pipeline/ansible/`. Add a portal-only inventory (`asg-portal` only) and `playbooks/portal.yml`. Keep compose limits, `/api` proxy, and Stripe/PEM refusal identical to infra.
+Copy estate `ansible/roles/guest_base` and `ansible/roles/portal` into `deploy-pipeline/ansible/`. Add a portal-only inventory (`asg-portal` only) and `playbooks/portal.yml`. Keep compose limits, `/api` proxy, and Stripe/PEM refusal identical to infra. `guest_base` maps `heavy-rental/portal` JSON to `/opt/heavy-rental/.env`. The portal role requires `REST_BASE_URL` on that file and does not read the React checkout `.env.api`.
 
 Do not rewrite those roles. When estate compose changes, copy again.
 

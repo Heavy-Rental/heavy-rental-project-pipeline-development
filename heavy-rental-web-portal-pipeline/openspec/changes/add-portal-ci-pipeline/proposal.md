@@ -9,7 +9,8 @@
 - OpenSpec capabilities for orchestration, Integration, QC, Security, CodeQL, REST endpoint tests, Release packaging, and CI scope.
 - OpenSPDD analysis + REASONS Canvas bound to the existing six YAML files.
 - Human `specification/` index and `pipelines/portal-ci.md`.
-- CI ADRs 0004–0006.
+- CI ADRs 0004–0008 (0007 = static SPA; 0008 = Vite `.env.production` vs AWS REST host).
+- Release Packaging seeds/scans `.env.production` before `npm run build`. Academy GitHub `VITE_*` vars are not SPA config.
 
 ## Capabilities
 

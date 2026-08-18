@@ -28,7 +28,7 @@ Authoring path for Integration CI is `integration_pipeline/` (underscore).
 2. **Node 22 + npm ci.** Integration verifies `package-lock.json` and `node_modules`.
 3. **QC is lint + typecheck.** No Postgres, no GitHub Environment.
 4. **REST Endpoint Tests skip-clean** when `package.json` lacks both a mock script (`mock:server` / `api:mock` / `start:mock`) and a test script (`test:api` / `test:endpoints` / `test:rest`). Mock binds `127.0.0.1:4010`.
-5. **Release Packaging** runs `npm run build` **without** `VITE_*` REST/Haystack URLs, requires `dist/index.html` and at least one JS file, scans `dist/` for `sk_` / localhost:8080|8000, zips `dist/`, builds `nginx:1.27-alpine` with try_files only (no `proxy_pass` host), proves the image is static, pushes GHCR off PR (ADR 0007).
+5. **Release Packaging** is Node 22 + `npm ci` + `tsc -b` + **`vite build --mode api`**. Job `environment: academy` so `vars.VITE_STRIPE_PUBLISHABLE_KEY` is baked (`pk_` only). `MODE=api` so Spring login and `/api` work after CD mounts REST ALB. Empty `VITE_API_TARGET` / other backend `VITE_*`. Scan `dist/` for `sk_` / localhost / `heavy-rental-rest-api`. Always-generate nginx try_files (no `COPY .env`). GHCR off PR (ADR 0007 / 0008).
 6. **CI family stops at packaging.** Compose and the `/api` proxy live in the CD family.
 
 ## Open Questions

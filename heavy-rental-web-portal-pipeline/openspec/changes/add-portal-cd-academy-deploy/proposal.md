@@ -26,6 +26,6 @@ Branch 1 (`add-portal-cd-academy-skeleton`) can authenticate and see `asg-portal
 ## Impact
 
 - Operators can `action=deploy` a public GHCR / ECR tag (or tar URL) onto both `asg-portal` guests.
-- `action=configure-only` refreshes `heavy-rental/portal` + `/api` without requiring a new tag.
+- `action=configure-only` rewrites guest `.env` from `heavy-rental/portal` and remounts `/api`. It does not read `.env.api` or run `npm`. GitHub academy holds Vocareum keys and `PORTAL_IMAGE` only (ADR 0008).
 - `action=verify` is SSM `GET /` on `:80`, not discover-only.
 - **Not in this change:** paid/OIDC, REST/Haystack/Neo4j groups, Terraform, `stop` / `destroy`.

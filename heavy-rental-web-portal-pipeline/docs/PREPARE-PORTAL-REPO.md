@@ -7,7 +7,9 @@
 
 This file is the operator checklist. It does not apply Terraform or push images.
 
-Everyday operate after install: [`BOOTSTRAP.md`](BOOTSTRAP.md). Specification: [`../specification/pipelines/portal-cd.md`](../specification/pipelines/portal-cd.md).
+Everyday operate after install (academy inventory, every-run steps, do-nots): [`BOOTSTRAP.md`](BOOTSTRAP.md). Specification: [`../specification/pipelines/portal-cd.md`](../specification/pipelines/portal-cd.md). Vite production sample: [`samples/.env.production`](samples/.env.production).
+
+This is a **React + npm + Vite** SPA. Spring REST ([heavy-rental-spring-rest-api](https://github.com/Heavy-Rental/heavy-rental-spring-rest-api)) owns `/api`. Infra `aws-infra-academy.yml` writes ALB DNS and Stripe into Secrets Manager. Do not copy REST `application-prod.properties` keys into Vite.
 
 ---
 
@@ -20,9 +22,11 @@ Everyday operate after install: [`BOOTSTRAP.md`](BOOTSTRAP.md). Specification: [
 | Node **22**, `package-lock.json`, Vite `npm run build` | `dist/index.html` + hashed JS/CSS |
 | Static SPA | `nginx:1.27-alpine` serving `dist/` (try_files only). CD **replaces** `default.conf` with `/api` → `REST_BASE_URL` |
 | App `Dockerfile` ignored | Release **always** generates the nginx + Vite `dist/` image. A Node/Vite-preview Dockerfile is not used for GHCR/CD |
-| Same-origin `/api` | Release `npm run build` must **not** inline `localhost:8080` / lab REST URLs or `sk_` |
+| Same-origin `/api` + Spring login | Release `tsc -b` + **`vite build --mode api`**. Process env empties `VITE_API_TARGET` (do not bake `http://heavy-rental-rest-api:8080`). CD mounts `/api` → SM `REST_BASE_URL` |
 
-Packaging scans `dist/` and the image html tree for `sk_`, AWS secret material, JDBC URLs, and `localhost:8080`/`8000`. Stripe `pk_` is allowed. Generated nginx has no `proxy_pass` host.
+Packaging seeds/scans `.env.production`, then `tsc -b` + `vite build --mode api` (empty `VITE_API_TARGET`). It scans `dist/` and the image for `sk_`, lab hosts, and `heavy-rental-rest-api`. Stripe `pk_` is allowed. Generated nginx has no `proxy_pass` host and does **not** `COPY` `.env`. After `action=deploy`, the browser uses same-origin `/api` against Spring REST.
+
+Operator checklist: [`samples/.env.production`](samples/.env.production). Copy it to the React repo root as `.env.production`.
 
 GHCR name: `ghcr.io/<owner>/heavy_rental_web_portal` (lowercase). On `Heavy-Rental` that is `ghcr.io/heavy-rental/heavy_rental_web_portal:<x.y.z>` and `:latest`. The version tag is the previous GHCR semver with the patch bumped (first publish is `1.0.0`).
 
@@ -68,6 +72,7 @@ Copy from this tree’s `deploy-pipeline/`:
 | `web-portal-cd-academy.yml` | `.github/workflows/` |
 | `resolve-vocareum-aws/action.yml` | `.github/actions/resolve-vocareum-aws/` |
 | `ansible/` | **`deploy-pipeline/ansible/`** (keep this path) |
+| [`docs/samples/.env.production`](samples/.env.production) | **`.env.production`** at the React repo root (`npm run build` / Vite) |
 
 ---
 
@@ -92,9 +97,13 @@ Paste Vocareum AWS Details on each Run after Start Lab, **or** store these as En
 | `AWS_REGION` | Recommended | Defaults to `us-east-1` if empty |
 | `PORTAL_IMAGE` | Required for `deploy` unless `image_ref` is set | Public GHCR or ECR tag. Empty is allowed for `configure-only` (stock `nginx`) |
 | `IMAGE_HTTP_URL` | Optional | HTTPS or `s3://` CI `.tar.gz` for `docker load` |
+| `VITE_STRIPE_PUBLISHABLE_KEY` | Optional | Academy **variable** (`pk_` only). Release bakes it; CD overlays guest `.env`. Never `sk_` |
+
+Do **not** set `REST_BASE_URL`, `HAYSTACK_BASE_URL`, `VITE_*`, `VITE_API_TARGET`, Stripe `sk_` / `whsec_`, or `APP_CORS_*` on this Environment. They do not configure the React bundle. Same inventory as [`BOOTSTRAP.md`](BOOTSTRAP.md).
 
 **Minimum `verify`:** Environment `academy` + three Vocareum keys + `AWS_REGION`.  
-**Minimum `deploy`:** that, plus `PORTAL_IMAGE` or `image_ref` (or a tar **and** a matching tag). Stock nginx is forbidden on `deploy`.
+**Minimum `deploy`:** that, plus `PORTAL_IMAGE` or `image_ref` (or a tar **and** a matching tag). Stock nginx is forbidden on `deploy`.  
+**Minimum `configure-only`:** academy + Vocareum keys + `AWS_REGION`. `PORTAL_IMAGE` optional (stock `nginx`). Guest `.env` must already exist in SM as `heavy-rental/portal` with `REST_BASE_URL`. Checkout `.env.api` is not read.
 
 ---
 
@@ -103,26 +112,30 @@ Paste Vocareum AWS Details on each Run after Start Lab, **or** store these as En
 This CD does **not** create the ASG. Before any `deploy`:
 
 1. Infra `action=apply` created `asg-portal` (public ALB `:80`).
-2. Infra `sync-secrets` filled **`heavy-rental/portal`** with `REST_BASE_URL` + Stripe `pk_`.
+2. Infra `aws-infra-academy.yml` `sync-secrets` filled **`heavy-rental/portal`** with `REST_BASE_URL=http://<rest_alb_dns>:8080` and Stripe `pk_`. REST SM separately gets `HAYSTACK_BASE_URL`, `APP_CORS_ALLOWED_ORIGINS=http://<portal_alb_dns>`, `sk_` / `whsec_`, JWT, RDS.
 3. Guests are InService and SSM Online (Start Lab if the session ended). Desired=0 → infra, not this CD.
 
 ---
 
 ## 7. First CD run
 
+Same sequence as [`BOOTSTRAP.md`](BOOTSTRAP.md) “Every run”:
+
 1. Instructure → Start Lab → AWS Details.
 2. Actions → **Web Portal CD (Academy)** → Environment `academy` → paste the three keys (or use Environment fallback).
 3. `action=verify` — assert-lab + discover + SSM `GET /` on `:80` (`/api` down does not fail this job by itself).
-4. `action=deploy` with a **new** public GHCR or ECR tag (or tar URL + matching tag).
-5. `action=configure-only` refreshes `.env` + `/api` (stock nginx allowed).
+4. `action=deploy` with a **new** public GHCR or ECR tag (or tar URL + matching tag). Stock nginx **forbidden**.
+5. `action=configure-only` rewrites `/opt/heavy-rental/.env` from `heavy-rental/portal` and remounts nginx `/api` (stock nginx allowed). Does **not** rebuild the image, run `npm`, or read `.env.api`.
 
 ---
 
 ## 8. Do not
 
 - Use CI Environments `integration` / `production` as CD
-- Put Vocareum keys or `sk_` in the image
+- Put Vocareum keys or Stripe `sk_` in the image, in `.env.production`, or on the Run form
+- Bake `REST_BASE_URL` / `http://heavy-rental-rest-api:8080` / Haystack ALB / `localhost:8080` into the Vite bundle
+- Expect GitHub `VITE_*` vars to reconfigure the running SPA
 - Type instance IDs on the Run form
 - Run `terraform apply` from this workflow
-- Expect GHCR from a `develop`→`master` PR alone
+- Expect GHCR from a `develop` → `master` PR alone (publish a GitHub Release)
 - Treat a green `verify` as proof that `/api` reached REST

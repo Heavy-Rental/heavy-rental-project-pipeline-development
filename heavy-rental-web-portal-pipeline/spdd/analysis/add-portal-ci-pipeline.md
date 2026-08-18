@@ -42,5 +42,5 @@ Specify existing behavior. Do not invent new jobs.
 - Specs match job names, Node 22, mock `127.0.0.1:4010`, and skip-clean REST tests.
 - `specification/` indexes CI and CD.
 - `PREPARE-PORTAL-REPO.md` exists.
-- ADRs 0004–0007 record CI decisions (0007 = static SPA; CD owns `/api`); 0001–0003 remain CD.
-- Packaging scans `dist/` and the image for `sk_` / localhost:8080|8000 and refuses baked `REST_BASE_URL` / `VITE_*`.
+- ADRs 0004–0008 record CI decisions (0007 = static SPA; 0008 = Vite `.env.production` vs AWS/Spring REST); 0001–0003 remain CD.
+- Packaging seeds/scans `.env.production`, then `vite build --mode api` with empty `VITE_API_TARGET`, scans `dist/` / image for `sk_` / localhost / `heavy-rental-rest-api`, and refuses image `COPY .env`.

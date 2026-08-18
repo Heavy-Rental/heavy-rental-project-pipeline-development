@@ -52,8 +52,31 @@ Packaging SHALL push the image to `ghcr.io/<owner>/heavy_rental_web_portal` tagg
 - THEN no `docker push` runs
 - AND the gzipped image tar is still uploaded
 
+### Requirement: Vite production profile is scanned before npm run build
+Packaging SHALL seed `.env.production` from the app checkout (`.env.production` or `docs/samples/.env.production`) or generated empty-backend defaults. It SHALL fail if that file assigns `sk_`, `whsec_`, `REST_BASE_URL` / `HAYSTACK_BASE_URL` / non-empty `VITE_*` backend URLs (except a same-origin path), `APP_JWT_SECRET`, `POSTGRES_*`, or lab `localhost:8080` / `8000`. Packaging SHALL run `npx tsc -b` then `npx vite build --mode api` so `import.meta.env.MODE` is `api` (Spring login, rental-plan cart, deposit). It SHALL pass empty process-env `VITE_API_TARGET`, `VITE_API_URL`, `VITE_REST_*`, and `VITE_HAYSTACK_*` (overrides app `.env.api` compose hostname). Packaging SHALL NOT `COPY` `.env` / `.env.production` into the nginx image.
+
+#### Scenario: Lab URL in .env.production fails
+- GIVEN app `.env.production` contains `VITE_REST_BASE_URL=http://localhost:8080`
+- WHEN Packaging scans the file
+- THEN the job fails before `npm run build`
+
+#### Scenario: Academy image is Vite mode api
+- GIVEN Packaging builds the SPA
+- WHEN `vite build` runs
+- THEN the command includes `--mode api`
+- AND process env `VITE_API_TARGET` is empty
+
+### Requirement: Academy Stripe publishable key is baked at Packaging
+Packaging SHALL use Environment `academy` and SHALL pass non-empty `vars.VITE_STRIPE_PUBLISHABLE_KEY` into `vite build --mode api` as process env. Empty SHALL warn and SHALL NOT fail. A value starting with `sk_` or `whsec_` SHALL fail. Packaging SHALL NOT pass `STRIPE_API_KEY`.
+
+#### Scenario: Academy pk_ is injected
+- GIVEN Environment `academy` variable `VITE_STRIPE_PUBLISHABLE_KEY` is `pk_test_example`
+- WHEN Packaging runs `vite build --mode api`
+- THEN process env `VITE_STRIPE_PUBLISHABLE_KEY` is that value
+- AND `STRIPE_API_KEY` is empty
+
 ### Requirement: Vite build does not inline lab backends
-`npm run build` SHALL NOT be given `VITE_*` REST/Haystack/API base URLs or Stripe `sk_` / AWS keys. Packaging SHALL fail if `dist/` contains `sk_live_` / `sk_test_`, AWS secret material, `jdbc:postgresql://`, or `localhost:8080` / `localhost:8000` / `127.0.0.1:8080` / `127.0.0.1:8000`. Stripe `pk_` SHALL NOT fail the scan.
+The Vite build SHALL NOT be given `VITE_*` REST/Haystack/API base URLs, `VITE_API_TARGET` hostnames, or Stripe `sk_` / AWS keys. Packaging SHALL fail if `dist/` contains `sk_live_` / `sk_test_`, AWS secret material, `jdbc:postgresql://`, `heavy-rental-rest-api`, `localhost:8080` / `localhost:8000` / `127.0.0.1:4010`, or `127.0.0.1:8080` / `127.0.0.1:8000`. Stripe `pk_` SHALL NOT fail the scan.
 
 #### Scenario: Lab URL in the bundle fails
 - GIVEN `dist/assets/*.js` contains `http://localhost:8080`

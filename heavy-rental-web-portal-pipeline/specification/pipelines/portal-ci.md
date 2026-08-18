@@ -34,7 +34,7 @@ assert-caller
  GitHub Flow CI Gate
 ```
 
-Release adds **Packaging** after Integration + QC + Security + CodeQL. Release does **not** run REST Endpoint Tests. The nginx image is a static SPA (ADR 0007): no `VITE_*` lab URLs in the bundle, no baked `REST_BASE_URL`. Academy CD mounts `/api` → `heavy-rental/portal`.
+Release adds **Packaging** after Integration + QC + Security + CodeQL. Release does **not** run REST Endpoint Tests. The nginx image is a React + npm + Vite static SPA (ADR 0007 / 0008): Packaging uses Environment `academy`, seeds/scans `.env.production`, then `tsc -b` + **`vite build --mode api`** with empty `VITE_API_TARGET` / backend `VITE_*` and academy `VITE_STRIPE_PUBLISHABLE_KEY` (`pk_` only). Spring login and `/api` work after CD mounts REST ALB. No baked `REST_BASE_URL` or `http://heavy-rental-rest-api:8080`.
 
 No GitHub Environment or repository secrets are required for v1 CI.
 
@@ -51,7 +51,7 @@ No GitHub Environment or repository secrets are required for v1 CI.
 | SAST | Semgrep `p/typescript` `p/react` `p/javascript` + OWASP / audit / secrets |
 | SCA | npm audit converted to SARIF + Trivy FS |
 | Code scanning | CodeQL `javascript-typescript` |
-| Package | `npm run build` (no `VITE_*` backends) → `dist/` zip + always-generated `nginx:1.27-alpine` try_files (app Dockerfile is not the deploy image). GHCR `heavy_rental_web_portal:<semver>` + `:latest` off PR (semver is previous GHCR `x.y.z` + patch, or `1.0.0`). Packaging starts the image and requires `GET /` and SPA-fallback HTML on port 80. Scan dist/image for `sk_` and localhost:8080 / 8000. |
+| Package | Seed/scan `.env.production` + `tsc -b` + `vite build --mode api` (empty `VITE_API_TARGET`) → `dist/` zip + always-generated `nginx:1.27-alpine` try_files. GHCR `heavy_rental_web_portal:<semver>` + `:latest` off PR. Scan for `sk_`, localhost, `heavy-rental-rest-api`. |
 
 ## Branch protection (application repo `develop`)
 
