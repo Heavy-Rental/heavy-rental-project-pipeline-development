@@ -13,7 +13,7 @@ Baking `http://localhost:8080` or a lab ALB into the JS, or baking `REST_BASE_UR
 
 ## Decision
 
-Release builds with no `VITE_*` backend URLs. Packaging fails if `dist/` or the image html tree contains `sk_`, AWS secret material, JDBC URLs, or localhost:8080/8000. Generated nginx is try_files only. After `docker build`, inspect `Config.Env` and confirm `index.html` exists. Stripe `pk_` is allowed; `sk_` is not.
+Release always generates the `nginx:1.27-alpine` + Vite `dist/` Dockerfile (an app `Dockerfile` is not the GHCR/CD image). It builds with no `VITE_*` backend URLs. Packaging fails if `dist/` or the image html tree contains `sk_`, AWS secret material, JDBC URLs, or localhost:8080/8000. Generated nginx is try_files only. After `docker build`, inspect `Config.Env`, confirm `index.html` and a JS bundle exist, start the image, and require `GET /` plus a missing client route to return HTML. Stripe `pk_` is allowed; `sk_` is not.
 
 ## Consequences
 

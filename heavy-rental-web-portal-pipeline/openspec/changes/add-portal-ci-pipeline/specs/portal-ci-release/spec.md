@@ -24,7 +24,13 @@ Packaging SHALL run `npm run build` and SHALL fail if `dist/` is missing, `dist/
 - AND at least one `.js` or `.mjs` file exists under `dist/`
 
 ### Requirement: Zip plus nginx image
-Packaging SHALL zip the `dist/` contents and SHALL build `nginx:1.27-alpine` serving that static tree (SPA try_files). It SHALL save a gzipped image tar.
+Packaging SHALL zip the `dist/` contents and SHALL always generate and build an `nginx:1.27-alpine` image serving that static tree (SPA try_files on port 80). It SHALL NOT use an application `Dockerfile` as the GHCR/CD image. It SHALL save a gzipped image tar.
+
+#### Scenario: App Dockerfile is not the deploy image
+- GIVEN the React repo contains a `Dockerfile`
+- WHEN Packaging prepares the image
+- THEN that file is moved aside
+- AND the generated nginx + Vite `dist/` Dockerfile is used for `docker build`
 
 #### Scenario: Image tar is non-empty
 - GIVEN `docker build` succeeds
@@ -62,11 +68,20 @@ The generated `nginx-spa.conf` SHALL serve `try_files` for the SPA and SHALL NOT
 - WHEN the file is checked
 - THEN it has no `proxy_pass http` or `proxy_pass https`
 
-### Requirement: Image is cloud-ready after build
-After `docker build`, Packaging SHALL inspect `Config.Env` (no baked REST/Vite/Stripe/AWS keys), SHALL confirm `/usr/share/nginx/html/index.html` exists, and SHALL re-scan that tree for the same secret/lab-URL patterns. Packaging SHALL NOT leave nginx running.
+### Requirement: Image is cloud-ready and deployable after build
+After `docker build`, Packaging SHALL inspect `Config.Env` (no baked REST/Vite/Stripe/AWS keys), SHALL confirm the image exposes `80/tcp`, SHALL confirm `/usr/share/nginx/html/index.html` and at least one JS bundle exist, and SHALL re-scan that tree for the same secret/lab-URL patterns. Packaging SHALL start the image, confirm `GET /` and a missing client route (`GET /spa-fallback-check`) on port 80 return HTML, and SHALL stop the container. Packaging SHALL NOT leave nginx running.
 
 #### Scenario: index.html present and env clean
 - GIVEN the image built
 - WHEN Packaging proves the image
 - THEN `index.html` exists in the html root
+- AND at least one `.js` or `.mjs` file exists under the html root
 - AND `Config.Env` does not contain `REST_BASE_URL`
+- AND `80/tcp` is exposed
+
+#### Scenario: Nginx serves the SPA
+- GIVEN the image built
+- WHEN Packaging starts the container
+- THEN `GET /` on port 80 returns HTML
+- AND `GET /spa-fallback-check` returns HTML
+- AND the container is removed before Packaging finishes

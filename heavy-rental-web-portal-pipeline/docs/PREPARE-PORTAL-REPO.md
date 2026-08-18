@@ -19,7 +19,7 @@ Everyday operate after install: [`BOOTSTRAP.md`](BOOTSTRAP.md). Specification: [
 | --- | --- |
 | Node **22**, `package-lock.json`, Vite `npm run build` | `dist/index.html` + hashed JS/CSS |
 | Static SPA | `nginx:1.27-alpine` serving `dist/` (try_files only). CD **replaces** `default.conf` with `/api` → `REST_BASE_URL` |
-| No app `Dockerfile` required | Release generates the nginx image |
+| App `Dockerfile` ignored | Release **always** generates the nginx + Vite `dist/` image. A Node/Vite-preview Dockerfile is not used for GHCR/CD |
 | Same-origin `/api` | Release `npm run build` must **not** inline `localhost:8080` / lab REST URLs or `sk_` |
 
 Packaging scans `dist/` and the image html tree for `sk_`, AWS secret material, JDBC URLs, and `localhost:8080`/`8000`. Stripe `pk_` is allowed. Generated nginx has no `proxy_pass` host.
@@ -54,7 +54,7 @@ Do **not** copy `specification/`.
 2. Org Packages → `heavy_rental_web_portal` → visibility **Public**. Private GHCR fails CD on purpose (no PAT on the guest).
 3. Record the tag, for example `ghcr.io/heavy-rental/heavy_rental_web_portal:1.0.0` (or `:latest`). Prefer a **new** version tag each deploy (`compose up` is not `--pull always`).
 
-Optional Academy path: upload the Release tar to lab S3 and set `IMAGE_HTTP_URL` / `image_http_url`. You still need a compose tag that matches the loaded image name (`PORTAL_IMAGE` or `image_ref`).
+Optional Academy path: upload the Release tar to lab S3 and set `IMAGE_HTTP_URL` / `image_http_url`. The tar includes the GHCR tags, so `PORTAL_IMAGE=ghcr.io/<owner>/heavy_rental_web_portal:<x.y.z>` (or `:latest`) matches after `docker load`.
 
 ---
 
