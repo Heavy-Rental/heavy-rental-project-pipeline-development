@@ -16,6 +16,9 @@ On `action=deploy` or `action=configure-only`, after discover succeeds, the work
 - THEN it uses Environment `REST_IMAGE` or Run `image_ref`
 - AND it fails if both are empty
 - AND it rewrites `.env` from `heavy-rental/rest`
+- AND non-empty Environment pricing vars (`DYNAMIC_PRICING_ENABLED`, `PRICING_DEFAULT_DISTANCE_KM`, `PRICING_ORIGIN_POSTAL_CODE`, `PRICING_DISTANCE_LOOKUP_ENABLED`) overlay onto `.env`
+- AND empty pricing vars leave SM / Spring defaults
+- AND the overlay does not replace RDS, Stripe, JWT, CORS, or OneMap keys
 
 #### Scenario: No other groups
 - GIVEN ansible-rest runs

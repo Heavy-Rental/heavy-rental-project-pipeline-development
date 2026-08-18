@@ -29,8 +29,16 @@ Packaging SHALL run `./mvnw -DskipTests package` and SHALL stage a `.war` that c
 - THEN the job fails
 - AND no image is built from that JAR as `ROOT.war`
 
+### Requirement: WAR includes Spring prod properties
+The packaged WAR SHALL contain `WEB-INF/classes/application-prod.properties` (hyphen). Packaging SHALL fail if that file is missing. If the WAR only contains `application.prod.properties` (dot), Packaging SHALL fail and tell the operator to use the hyphen name.
+
+#### Scenario: Hyphen file present
+- GIVEN `mvn package` produced a WAR
+- WHEN Packaging inspects the WAR
+- THEN `WEB-INF/classes/application-prod.properties` exists
+
 ### Requirement: Tomcat image
-Packaging SHALL always generate and build an image from `tomcat:10.1-jdk21-temurin` with the WAR as `ROOT.war` and `EXPOSE 8080`. It SHALL NOT use an application `Dockerfile` as the GHCR / Docker Desktop / compose image. It SHALL save a gzipped tar that includes the local, `:latest`, and both GHCR tags.
+Packaging SHALL always generate and build an image from `tomcat:10.1-jdk21-temurin` with the WAR as `ROOT.war`, `EXPOSE 8080`, and `ENV SPRING_PROFILES_ACTIVE=prod`. It SHALL NOT use an application `Dockerfile` as the GHCR / Docker Desktop / compose image. It SHALL save a gzipped tar that includes the local, `:latest`, and both GHCR tags.
 
 #### Scenario: App Dockerfile is not the deploy image
 - GIVEN the Spring repo contains a `Dockerfile`
@@ -73,7 +81,7 @@ Packaging SHALL upload a datasource env file whose `SPRING_DATASOURCE_URL` uses 
 - THEN the Dockerfile does not `COPY` `spring-datasource.env` or any `*.env`
 
 ### Requirement: Image does not bake guest or CI database config
-The Dockerfile Packaging uses SHALL NOT set `ENV`/`ARG` for `POSTGRES_*`, `SPRING_DATASOURCE_*`, `SPRING_JPA_*`, `HAYSTACK_*`, `STRIPE_*`, `APP_JWT_*`, `REST_API_CLOUD_DB_*`, or `REST_API_DB_*`. `docker build` SHALL NOT pass `--build-arg` for those names.
+The Dockerfile Packaging uses SHALL NOT set `ENV`/`ARG` for `POSTGRES_*`, `SPRING_DATASOURCE_*`, `SPRING_JPA_*`, `HAYSTACK_*`, `STRIPE_*`, `APP_JWT_*`, `REST_API_CLOUD_DB_*`, or `REST_API_DB_*`. It MAY set `ENV SPRING_PROFILES_ACTIVE=prod`. `docker build` SHALL NOT pass `--build-arg` for secret names. If `src/main/resources/application-prod.properties` exists, Packaging SHALL fail when that file contains Stripe `sk_` / `whsec_`, the default JWT string, a baked JDBC URL, or a secret assignment without a `${ENV}` placeholder.
 
 #### Scenario: Baked ENV fails Packaging
 - GIVEN the Dockerfile contains `ENV SPRING_DATASOURCE_URL=…` or `COPY .env`

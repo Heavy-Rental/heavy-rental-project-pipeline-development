@@ -11,7 +11,7 @@ Academy compose runs the Release Tomcat image with `env_file: .env` from `heavy-
 
 ## Decision
 
-Release Packaging **always generates** `tomcat:10.1-jdk21-temurin` + `ROOT.war` (an app `Dockerfile` is not the deploy image) with **no** `ENV`/`ARG` for `POSTGRES_*`, `SPRING_DATASOURCE_*`, `HAYSTACK_*`, `STRIPE_*`, `APP_JWT_*`, or `REST_API_*`, and no `.env` copy. The unit of deploy is a **WAR**, not a fat JAR. After `docker build`, Packaging inspects `Config.Env`, proves dummy datasource / Haystack / Stripe / JWT values are visible, confirms `ROOT.war` has `WEB-INF/`, and starts Tomcat only long enough to prove TCP `:8080` binds. It does not connect to RDS and does not require actuator 200.
+Release Packaging **always generates** `tomcat:10.1-jdk21-temurin` + `ROOT.war` (an app `Dockerfile` is not the deploy image) with `ENV SPRING_PROFILES_ACTIVE=prod` and **no** `ENV`/`ARG` for `POSTGRES_*`, `SPRING_DATASOURCE_*`, `HAYSTACK_*`, `STRIPE_*`, `APP_JWT_*`, or `REST_API_*`, and no `.env` copy. The WAR SHALL contain `application-prod.properties` (hyphen) for non-secret prod defaults. Secrets stay in `heavy-rental/rest`. After `docker build`, Packaging inspects `Config.Env` (must include `SPRING_PROFILES_ACTIVE=prod`), proves dummy datasource / Haystack / Stripe / JWT values are visible, confirms `ROOT.war` has `WEB-INF/`, and starts Tomcat only long enough to prove TCP `:8080` binds. It does not connect to RDS and does not require actuator 200.
 
 ## Consequences
 

@@ -19,7 +19,8 @@ Specification: [`../specification/README.md`](../specification/README.md). CD wa
 | --- | --- |
 | Java **21**, `packaging=war`, Tomcat `provided` | `tomcat:10.1-jdk21-temurin` + `ROOT.war` (not a fat JAR / `java -jar` image) |
 | `server.port=8080`, Actuator on the classpath | Health `GET :8080/actuator/health` or `/` |
-| App `Dockerfile` ignored | Release **always** generates the Tomcat + WAR image. Runnable with `docker run -p 8080:8080 -e …` (Docker Desktop or any Engine) |
+| App `Dockerfile` ignored | Release **always** generates the Tomcat + WAR image with `SPRING_PROFILES_ACTIVE=prod`. Runnable with `docker run -p 8080:8080 -e …` |
+| `src/main/resources/application-prod.properties` | **Required in the WAR** (hyphen name). Non-secret prod defaults only. Not `application.prod.properties`. |
 
 Generated image (app Dockerfile is ignored):
 
@@ -32,7 +33,9 @@ EXPOSE 8080
 CMD ["catalina.sh", "run"]
 ```
 
-Desktop / any Engine: `docker run -p 8080:8080 -e SPRING_DATASOURCE_URL=… ghcr.io/<owner>/heavy_rental_rest_api:<tag>`
+Desktop / any Engine: `docker run -p 8080:8080 -e SPRING_DATASOURCE_URL=… ghcr.io/<owner>/heavy_rental_rest_api:<tag>` (profile is already `prod`).
+
+Put timeouts, JPA logging, pricing defaults, and JWT issuer/TTL in `application-prod.properties`. Leave RDS, `HAYSTACK_BASE_URL`, Stripe, `APP_JWT_SECRET`, CORS, and OneMap to SM / `-e`. Sample to copy into the Spring repo: [`samples/application-prod.properties`](samples/application-prod.properties).
 
 Packaging fails if the generated Dockerfile bakes `ENV`/`ARG` for those keys or copies a `.env`. After build it proves dummy `SPRING_DATASOURCE_URL` / `POSTGRES_HOST` / `HAYSTACK_BASE_URL` / Stripe / JWT are visible, confirms `ROOT.war` has `WEB-INF/`, and starts Tomcat only to prove `:8080` binds. It does not connect to RDS. `spring-datasource.env` is a Release artifact (no password) and is **not** copied into the image.
 
@@ -105,6 +108,10 @@ Paste Vocareum AWS Details on each Run after Start Lab, **or** store these as En
 | `AWS_REGION` | Recommended | Defaults to `us-east-1` if empty |
 | `REST_IMAGE` | Required for `deploy` / `configure-only` unless `image_ref` is set | Public GHCR or ECR tag. No stock Tomcat. |
 | `IMAGE_HTTP_URL` | Optional | HTTPS or `s3://` CI `.tar.gz` for `docker load` |
+| `DYNAMIC_PRICING_ENABLED` | Optional | Overlay `true`/`false`. Empty = SM or Spring default (`true` in current `application.properties`) |
+| `PRICING_DEFAULT_DISTANCE_KM` | Optional | Fallback km when OneMap is off or fails (app default `20.0`) |
+| `PRICING_ORIGIN_POSTAL_CODE` | Optional | Depot origin (app default `629462`) |
+| `PRICING_DISTANCE_LOOKUP_ENABLED` | Optional | OneMap lookup kill-switch (app default `true`) |
 
 ### Run form
 
@@ -143,11 +150,13 @@ The guest (`LabRole`) reads `heavy-rental/rest`. CI `REST_API_CLOUD_DB_*` is nev
 | `POSTGRES_USER` | written (same value as `POSTGRES_USERNAME`) |
 | `POSTGRES_PASSWORD` / `POSTGRES_PORT` | written |
 | `HAYSTACK_BASE_URL` | written (internal Haystack ALB). Estate no longer uses `HAYSTACK_URL` |
-| `APP_JWT_SECRET` (≥ 32 characters) | **not** written — set in SM or the app keeps the insecure default |
-| `APP_CORS_ALLOWED_ORIGINS` | **not** written — portal `/api` is same-origin |
+| `APP_JWT_SECRET` (≥ 32 characters) | written — Environment secret, else reuse SM, else infra generates once |
+| `APP_CORS_ALLOWED_ORIGINS` | written `http://<portal_alb_dns>` (Terraform public portal ALB). Portal `/api` is same-origin so browsers may not need it |
 | `STRIPE_API_KEY` / `STRIPE_WEBHOOK_SECRET` / `STRIPE_PUBLISHABLE_KEY` | written |
+| `ONEMAP_EMAIL` / `ONEMAP_PASSWORD` | written only if both infra Environment secrets are set |
+| `DYNAMIC_PRICING_ENABLED` / `PRICING_DEFAULT_DISTANCE_KM` / `PRICING_ORIGIN_POSTAL_CODE` / `PRICING_DISTANCE_LOOKUP_ENABLED` | written if set on infra Environment vars; REST CD `academy` vars overlay when non-empty |
 
-Re-run infra `configure-only` after this patch so guests get a new `.env`. `APP_JWT_SECRET` is still a separate follow-up.
+Re-run infra `configure-only` after this patch so guests get a new `.env` including `APP_JWT_SECRET`.
 
 ---
 
