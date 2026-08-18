@@ -7,3 +7,4 @@
 - [x] 2.3 Update studies
 - [x] 3.1 PREPARE-HAYSTACK-REPO.md (app not ready; env + sidecar contract)
 - [x] 3.2 Alias SM Postgres names + Academy live flags on `.env`; `uv run` sidecars
+- [x] 3.3 Overlay Haystack Environment Profile knobs; keep `NEO4J_URI` / `NEO4J_POPULATE_URL` infra-owned (ADR 0009)

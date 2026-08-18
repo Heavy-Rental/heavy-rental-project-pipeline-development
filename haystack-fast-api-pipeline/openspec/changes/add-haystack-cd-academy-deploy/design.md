@@ -10,7 +10,7 @@
 2. Image is a pipeline extra-var (`HAYSTACK_IMAGE` / `image_ref` / tar). Empty deploy and configure-only fail.
 3. Public GHCR or ECR or tar. Private GHCR fails. No PAT on the guest.
 4. Verify is SSM `GET :8000/docs` or `/health`. No instance IPs or internal ALB in the summary.
-5. After SM → `.env`, alias Postgres names the FastAPI app reads and set Academy live flags when SM omitted them (`FLEET_BACKEND=sql`, `NEO4J_BACKEND=bolt`). Do not invent `LLM_API_KEY`.
+5. After SM → `.env`, alias Postgres names the FastAPI app reads and set Academy live flags when SM omitted them (`FLEET_BACKEND=sql`, `NEO4J_BACKEND=bolt`). Overlay non-empty Haystack Environment `academy` Profile knobs (ADR 0009). Do not invent `LLM_API_KEY` when the Environment secret is empty. Do not overlay `NEO4J_URI` or `NEO4J_POPULATE_URL` (infra AWS).
 6. Sidecar commands are `uv run python -m …` so they share the Release image venv. Missing modules crash-loop; that does not fail `verify`.
 
 ## Risks

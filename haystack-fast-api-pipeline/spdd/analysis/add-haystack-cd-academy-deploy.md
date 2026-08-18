@@ -14,4 +14,4 @@ Copy estate `guest_base` + `haystack`. resolve-image then Ansible `--limit hayst
 
 `action=deploy` updates both guests. No Neo4j container. `verify` green if uvicorn answers.
 
-`.env` aliases Postgres names the FastAPI app reads and sets `FLEET_BACKEND=sql` / `NEO4J_BACKEND=bolt` when SM omitted them. Sidecars use `uv run`. Missing app modules may crash-loop; that is not a verify failure. Operator checklist: `docs/PREPARE-HAYSTACK-REPO.md`.
+`.env` aliases Postgres names the FastAPI app reads and sets `FLEET_BACKEND=sql` / `NEO4J_BACKEND=bolt` when SM omitted them. Non-empty Haystack Environment `academy` Profile knobs overlay after that (ADR 0009). Do not overlay `NEO4J_URI` or `NEO4J_POPULATE_URL` (infra AWS). Sidecars use `uv run`. Missing app modules may crash-loop; that is not a verify failure. Operator checklist: `docs/PREPARE-HAYSTACK-REPO.md`.

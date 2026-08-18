@@ -32,7 +32,7 @@ assert-caller
  GitHub Flow CI Gate
 ```
 
-Release adds **Packaging** (`uv build` wheel + sdist, then Docker image tar + GHCR push off PR) after Integration + QC + Security + CodeQL. Packaging is the last job in this family. Academy CD consumes a public GHCR/ECR tag or the tar. The image must accept `SOURCE_*` / `TARGET_*` / `POSTGRES_*` at runtime (ADR 0008); Packaging proves that with dummy env and refuses baked hostnames.
+Release adds **Packaging** (`uv build` wheel + sdist, then always-generated uvicorn image + GHCR `haystack_recommender` off PR) after Integration + QC + Security + CodeQL. Packaging is the last job in this family. Academy CD consumes a public GHCR/ECR tag or the tar. The image must accept infra `heavy-rental/haystack` keys and Profile knobs at runtime (ADR 0008 / 0009). Packaging proves dummy `-e` injection and `GET /docs` or `/health` on `:8000`.
 
 ## Python / Haystack tools (not Java / Android / Node)
 
@@ -48,7 +48,7 @@ Release adds **Packaging** (`uv build` wheel + sdist, then Docker image tar + GH
 | FS / CRITICAL SCA | Trivy |
 | Code scanning | CodeQL `python` |
 | Package | `uv build` (Hatchling wheel + sdist) |
-| Image | `docker build` (app Dockerfile or generated uv/uvicorn + `--extra neo4j`) → gzipped tar; GHCR `haystack_recommender:<semver>` + `:latest` off PR (semver is previous GHCR `x.y.z` + patch, or `1.0.0`). No baked `POSTGRES_*` / `SOURCE_*` / `TARGET_*`; dummy `docker run -e` proves runtime env. Sidecar dirs copied only if present. |
+| Image | Always-generated `python:3.12-slim-bookworm` + uv + `uvicorn app.main:app :8000` (app Dockerfile ignored). GHCR `haystack_recommender:<semver>` + `:latest` off PR (semver is previous GHCR `x.y.z` + patch, or `1.0.0`). No baked infra `heavy-rental/haystack` keys or `.env.example` knobs (`NEED_DECOMPOSER`, `LLM_*`, `INDEXING_*`, `FLEET_BACKEND`, `NEO4J_*`, `KG_*`, …). Packaging proves dummy `docker run -e` env and `GET /docs` or `GET /health` on `:8000`. Sidecar dirs copied only if present. |
 
 CI-safe Haystack profile (matches `tests/conftest.py` and `QUICKSTART.md` Profile A):
 
@@ -102,7 +102,7 @@ Copy each pair into `Heavy-Rental/haystack-fast-api`:
 | Fast Feedback, Integration CI, Release packaging | Yes |
 | Live pgvector, Neo4j, LLM calls, Prism mocks | No |
 | Scheduled model retrain | No (product OpenSpec in the application repo) |
-| Committing a Dockerfile to the application repo | No (Release generates one only if the checkout has none) |
+| Committing a Dockerfile to the application repo | No (Release always generates uvicorn; app Dockerfile is not the deploy image) |
 | Create or change infrastructure | No — infra project |
 | Deploy the packaged service | No — Academy CD family ([`haystack-cd.md`](haystack-cd.md)) |
 | Operate the live system | No — infra project (after go-live) |

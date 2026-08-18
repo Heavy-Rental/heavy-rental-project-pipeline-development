@@ -18,7 +18,7 @@ Infrastructure setup, project deployment, and operate are owned by another proje
 
 **Non-Goals:**
 
-- Committing a Dockerfile into the application repo (Release generates one only if missing)
+- Committing a Dockerfile into the application repo (Release always generates the uvicorn image; an app Dockerfile is not the deploy image)
 - Live Postgres/pgvector, Neo4j Bolt, or DigitalOcean / OpenAI LLM calls
 - Prism / Mock Contract Tests (Haystack *is* the API; pytest `TestClient` covers HTTP)
 - Scheduled pricing-model retrain (product OpenSpec in the application repo)
@@ -35,7 +35,7 @@ Infrastructure setup, project deployment, and operate are owned by another proje
 4. **Haystack smoke is the Integration resolve step.** After sync, import `haystack.Pipeline`, `create_app`, `build_indexing_pipeline`, and `build_intake_front_pipeline` with mock/memory/stub env. Analog of Gradle `:app:preBuild`.
 5. **QC uses the project’s own tools.** `uv run ruff check app tests` and `uv run pytest tests/` (pytest-html already in `addopts`). No GitHub Environment / secrets — tests do not need Postgres or an LLM key.
 6. **Security is Python-first.** Semgrep `p/python` (not Kotlin/Java). `uvx pip-audit` reports lockfile CVEs (does not fail the job). Trivy FS remains the CRITICAL gate. CodeQL language `python`.
-7. **Release artifacts are wheel/sdist plus a Docker image.** `uv build` stages versioned + stable packages. Packaging then builds a Python 3.12 + uv + uvicorn image (app `Dockerfile` if present, else generated with `--extra neo4j`), saves a gzipped tar, and pushes GHCR outside pull requests. The image is env-driven (ADR 0008): no baked `POSTGRES_*` / `SOURCE_*` / `TARGET_*`; dummy `docker run -e` proves runtime env. Fast Feedback and Integration CI do not request `packages: write`.
+7. **Release artifacts are wheel/sdist plus a Docker image.** `uv build` stages versioned + stable packages. Packaging always generates `python:3.12-slim-bookworm` + uv + `uvicorn app.main:app :8000` (`--extra neo4j`). An app `Dockerfile` is moved aside. The image is env-driven (ADR 0008 / 0009): no baked estate or Profile knobs; dummy `docker run -e` proves injection; Packaging starts uvicorn and requires `GET /docs` or `GET /health` on `:8000`. Fast Feedback and Integration CI do not request `packages: write`.
 8. **Specs and YAML live under `haystack-fast-api-pipeline/`.** OpenSpec, OpenSPDD, and workflow files stay with the pipeline they describe. The application repository remains `Heavy-Rental/haystack-fast-api`.
 9. **This family stops at packaging.** It does not apply IaC, create cloud resources, compose onto `asg-haystack`, or monitor production. Academy app CD lives in `deploy-pipeline/` in this tree. Operate is after deploy (infra project).
 
@@ -48,7 +48,7 @@ Infrastructure setup, project deployment, and operate are owned by another proje
 | `ruff format --check` would fail an unformatted tree | Lint with `ruff check` only (what `pyproject.toml` already configures) |
 | Semgrep `p/python` registry drift | Same two-pass pattern as siblings (SARIF always, ERROR gate) |
 | Accidental LLM spend | Never set `LLM_API_KEY`; export stub/mock env on Integration and QC |
-| App has no Dockerfile | Generate a Python 3.12 + uv + uvicorn Dockerfile at packaging time with `--extra neo4j` (ADR 0008) |
+| App Dockerfile is Node/java -jar / wrong CMD | Always generate uvicorn `app.main:app :8000`; move the app file aside (ADR 0008) |
 | Haystack/ML image is large | Packaging timeout 30 min; cache is the runner Docker layer cache only |
 | GHCR write from a PR | Push only when `github.event_name != 'pull_request'`; always upload the tar |
 | Scope creep into infra / deploy / operate | OpenSpec `haystack-ci-scope` + SPDD safeguards; no Terraform/Bicep/deploy jobs in this tree |

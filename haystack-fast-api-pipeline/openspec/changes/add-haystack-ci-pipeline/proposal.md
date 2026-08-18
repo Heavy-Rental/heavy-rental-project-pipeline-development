@@ -35,4 +35,4 @@ Copy-pasting those YAML files unchanged would install the **wrong toolchain** (J
 
 - **Application repo:** operators copy the six YAML files into `Heavy-Rental/haystack-fast-api` `.github/workflows/`.
 - **This repo:** new `haystack-fast-api-pipeline/` tree (specs + workflows). No change to REST API, portal, or mobile pipelines.
-- **Not in this change:** live pgvector/Neo4j/LLM CI, scheduled model retrain, committing a Dockerfile to the application repo, edits to the application product OpenSpec, or infrastructure / deploy / operate workflows (another project).
+- **Not in this change:** live pgvector/Neo4j/LLM CI, scheduled model retrain, committing an application Dockerfile as the deploy image (Release always generates uvicorn), edits to the application product OpenSpec, or infrastructure / operate workflows (another project). Academy app CD is a separate change in this tree.

@@ -22,10 +22,10 @@ Everyday operate after install: [`BOOTSTRAP.md`](BOOTSTRAP.md). Specification: [
 | --- | --- |
 | Python **3.12**, `uv.lock`, `pyproject.toml`, `app/main.py` | `python:3.12-slim-bookworm` + uv + uvicorn `app.main:app` |
 | `GET /docs`, `GET /health` on **`:8000`** | Health `GET :8000/docs` or `/health` (200–302). `/health` returns 200 even if Postgres is down (`status=degraded`) |
-| No app `Dockerfile` | Release **generates** the slim-bookworm Dockerfile |
+| App `Dockerfile` ignored | Release **always** generates the slim-bookworm + uvicorn image. Runnable with `docker run -p 8000:8000 -e …` (Docker Desktop or any Engine) |
 | Pricing artifacts under `app/services/pricing/artifacts/` | Copied with `COPY app ./app` |
 
-Generated image (when the app has no Dockerfile):
+Generated image (app Dockerfile is ignored):
 
 ```dockerfile
 # Runtime env from heavy-rental/haystack (do not ENV/ARG these):
@@ -41,7 +41,9 @@ EXPOSE 8000
 CMD ["uv", "run", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
 ```
 
-Packaging fails if the Dockerfile (generated or app-supplied) bakes `ENV`/`ARG` for `POSTGRES_*` / `SOURCE_*` / `TARGET_*` / `DATABASE_URL` / `NEO4J_PASSWORD` / `LLM_API_KEY` or copies a `.env`. After build it runs the image with dummy `SOURCE_*` / `TARGET_*` to prove they are visible. It does not connect to RDS.
+Packaging fails if the generated Dockerfile bakes `ENV`/`ARG` for infra `heavy-rental/haystack` keys or `.env.example` knobs (`NEED_DECOMPOSER`, `LLM_*`, `INDEXING_*`, `IDEMPOTENCY_*`, `FLEET_BACKEND`, `PRICING_SCHEMA`, `NEO4J_*`, `RECOMMEND_VIA_AGENT_GRAPH`, `KG_*`) or copies a `.env`. After build it proves dummy values for those names are visible, then starts uvicorn and requires `GET /docs` or `GET /health` on `:8000` (200–302). `/health` may be `degraded` without Postgres. It does not connect to RDS or an LLM.
+
+Desktop / any Engine: `docker run -p 8000:8000 -e DATABASE_URL=… -e FLEET_BACKEND=sql … ghcr.io/<owner>/haystack_recommender:<tag>`. Academy: infra `sync-secrets` → guest `.env` → compose `env_file`.
 
 GHCR name: `ghcr.io/<owner>/haystack_recommender` (lowercase). On `Heavy-Rental` that is `ghcr.io/heavy-rental/haystack_recommender:<x.y.z>` and `:latest`. The version tag is the previous GHCR semver with the patch bumped (first publish is `1.0.0`).
 
@@ -161,8 +163,15 @@ App `Settings` (`app/config.py`) uses different names and **CI-safe defaults**. 
 | `NEO4J_BACKEND` | **`bolt`** | set `bolt` if absent |
 | `NEO4J_URI` / `USER` / `PASSWORD` | written (NLB, not `bolt://neo4j:7687`) | kept |
 | `INDEXING_DOCUMENT_STORE` | not written → app default **`memory`** | **not** flipped (pgvector is optional) |
-| `NEED_DECOMPOSER` | not written → **`stub`** | left stub unless you set `llm` in SM |
-| `LLM_API_KEY` | optional | kept if present; never invented |
+| `NEED_DECOMPOSER` | not written → **`stub`** | Haystack Environment `NEED_DECOMPOSER` overlays if set |
+| `LLM_API_KEY` | optional on infra SM | Haystack Environment secret overlays if set; never invented |
+| `LLM_BASE_URL` / `LLM_MODEL` / `LLM_TIMEOUT_SECONDS` / `LLM_TEMPERATURE` | not written → app defaults | set in SM or `docker -e` |
+| `INDEXING_EMBEDDER` / `INDEXING_EMBEDDING_DIM` / `INDEXING_SPLIT_*` / `INDEXING_OPENAI_EMBEDDING_MODEL` / `INDEXING_CHUNK_TTL_SECONDS` | not written → mock / 384 / 200 / 20 / `text-embedding-3-small` / 0 | set in SM or `docker -e` |
+| `IDEMPOTENCY_TTL_SECONDS` / `INDEXING_VIA_AGENT_GATE` | not written → 86400 / `false` | set in SM or `docker -e` |
+| `PRICING_SCHEMA` | not written → `primary_snapshot` | set in SM (`public` for live Spring tables) |
+| `NEO4J_POPULATE_URL` | **`http://neo4j-populate:8089/v1/populate`** (compose worker on `asg-haystack`) | **not** overlaid; infra SM owns it |
+| `NEO4J_POPULATE_TIMEOUT_SECONDS` | not written → `2` | Haystack Environment overlay if set |
+| `RECOMMEND_VIA_AGENT_GRAPH` / `KG_ARTIFACT_DIR` / `KG_APPLY_TRANSFORMS` | not written → `false` / `artifacts/kg` / `false` | set in SM or `docker -e` |
 | `SOURCE_HOST` / `SOURCE_PORT` / `SOURCE_DATABASE` | written (SoR / REST RDS `heavy_rental`) | **not** invented by CD |
 | `TARGET_HOST` / `TARGET_PORT` / `TARGET_DATABASE` | written (Haystack RDS — same host as `POSTGRES_*`) | **not** invented by CD |
 
@@ -172,7 +181,9 @@ Re-run infra `configure-only` (or `apply`) so SM is rewritten. Infra first-compo
 
 Haystack RDS database name is **`haystack`**, not the app example `heavy_rental`. `DATABASE_URL` from SM is the source of truth for uvicorn. `SOURCE_DATABASE` is **`heavy_rental`**.
 
-`INDEXING_DOCUMENT_STORE=pgvector` still needs `CREATE EXTENSION vector` on Haystack RDS (infra `rds_logical`) and a matching `INDEXING_EMBEDDING_DIM`. Set it in SM when you want shared chunks.
+`INDEXING_DOCUMENT_STORE=pgvector` still needs `CREATE EXTENSION vector` on Haystack RDS (infra `rds_logical`) and a matching `INDEXING_EMBEDDING_DIM`. Set `INDEXING_DOCUMENT_STORE` (and dim) on the **Haystack** Environment `academy`, then run Haystack CD `configure-only` — do not put that in infra `sync-secrets`.
+
+Profile knobs (`NEED_DECOMPOSER`, `LLM_*`, `INDEXING_*`, `PRICING_SCHEMA`, `KG_*`, …) are Haystack project Environment variables/secrets. Infra still owns hosts, Bolt NLB `NEO4J_URI`, and RDS passwords.
 
 ---
 
