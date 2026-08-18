@@ -65,11 +65,11 @@ Pipelines in this repo (and this CD study) line up with DevSecOps as follows. **
 
 | Phase | What it means here | Where it lives |
 | --- | --- | --- |
-| **Plan** | Work intake and design. **Includes Jira** (epics/stories/bugs, sprint, traceability). OpenSpec / specification / SPDD for pipeline behaviour. | Jira (project board — not in this git tree). Specs: `haystack-fast-api-pipeline/openspec/`, `haystack-fast-api-pipeline/specification/`, `haystack-fast-api-pipeline/spdd/`; `heavy-rental-mobile/openspec/`, `heavy-rental-mobile/specification/`. REST and portal: YAML headers only. |
+| **Plan** | Work intake and design. **Includes Jira** (epics/stories/bugs, sprint, traceability). OpenSpec / specification / SPDD / ADR for pipeline behaviour. | Jira (project board — not in this git tree). Specs: `haystack-fast-api-pipeline/`, `heavy-rental-mobile/`, `heavy-rental-rest-api/`, `heavy-rental-web-portal-pipeline/` each have `openspec/`, `specification/`, `spdd/`, and `docs/adr/`. |
 | **Code** | Feature branches in the application repos. | App git; no dedicated workflow. |
 | **Build** | Checkout, toolchain, lock/sync, compile / Integration smoke. | Fast Feedback + Integration **Integration** job in all four CI families. |
 | **Test** | QC (lint/unit) **and** Security Testing + CodeQL (+ mobile Mock Contract Tests). | Fast Feedback (Integration only). Integration CI and Release: QC, Security (Semgrep, Trivy, SCA), CodeQL. |
-| **Release** | Versioned artifacts. **CI creates the Docker image** (except mobile APK). | Each app `release-pipeline/`. CD does **not** rebuild. |
+| **Release** | Versioned artifacts. **CI creates the Docker image** (except mobile unsigned APK). Images are **env-driven / static-SPA** (Haystack ADR 0008, REST ADR 0007, portal ADR 0007): no lab hostnames or `sk_` in the layer. | Each app `release-pipeline/`. CD does **not** rebuild. |
 | **Deploy** | **This study.** Terraform + `sync-secrets` + Ansible. Academy and paid CD workflows. Consumes CI images. Maintainer-copied GitHub Environments. | Other project: `aws-infra-academy.yml`, `aws-infra-paid.yml`. |
 | **Operate** | Run/recover after go-live. Does **not** create infra. Needs infra knowledge. **SSM Session Manager** onto ASG instances (including **Haystack** and **Neo4j**). Lab `action=stop` (pause) or `action=destroy` (tear down Terraform). | Another project + AWS services below. Not CI. |
 | **Monitor** | CloudWatch Logs/Alarms, SNS, CloudTrail, lab budget / Cost Explorer. | With Operate. CD may *create* log groups; **using** them is Operate/Monitor. |
@@ -332,13 +332,9 @@ Never put Vocareum `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` / `AWS_SESSION_
 
 | Secrets Manager id | ASG | JSON fields |
 | --- | --- | --- |
-<<<<<<< Updated upstream
-| `heavy-rental/portal` | `asg-portal` | `REST_BASE_URL` (internal REST ALB). **Stripe:** `STRIPE_PUBLISHABLE_KEY` and `VITE_STRIPE_PUBLISHABLE_KEY` (same `pk_`). **Never** `STRIPE_API_KEY` or `STRIPE_WEBHOOK_SECRET` on the portal. |
-=======
-| `heavy-rental/portal` | `asg-portal` | `REST_BASE_URL` (internal REST ALB Terraform output). **Stripe (portal):** `STRIPE_PUBLISHABLE_KEY` (from GitHub Environment). **Never** `STRIPE_API_KEY` or `STRIPE_WEBHOOK_SECRET` on the portal — those are REST-only. |
->>>>>>> Stashed changes
-| `heavy-rental/rest` | `asg-rest` | **Postgres (all of):** `POSTGRES_HOST` (RDS endpoint hostname from Terraform — data-subnet address, not public), `POSTGRES_PORT` (`5432`), `POSTGRES_DATABASE` (`heavy_rental`), `POSTGRES_USERNAME`, `POSTGRES_PASSWORD`, `POSTGRES_URL` / `SPRING_DATASOURCE_URL` (`jdbc:postgresql://<host>:<port>/<database>`). Also `SPRING_DATASOURCE_USERNAME` / `SPRING_DATASOURCE_PASSWORD` (same user/password). App aliases: `POSTGRES_HOSTNAME`, `POSTGRES_DB`, `POSTGRES_USER`. `HAYSTACK_BASE_URL` (internal Haystack ALB). **Stripe (REST):** `STRIPE_API_KEY`, `STRIPE_WEBHOOK_SECRET`, `STRIPE_PUBLISHABLE_KEY` (same publishable key as the portal). |
-| `heavy-rental/haystack` | `asg-haystack` | Same Postgres **field set** for the **Haystack RDS** (`POSTGRES_HOST` = Haystack instance endpoint, `POSTGRES_DATABASE` = `haystack`) plus app aliases `POSTGRES_HOSTNAME` / `POSTGRES_DB` / `POSTGRES_USER`. `DATABASE_URL` (`postgresql://user:pass@host:port/db`). `FLEET_BACKEND=sql`, `NEO4J_BACKEND=bolt`. `NEO4J_URI` from the **internal Bolt NLB** (`bolt://<nlb-dns>:7687` — not localhost, not a guest private IP), `NEO4J_USER`, `NEO4J_PASSWORD`, `LLM_API_KEY` if used. No Stripe. |
+| `heavy-rental/portal` | `asg-portal` | `REST_BASE_URL` (internal REST ALB). **Stripe:** `STRIPE_PUBLISHABLE_KEY` and `VITE_STRIPE_PUBLISHABLE_KEY` (same `pk_`). **Never** `STRIPE_API_KEY` or `STRIPE_WEBHOOK_SECRET` on the portal. Not baked into the CI nginx image (ADR 0007). |
+| `heavy-rental/rest` | `asg-rest` | **Postgres (all of):** `POSTGRES_HOST` (RDS endpoint hostname from Terraform — data-subnet address, not public), `POSTGRES_PORT` (`5432`), `POSTGRES_DATABASE` (`heavy_rental`), `POSTGRES_USERNAME`, `POSTGRES_PASSWORD`, `POSTGRES_URL` / `SPRING_DATASOURCE_URL` (`jdbc:postgresql://<host>:<port>/<database>`). Also `SPRING_DATASOURCE_USERNAME` / `SPRING_DATASOURCE_PASSWORD` (same user/password). App aliases: `POSTGRES_HOSTNAME`, `POSTGRES_DB`, `POSTGRES_USER`. `HAYSTACK_BASE_URL` (internal Haystack ALB). **Stripe (REST):** `STRIPE_API_KEY`, `STRIPE_WEBHOOK_SECRET`, `STRIPE_PUBLISHABLE_KEY` (same publishable key as the portal). Injected at compose time (ADR 0007); not in the Tomcat image. |
+| `heavy-rental/haystack` | `asg-haystack` | Haystack RDS `POSTGRES_*` / aliases / `DATABASE_URL`. Sync: `SOURCE_*` (SoR RDS) and `TARGET_*` (Haystack RDS). `FLEET_BACKEND=sql`, `NEO4J_BACKEND=bolt`. `NEO4J_URI` from the **internal Bolt NLB** (`bolt://<nlb-dns>:7687` — not localhost, not a guest private IP), `NEO4J_USER`, `NEO4J_PASSWORD`, `LLM_API_KEY` if used. No Stripe. Not baked into the CI image (ADR 0008). |
 | `heavy-rental/neo4j` | `asg-neo4j` | `NEO4J_USER`, `NEO4J_PASSWORD`. No Postgres password dump, no Stripe, no LLM key. |
 
 Terraform **must create** these secret **shells** on `apply` (empty JSON is fine). It does not put passwords or Stripe values in `.tf`. **`sync-secrets` must then write every field in the table** (GitHub Environment values + RDS hostname/port/db name + JDBC/URI strings it **builds**). App CD **fails** if the shell is missing or a required field is empty (`describe-secret` / compose `get-secret-value`). Infra `apply` is not done until those parameters exist.
@@ -437,12 +433,8 @@ GitHub Environments are **per repository**. They are **not** defined the same wa
 | REST Release CI | **`production`** | Secrets: `REST_API_CLOUD_DB_HOST`, `REST_API_CLOUD_DB_NAME`, `REST_API_CLOUD_DB_USER`, `REST_API_CLOUD_DB_PASSWORD`, `REST_API_CLOUD_DB_PORT` | **Different names** than CD `SPRING_DATASOURCE_*` / `POSTGRES_*` |
 | Haystack CI (Fast Feedback, Integration, Release) | **None** | No DB / Neo4j / LLM secrets | Workflows **fail** if `LLM_API_KEY` is set |
 | Portal CI | **None** for app config | `GITHUB_TOKEN` for GHCR | No Stripe in CI |
-| Mobile CI | **None** for AWS | APK only | Not deployed to the VPC |
-<<<<<<< Updated upstream
-| **Infra CD Academy** (this study) | **`academy`** | Secrets: `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_SESSION_TOKEN`, `SPRING_DATASOURCE_PASSWORD`, `NEO4J_PASSWORD`, `STRIPE_PUBLISHABLE_KEY`, `STRIPE_API_KEY`, `STRIPE_WEBHOOK_SECRET`. Variables: `AWS_REGION`, optional `PORTAL_IMAGE` / `REST_IMAGE` / `HAYSTACK_IMAGE` | Vocareum keys for the **runner** only. Live YAML: other project `aws-infra-academy.yml`. Example in this folder is a stub. |
-=======
-| **Infra CD Academy** (this study) | **`academy`** | Secrets: `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_SESSION_TOKEN`, `SPRING_DATASOURCE_PASSWORD`, `NEO4J_PASSWORD`, `STRIPE_PUBLISHABLE_KEY`, `STRIPE_API_KEY`, `STRIPE_WEBHOOK_SECRET`. Variable: `AWS_REGION` | Vocareum keys for the **runner** only. App passwords feed `sync-secrets`. Example: `aws-infra-pipeline.example.yml` |
->>>>>>> Stashed changes
+| Mobile CI | **None** for AWS | Unsigned APK only | Not deployed to the VPC; no env-driven container |
+| **Infra CD Academy** (this study) | **`academy`** | Secrets: `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_SESSION_TOKEN`, `SPRING_DATASOURCE_PASSWORD`, `NEO4J_PASSWORD`, `STRIPE_PUBLISHABLE_KEY`, `STRIPE_API_KEY`, `STRIPE_WEBHOOK_SECRET`. Variables: `AWS_REGION`, optional `PORTAL_IMAGE` / `REST_IMAGE` / `HAYSTACK_IMAGE` | Vocareum keys for the **runner** only. App passwords feed `sync-secrets`. Live YAML: infra project. Example in this folder is a stub. |
 | **Infra CD Paid** | **`paid`** | Variables: `AWS_ROLE_TO_ASSUME`, `AWS_REGION`. Same **app** secrets as academy (Postgres password, Neo4j, Stripe). **No** Vocareum access keys | OIDC only |
 | **Portal / REST / Haystack app CD (Academy)** | **`academy`** (same **names** as infra; copy onto each app-CD repo) | Secrets (fallback): **`AWS_ACCESS_KEY_ID`**, **`AWS_SECRET_ACCESS_KEY`**, **`AWS_SESSION_TOKEN`**. Variable: `AWS_REGION`. Optional `IMAGE_HTTP_URL` | **Vocareum only.** Runner may paste the three keys on Run workflow (they change every Start Lab) or use Environment fallback. Never on paid. Never in SM / on EC2 |
 | **Portal / REST / Haystack app CD (Paid)** | **`paid`** | Variables: `AWS_ROLE_TO_ASSUME`, `AWS_REGION`. Optional `IMAGE_HTTP_URL`. **No** `AWS_ACCESS_KEY_ID` | OIDC only. Paid YAML **fails** if an access key is set |
@@ -1762,13 +1754,9 @@ REST also gets Stripe `sk_` + `whsec_` + `pk_`. Neo4j secret is user/password on
 
 | Secret id (Terraform shell) | Required JSON fields (`sync-secrets`) | Who reads |
 | --- | --- | --- |
-<<<<<<< Updated upstream
-| `heavy-rental/portal` | `REST_BASE_URL`, `STRIPE_PUBLISHABLE_KEY`, `VITE_STRIPE_PUBLISHABLE_KEY` (same `pk_`) | `asg-portal` / portal app CD |
-=======
-| `heavy-rental/portal` | `REST_BASE_URL`, `STRIPE_PUBLISHABLE_KEY` | `asg-portal` / portal app CD |
->>>>>>> Stashed changes
-| `heavy-rental/rest` | `POSTGRES_HOST` / `POSTGRES_HOSTNAME`, `POSTGRES_DATABASE` / `POSTGRES_DB`, `POSTGRES_USERNAME` / `POSTGRES_USER`, `POSTGRES_PORT`, `POSTGRES_PASSWORD`, `POSTGRES_URL` / `SPRING_DATASOURCE_*`, `HAYSTACK_BASE_URL`, Stripe trio | `asg-rest` / REST app CD |
-| `heavy-rental/haystack` | Same Postgres field set (or Haystack db name), `NEO4J_URI`, `NEO4J_USER`, `NEO4J_PASSWORD` | `asg-haystack` / Haystack app CD |
+| `heavy-rental/portal` | `REST_BASE_URL`, `STRIPE_PUBLISHABLE_KEY`, `VITE_STRIPE_PUBLISHABLE_KEY` (same `pk_`) | `asg-portal` / portal app CD (nginx `/api`, not baked into the CI image) |
+| `heavy-rental/rest` | `POSTGRES_HOST` / `POSTGRES_HOSTNAME`, `POSTGRES_DATABASE` / `POSTGRES_DB`, `POSTGRES_USERNAME` / `POSTGRES_USER`, `POSTGRES_PORT`, `POSTGRES_PASSWORD`, `POSTGRES_URL` / `SPRING_DATASOURCE_*`, `HAYSTACK_BASE_URL`, Stripe trio | `asg-rest` / REST app CD (env on the Tomcat image; not baked in CI) |
+| `heavy-rental/haystack` | Haystack RDS `POSTGRES_*` / `DATABASE_URL`, `SOURCE_*` (SoR RDS), `TARGET_*` (Haystack RDS), `FLEET_BACKEND=sql`, `NEO4J_BACKEND=bolt`, `NEO4J_URI` / user / password, optional `LLM_API_KEY` | `asg-haystack` / Haystack app CD (same image; env not baked in CI) |
 | `heavy-rental/neo4j` | `NEO4J_USER`, `NEO4J_PASSWORD` | `asg-neo4j` (infra/`configure-only` only) |
 
 App CD does **not** create these secrets. It only `describe-secret` / the guest `get-secret-value`. If a required id or field is missing, **fail** and run infra `apply` or `configure-only` first.

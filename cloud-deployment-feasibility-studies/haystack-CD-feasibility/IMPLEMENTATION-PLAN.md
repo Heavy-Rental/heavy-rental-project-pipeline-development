@@ -155,4 +155,5 @@ The live app repo is **not** ready to deploy (no Release/CD on `develop`, no GHC
 - Infra operate: estate `docs/BOOTSTRAP.md` / `docs/ARCHITECTURE.md`
 - Ansible contract: [`../ANSIBLE-PROCESS.md`](../ANSIBLE-PROCESS.md) §4.3
 - CI: [`../../haystack-fast-api-pipeline/release-pipeline/`](../../haystack-fast-api-pipeline/release-pipeline/)
+- Specs (OpenSpec / OpenSPDD / ADR): [`../../haystack-fast-api-pipeline/specification/`](../../haystack-fast-api-pipeline/specification/)
 - App-repo readiness: [`../../haystack-fast-api-pipeline/docs/PREPARE-HAYSTACK-REPO.md`](../../haystack-fast-api-pipeline/docs/PREPARE-HAYSTACK-REPO.md)

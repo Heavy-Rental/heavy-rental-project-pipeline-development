@@ -1,6 +1,6 @@
 # Delta for rest-cd-scope
 
-**Superseded** for compose by [`../../add-rest-cd-academy-deploy/specs/rest-cd-scope/spec.md`](../../add-rest-cd-academy-deploy/specs/rest-cd-scope/spec.md). This file is the branch-1 fail-closed contract.
+**Superseded** for compose by [`../../../add-rest-cd-academy-deploy/specs/rest-cd-scope/spec.md`](../../../add-rest-cd-academy-deploy/specs/rest-cd-scope/spec.md). This file is the branch-1 fail-closed contract.
 
 ## ADDED Requirements
 

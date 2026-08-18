@@ -8,9 +8,10 @@ Start here: [`specification/README.md`](specification/README.md). App-repo CD ch
 
 | Path | Contents |
 | --- | --- |
-| `specification/` | Human index and pipeline walkthrough |
+| `specification/` | Human index and CI + CD walkthroughs |
 | `openspec/` | OpenSpec behavior (requirements + scenarios) |
 | `spdd/` | OpenSPDD analysis + REASONS Canvas |
+| `docs/adr/` | ADRs for CI (0005–0008) and CD (0001–0004) |
 | `docs/` | Academy CD operate + [`PREPARE-HAYSTACK-REPO.md`](docs/PREPARE-HAYSTACK-REPO.md) |
 | `fast-feedback-ci-pipeline/` | Integration-only feature-branch pipeline |
 | `integration-pipeline/` | PR / `develop` merge gate |
@@ -27,7 +28,7 @@ develop → master PR or published GitHub Release
                      →  Release (full gates + uv build + Docker image)
 ```
 
-Release stops at **packaged artifacts** (wheel, sdist, image tar; GHCR push off pull request). A later project consumes those artifacts to deploy.
+Release stops at **packaged artifacts** (wheel, sdist, image tar; GHCR push off pull request). Academy CD in `deploy-pipeline/` consumes a public GHCR/ECR tag or the tar.
 
 ## Pipeline boundaries
 

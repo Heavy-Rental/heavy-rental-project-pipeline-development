@@ -2,6 +2,8 @@
 
 This workflow discovers `asg-haystack` and can re-run Haystack compose (branch 2). It does **not** run Terraform or create the ASG. It does **not** start Neo4j.
 
+Specification index: [`../specification/README.md`](../specification/README.md). CD walkthrough: [`../specification/pipelines/haystack-cd.md`](../specification/pipelines/haystack-cd.md).
+
 **App repo is not ready yet.** Checklist and env/sidecar gaps: [`PREPARE-HAYSTACK-REPO.md`](PREPARE-HAYSTACK-REPO.md).
 
 Install from **`deploy-pipeline/`** into the Haystack app repo (same pattern as Release):

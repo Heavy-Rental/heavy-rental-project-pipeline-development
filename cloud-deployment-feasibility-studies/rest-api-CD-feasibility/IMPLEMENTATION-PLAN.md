@@ -152,3 +152,4 @@ Infra **`apply`** still first-composes REST. Infra **`configure-only`** does **n
 - Infra operate: estate `docs/BOOTSTRAP.md` / `docs/ARCHITECTURE.md`
 - Ansible contract: [`../ANSIBLE-PROCESS.md`](../ANSIBLE-PROCESS.md)
 - CI: [`../../heavy-rental-rest-api/release-pipeline/`](../../heavy-rental-rest-api/release-pipeline/)
+- Specs (OpenSpec / OpenSPDD / ADR): [`../../heavy-rental-rest-api/specification/`](../../heavy-rental-rest-api/specification/)

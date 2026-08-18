@@ -13,7 +13,10 @@
 
 After `guest_base` maps SM → `.env`, the haystack role fills **missing** aliases and Academy live flags only. Sidecar commands are `uv run python -m postgres_haystack_sync` and `uv run python -m neo4j_populate`. Services, limits, and the no-`neo4j` check stay as estate. Ansible fails if uvicorn never answers; sidecar crash-loops do not fail `verify`.
 
+`SOURCE_HOST` / `SOURCE_PORT` / `SOURCE_DATABASE` (SoR RDS) and `TARGET_HOST` / `TARGET_PORT` / `TARGET_DATABASE` (Haystack RDS) stay infra `sync-secrets` output. This CD does not invent them, alias them, or read `heavy-rental/rest`.
+
 ## Consequences
 
 - CD can talk to Haystack RDS and request Bolt without waiting for an infra `sync-secrets` alias patch.
+- Sync two-DB config is externalized in SM, not in the image or Haystack workflow YAML.
 - Sidecars still crash until the app ships those modules (see [`PREPARE-HAYSTACK-REPO.md`](../PREPARE-HAYSTACK-REPO.md)).

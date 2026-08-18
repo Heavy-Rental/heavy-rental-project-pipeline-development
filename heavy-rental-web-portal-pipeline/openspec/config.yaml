@@ -1,0 +1,15 @@
+# OpenSpec project config for the Heavy Rental web portal pipeline family.
+# Specs live next to the workflows they describe.
+schema: spec-driven
+context: |
+  This folder specifies GitHub Actions pipelines for the React web portal
+  (Heavy-Rental/heavy-rental-react-web-portal; act fallback SA62-team1/...).
+  Two families live here:
+    1. CI — Fast Feedback, Integration CI, and Release packaging
+       (openspec/changes/add-portal-ci-pipeline/). As-implemented of existing YAML.
+    2. Academy app CD — discover asg-portal and compose
+       (openspec/changes/add-portal-cd-academy-skeleton/ and
+       add-portal-cd-academy-deploy/).
+  The Integration CI authoring path is integration_pipeline/ (underscore).
+  Product behaviour for the SPA is NOT specified here.
+  Infrastructure setup and operate belong to the infra project.

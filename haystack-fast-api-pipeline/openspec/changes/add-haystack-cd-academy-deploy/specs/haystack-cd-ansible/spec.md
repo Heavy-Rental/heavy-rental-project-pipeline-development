@@ -22,6 +22,15 @@ After writing `.env` from `heavy-rental/haystack`, the haystack role SHALL add a
 - THEN `.env` contains both, same host
 - AND `FLEET_BACKEND=sql` and `NEO4J_BACKEND=bolt` unless the secret already set them
 
+### Requirement: Sync endpoints stay infra-owned
+Haystack CD SHALL pass `SOURCE_HOST` / `SOURCE_PORT` / `SOURCE_DATABASE` and `TARGET_HOST` / `TARGET_PORT` / `TARGET_DATABASE` through from `heavy-rental/haystack` when present. It SHALL NOT invent those keys, SHALL NOT copy `heavy-rental/rest`, and SHALL NOT bake RDS hostnames into the image or the workflow YAML.
+
+#### Scenario: SM already has SOURCE and TARGET
+- GIVEN `heavy-rental/haystack` contains `SOURCE_HOST` (SoR RDS) and `TARGET_HOST` (Haystack RDS)
+- WHEN `guest_base` writes `.env`
+- THEN both keys are on `.env` unchanged
+- AND Ansible does not add a different `SOURCE_HOST`
+
 ### Requirement: Sidecar commands match the Release image
 `postgres-haystack-sync` and `neo4j-populate` SHALL use `uv run python -m …` (same image as uvicorn). Verify SHALL still pass if those processes exit, as long as uvicorn answers on `:8000`. The playbook SHALL fail if uvicorn never answers.
 

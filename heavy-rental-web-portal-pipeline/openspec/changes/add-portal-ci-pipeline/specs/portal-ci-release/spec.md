@@ -1,0 +1,66 @@
+# Delta for portal-ci-release
+
+## Purpose
+
+Release packaging produces a Vite `dist/` zip and an nginx Docker image after the quality and security gates pass.
+
+## ADDED Requirements
+
+### Requirement: Packaging waits for gates
+Packaging SHALL run only after Integration, Quality Control, Security Testing, and CodeQL have succeeded.
+
+#### Scenario: Security red blocks packaging
+- GIVEN Security Testing failed
+- WHEN Packaging is evaluated
+- THEN Packaging does not start
+
+### Requirement: Vite production build
+Packaging SHALL run `npm run build` and SHALL fail if `dist/` is missing, `dist/index.html` is missing, or no JavaScript bundle exists. It SHALL fail if `dist/` looks like source (`package.json` or `node_modules` inside `dist/`).
+
+#### Scenario: SPA output
+- GIVEN `npm run build` succeeds
+- WHEN Packaging verifies output
+- THEN `dist/index.html` exists
+- AND at least one `.js` or `.mjs` file exists under `dist/`
+
+### Requirement: Zip plus nginx image
+Packaging SHALL zip the `dist/` contents and SHALL build `nginx:1.27-alpine` serving that static tree (SPA try_files). It SHALL save a gzipped image tar.
+
+#### Scenario: Image tar is non-empty
+- GIVEN `docker build` succeeds
+- WHEN Packaging saves the image
+- THEN a gzipped tar artifact exists and is non-empty
+
+### Requirement: GHCR push only off pull requests
+Packaging SHALL push `ghcr.io/{owner}/heavy-rental-web-portal` with the versioned tag and `:latest` when the event is not a pull request. On a `develop` → `master` pull request it SHALL skip the push and still upload the tar.
+
+#### Scenario: PR skips registry push
+- GIVEN a pull request from `develop` to `master` triggered the release pipeline
+- WHEN Packaging finishes the Docker build
+- THEN no `docker push` runs
+- AND the gzipped image tar is still uploaded
+
+### Requirement: Vite build does not inline lab backends
+`npm run build` SHALL NOT be given `VITE_*` REST/Haystack/API base URLs or Stripe `sk_` / AWS keys. Packaging SHALL fail if `dist/` contains `sk_live_` / `sk_test_`, AWS secret material, `jdbc:postgresql://`, or `localhost:8080` / `localhost:8000` / `127.0.0.1:8080` / `127.0.0.1:8000`. Stripe `pk_` SHALL NOT fail the scan.
+
+#### Scenario: Lab URL in the bundle fails
+- GIVEN `dist/assets/*.js` contains `http://localhost:8080`
+- WHEN Packaging scans `dist/`
+- THEN the job fails
+
+### Requirement: Image nginx is replaceable SPA only
+The generated `nginx-spa.conf` SHALL serve `try_files` for the SPA and SHALL NOT `proxy_pass` to a hostname. The Dockerfile SHALL NOT set `ENV`/`ARG` for `REST_BASE_URL`, `VITE_*`, `STRIPE_*`, `AWS_*`, or `PORTAL_IMAGE`, and SHALL NOT `COPY` a `.env`.
+
+#### Scenario: Generated nginx has no API host
+- GIVEN Packaging generated `nginx-spa.conf`
+- WHEN the file is checked
+- THEN it has no `proxy_pass http` or `proxy_pass https`
+
+### Requirement: Image is cloud-ready after build
+After `docker build`, Packaging SHALL inspect `Config.Env` (no baked REST/Vite/Stripe/AWS keys), SHALL confirm `/usr/share/nginx/html/index.html` exists, and SHALL re-scan that tree for the same secret/lab-URL patterns. Packaging SHALL NOT leave nginx running.
+
+#### Scenario: index.html present and env clean
+- GIVEN the image built
+- WHEN Packaging proves the image
+- THEN `index.html` exists in the html root
+- AND `Config.Env` does not contain `REST_BASE_URL`

@@ -63,11 +63,13 @@ From `heavy-rental-rest-api/release-pipeline/release-pipeline.yml`:
 | GHCR `ghcr.io/<owner>/heavy-rental-rest-api:<version>` and `:latest` | Non-PR / published Release | Paid (Academy if pull works). **Not** pushed on develop→master PR |
 | Versioned + stable WAR | Always | Optional; image is enough |
 
-Image contract: **`tomcat:10.1-jdk21-temurin`** serving `ROOT.war` on **`:8080`**. Java **21**. Build does **not** start Postgres or Haystack.
+Image contract: **`tomcat:10.1-jdk21-temurin`** serving `ROOT.war` on **`:8080`**. Java **21**. Build does **not** start Postgres or Haystack. Release **refuses** baked `POSTGRES_*` / `SPRING_DATASOURCE_*` / `HAYSTACK_*` / Stripe / JWT and proves dummy runtime env (ADR 0007). `spring-datasource.env` is a workflow artifact (no password), **not** in the image.
 
-Port **8080**. Health `GET /actuator/health` or `/`. Password is **not** in the artifact; CD uses Secrets Manager.
+Port **8080**. Health `GET /actuator/health` or `/`. Password is **not** in the image; CD uses Secrets Manager (`heavy-rental/rest`).
 
 CI Environments: **`integration`** (`REST_API_DB_*`) and **`production`** (`REST_API_CLOUD_DB_*`). Those names are **not** CD `POSTGRES_*` / `SPRING_DATASOURCE_PASSWORD`. See AWS study §6.0c.
+
+Specs: [`../../heavy-rental-rest-api/specification/`](../../heavy-rental-rest-api/specification/).
 
 ---
 
@@ -165,7 +167,7 @@ Image source is configured on the **GitHub Actions** form (`image_ref`, optional
 
 **Live:** estate first-compose (`guest_base` / `rest`) **and** REST app CD branch 2 in [`../../heavy-rental-rest-api/deploy-pipeline/`](../../heavy-rental-rest-api/deploy-pipeline/) (same roles, `--limit rest`). Example YAML **in this folder** stays fail-closed.
 
-**Still later:** paid/OIDC REST CD; Haystack app CD. Delivery split: [`IMPLEMENTATION-PLAN.md`](IMPLEMENTATION-PLAN.md).
+**Still later:** paid/OIDC REST CD. Academy Haystack / portal app CD already live in their pipeline trees. Delivery split: [`IMPLEMENTATION-PLAN.md`](IMPLEMENTATION-PLAN.md).
 
 ---
 
@@ -176,3 +178,4 @@ Image source is configured on the **GitHub Actions** form (`image_ref`, optional
 - Delivery split: [`IMPLEMENTATION-PLAN.md`](IMPLEMENTATION-PLAN.md)
 - Live Academy CD: [`../../heavy-rental-rest-api/deploy-pipeline/`](../../heavy-rental-rest-api/deploy-pipeline/)
 - CI: [`../../heavy-rental-rest-api/release-pipeline/`](../../heavy-rental-rest-api/release-pipeline/)
+- Specs (OpenSpec / OpenSPDD / ADR): [`../../heavy-rental-rest-api/specification/`](../../heavy-rental-rest-api/specification/)

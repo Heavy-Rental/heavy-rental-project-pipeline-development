@@ -1,6 +1,8 @@
 # REST app CD (Academy)
 
-This workflow discovers `asg-rest` and can re-run REST compose (branch 2). It does **not** run Terraform or create the ASG.
+This workflow discovers `asg-rest` and can re-run REST compose (branch 2). It does **not** run Terraform or create the ASG. The Release image is env-only (ADR 0007); this CD injects `heavy-rental/rest` and must not expect JDBC inside the image.
+
+Specification index: [`../specification/README.md`](../specification/README.md). CD walkthrough: [`../specification/pipelines/rest-cd.md`](../specification/pipelines/rest-cd.md).
 
 Installing Release + CD into [heavy-rental-spring-rest-api](https://github.com/Heavy-Rental/heavy-rental-spring-rest-api): [`PREPARE-SPRING-REPO.md`](PREPARE-SPRING-REPO.md).
 

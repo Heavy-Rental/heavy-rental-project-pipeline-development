@@ -1,6 +1,6 @@
 # Delta for portal-cd-scope
 
-**Superseded** for compose by [`../../add-portal-cd-academy-deploy/specs/portal-cd-scope/spec.md`](../../add-portal-cd-academy-deploy/specs/portal-cd-scope/spec.md). This file is the branch-1 fail-closed contract.
+**Superseded** for compose by [`../../../add-portal-cd-academy-deploy/specs/portal-cd-scope/spec.md`](../../../add-portal-cd-academy-deploy/specs/portal-cd-scope/spec.md). This file is the branch-1 fail-closed contract.
 
 ## ADDED Requirements
 

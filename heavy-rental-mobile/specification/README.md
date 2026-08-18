@@ -6,18 +6,31 @@ The Android **product** specification (screens, domain, OpenAPI) is **not** here
 
 https://github.com/Heavy-Rental/heavy-rental-mobile/tree/develop/specification
 
-## How to read the two frameworks
+This family is **CI and unsigned APK packaging only**. There is no Academy app CD. Infrastructure, store signing, and operate are out of scope.
+
+## Pipeline boundaries
+
+| Concern | Specified here? |
+| --- | --- |
+| Fast Feedback, Integration CI, Release packaging (unsigned APK) | Yes |
+| Env-driven container image (Haystack / REST / portal pattern) | No — Release is an unsigned APK, not Docker/GHCR |
+| Create or change infrastructure | No |
+| Deploy / Play signing / GHCR | No |
+| Operate the live system | No |
+
+## How to read the three frameworks
 
 | Framework | Path | Role |
 | --- | --- | --- |
 | **OpenSpec** | [`../openspec/`](../openspec/) | Observable behavior: requirements and GIVEN/WHEN/THEN scenarios |
 | **OpenSPDD** | [`../spdd/`](../spdd/) | Implementation contract: REASONS Canvas (how to write the YAML, what not to invent) |
+| **ADR** | [`../docs/adr/`](../docs/adr/) | Why: caller gate, JDK 17, unsigned APK, mocks on Integration only |
 
-Conflict order: **OpenSpec scenarios → OpenSPDD Safeguards → YAML**. If the YAML cannot satisfy a scenario without breaking a safeguard, stop and update the spec first.
+Conflict order: **OpenSpec scenarios → OpenSPDD Safeguards → ADR → YAML**. If the YAML cannot satisfy a scenario without breaking a safeguard, stop and update the spec first.
 
 ## Active change
 
-[`../openspec/changes/add-mobile-ci-pipeline/`](../openspec/changes/add-mobile-ci-pipeline/) — first mobile CI family.
+[`../openspec/changes/add-mobile-ci-pipeline/`](../openspec/changes/add-mobile-ci-pipeline/) — mobile CI family.
 
 - Proposal: [`proposal.md`](../openspec/changes/add-mobile-ci-pipeline/proposal.md)
 - Design: [`design.md`](../openspec/changes/add-mobile-ci-pipeline/design.md)
