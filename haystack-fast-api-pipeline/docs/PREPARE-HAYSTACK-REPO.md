@@ -43,7 +43,7 @@ CMD ["uv", "run", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "800
 
 Packaging fails if the Dockerfile (generated or app-supplied) bakes `ENV`/`ARG` for `POSTGRES_*` / `SOURCE_*` / `TARGET_*` / `DATABASE_URL` / `NEO4J_PASSWORD` / `LLM_API_KEY` or copies a `.env`. After build it runs the image with dummy `SOURCE_*` / `TARGET_*` to prove they are visible. It does not connect to RDS.
 
-GHCR name: `ghcr.io/<owner>/haystack-fast-api` (lowercase). On `Heavy-Rental` that is `ghcr.io/heavy-rental/haystack-fast-api:<tag>` and `:latest`.
+GHCR name: `ghcr.io/<owner>/haystack_recommender` (lowercase). On `Heavy-Rental` that is `ghcr.io/heavy-rental/haystack_recommender:<x.y.z>` and `:latest`. The version tag is the previous GHCR semver with the patch bumped (first publish is `1.0.0`).
 
 | Release trigger | What you get |
 | --- | --- |
@@ -74,8 +74,8 @@ Zero GitHub Releases. Zero GHCR packages for this repo (checked 2026-08-17).
 
 1. Merge HR-155 (or copy Fast Feedback + Integration + Release onto `develop`).
 2. Merge to `master` and **publish a GitHub Release**. That is what pushes GHCR.
-3. Org Packages → `haystack-fast-api` → visibility **Public**. Private GHCR fails CD on purpose (no PAT on the guest).
-4. Record the tag, for example `ghcr.io/heavy-rental/haystack-fast-api:v0.1.0-build<run>-<sha>`. Prefer a **new** tag each deploy (`compose up` is not `--pull always`).
+3. Org Packages → `haystack_recommender` → visibility **Public**. Private GHCR fails CD on purpose (no PAT on the guest).
+4. Record the tag, for example `ghcr.io/heavy-rental/haystack_recommender:1.0.0` (or `:latest`). Prefer a **new** version tag each deploy (`compose up` is not `--pull always`).
 
 Optional Academy path: upload the Release tar to lab S3 and set `IMAGE_HTTP_URL` / `image_http_url` (`s3://` or HTTPS). You still need a compose tag that matches the loaded image name (`HAYSTACK_IMAGE` or `image_ref`).
 

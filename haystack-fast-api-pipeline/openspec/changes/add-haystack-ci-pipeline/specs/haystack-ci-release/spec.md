@@ -50,7 +50,7 @@ Packaging SHALL build a Docker image after staging wheel/sdist artifacts and SHA
 #### Scenario: Image tar is non-empty
 - GIVEN `docker build` succeeds
 - WHEN Packaging saves the image
-- THEN `haystack-fast-api-v{version}-build{runNumber}-{shortSha}.tar.gz` exists and is non-empty
+- THEN `haystack_recommender-{semver}.tar.gz` exists and is non-empty
 
 ### Requirement: Image does not bake database or sync config
 The Dockerfile Packaging uses (generated or from the application) SHALL NOT set `ENV`/`ARG` for `POSTGRES_*`, `SOURCE_*`, `TARGET_*`, `DATABASE_URL`, `NEO4J_PASSWORD`, or `LLM_API_KEY`, and SHALL NOT `COPY` a `.env` file. `docker build` SHALL NOT pass `--build-arg` for those names.
@@ -79,12 +79,13 @@ When Packaging generates a Dockerfile, it SHALL `COPY postgres_haystack_sync` an
 - AND it does not `COPY postgres_haystack_sync`
 
 ### Requirement: GHCR push only off pull requests
-Packaging SHALL push the image to `ghcr.io` tagged with the versioned tag and `:latest` when the event is not a pull request. On a `develop` → `master` pull request, Packaging SHALL skip the push and still upload the image tar.
+Packaging SHALL push the image to `ghcr.io/<owner>/haystack_recommender` tagged with a new `x.y.z` semver and `:latest` when the event is not a pull request. The semver SHALL be the highest existing `x.y.z` tag on that GHCR package with the patch incremented; if no such tag exists, it SHALL be `1.0.0`. Packaging SHALL NOT overwrite an existing `x.y.z` tag. On a `develop` → `master` pull request, Packaging SHALL skip the push and still upload the image tar.
 
 #### Scenario: Published release pushes
 - GIVEN a published GitHub Release triggered the release pipeline
+- AND the highest GHCR `haystack_recommender` semver tag is `1.0.1` or none exist
 - WHEN Packaging finishes the Docker build
-- THEN `docker push` runs for the versioned GHCR tag and `:latest`
+- THEN `docker push` runs for `ghcr.io/<owner>/haystack_recommender:1.0.2` (or `1.0.0` when none exist) and `:latest`
 
 #### Scenario: PR skips registry push
 - GIVEN a pull request from `develop` to `master` triggered the release pipeline

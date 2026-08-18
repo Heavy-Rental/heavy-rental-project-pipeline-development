@@ -7,7 +7,8 @@
 #   3. Security Testing needs Integration — SAST (Semgrep p/python) + Trivy
 #   4. CodeQL Analysis  needs Integration — GitHub CodeQL (Python)
 #   5. Packaging        needs Integration + QC + Security + CodeQL
-#                       uv build + Docker image (tar artifact; GHCR off PR)
+#                       uv build + Docker image (tar artifact; GHCR
+#                       haystack_recommender:<semver> + :latest, off PR)
 #
 # Security report format (standard): SARIF 2.1.0
 #   - Semgrep → semgrep.sarif
@@ -25,7 +26,8 @@
 #     → this pipeline
 #
 # Same gates as integration-pipeline.yml plus uv build wheel/sdist artifacts
-# and a Docker image (gzipped tar always; GHCR push outside pull requests).
+# and a Docker image (gzipped tar always; GHCR haystack_recommender push
+# outside pull requests).
 # Uses the application Dockerfile when present; otherwise generates a
 # Python 3.12 + uv + uvicorn image (Haystack FastAPI, not Tomcat).
 # The image is env-driven for Academy CD: no lab hostnames, POSTGRES_*,
@@ -48,6 +50,8 @@
 #   act — see haystack-fast-api-pipeline/act/README.md
 #
 # GHCR push uses GITHUB_TOKEN (packages: write). No LLM / DB secrets.
+# Registry image: ghcr.io/<owner>/haystack_recommender:<x.y.z> and :latest.
+# <x.y.z> is the previous GHCR semver patch-bumped (first publish: 1.0.0).
 # Image is saved as a gzipped tar for a later deploy project that cannot pull GHCR.
 # This family does not provision infrastructure, deploy, or operate production.
 # =============================================================================
@@ -88,7 +92,7 @@ env:
   APP_PATH: app
   DEFAULT_APP_REPOSITORY: Heavy-Rental/haystack-fast-api
   DEFAULT_APP_REF: master
-  IMAGE_NAME: haystack-fast-api
+  IMAGE_NAME: haystack_recommender
   PYTHON_BASE_IMAGE: python:3.12-slim-bookworm
   NEED_DECOMPOSER: stub
   INDEXING_EMBEDDER: mock
@@ -611,6 +615,50 @@ jobs:
           echo "==> dist outputs"
           ls -lah dist || true
 
+      - name: Resolve next haystack_recommender version
+        id: image-version
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPOSITORY_OWNER: ${{ github.repository_owner }}
+          IMAGE_NAME: ${{ env.IMAGE_NAME }}
+        run: |
+          set -euo pipefail
+          OWNER="${GH_REPOSITORY_OWNER}"
+          PKG="${IMAGE_NAME,,}"
+
+          list_tags() {
+            local path="$1"
+            gh api --paginate "${path}" --jq '.[] | .metadata.container.tags[]?' 2>/dev/null || true
+          }
+
+          TAGS="$(list_tags "/orgs/${OWNER}/packages/container/${PKG}/versions")"
+          if [ -z "${TAGS}" ]; then
+            TAGS="$(list_tags "/users/${OWNER}/packages/container/${PKG}/versions")"
+          fi
+
+          PREV="$(printf '%s\n' "${TAGS}" | grep -E '^[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -n1 || true)"
+          if [ -z "${PREV}" ]; then
+            NEXT="1.0.0"
+            PREV_DISPLAY="none"
+          else
+            IFS=. read -r MAJ MIN PAT <<< "${PREV}"
+            NEXT="${MAJ}.${MIN}.$((PAT + 1))"
+            PREV_DISPLAY="${PREV}"
+          fi
+
+          echo "previous_version=${PREV_DISPLAY}" >> "$GITHUB_OUTPUT"
+          echo "image_version=${NEXT}" >> "$GITHUB_OUTPUT"
+          echo "Resolved GHCR image version: previous=${PREV_DISPLAY} next=${NEXT}"
+          {
+            echo "### GHCR image version"
+            echo ""
+            echo "| Field | Value |"
+            echo "| --- | --- |"
+            echo "| Package | \`${PKG}\` |"
+            echo "| Previous semver | \`${PREV_DISPLAY}\` |"
+            echo "| Next semver | \`${NEXT}\` |"
+          } >> "$GITHUB_STEP_SUMMARY"
+
       - name: Stage versioned and stable artifacts
         id: package
         working-directory: ${{ env.APP_PATH }}
@@ -618,6 +666,8 @@ jobs:
           GH_RUN_NUMBER: ${{ github.run_number }}
           GH_REPOSITORY_OWNER: ${{ github.repository_owner }}
           IMAGE_NAME: ${{ env.IMAGE_NAME }}
+          IMAGE_VERSION: ${{ steps.image-version.outputs.image_version }}
+          PREVIOUS_IMAGE_VERSION: ${{ steps.image-version.outputs.previous_version }}
         run: |
           set -euo pipefail
           WHEEL="$(find dist -maxdepth 1 -type f -name '*.whl' | head -n 1 || true)"
@@ -660,14 +710,18 @@ jobs:
             fi
           done
 
-          IMAGE_TAG="v${VERSION}-build${RUN_ID}-${SHORT_SHA}"
+          IMAGE_TAG="${IMAGE_VERSION}"
+          if [ -z "${IMAGE_TAG}" ]; then
+            echo "::error::Resolved image version is empty"
+            exit 1
+          fi
           IMAGE_NAME_LC="${IMAGE_NAME,,}"
           OWNER_LC="${GH_REPOSITORY_OWNER,,}"
           IMAGE_LOCAL="${IMAGE_NAME_LC}:${IMAGE_TAG}"
           IMAGE_LOCAL_LATEST="${IMAGE_NAME_LC}:latest"
           IMAGE_REMOTE="ghcr.io/${OWNER_LC}/${IMAGE_NAME_LC}:${IMAGE_TAG}"
           IMAGE_REMOTE_LATEST="ghcr.io/${OWNER_LC}/${IMAGE_NAME_LC}:latest"
-          IMAGE_TAR="haystack-fast-api-v${VERSION}-build${RUN_ID}-${SHORT_SHA}.tar.gz"
+          IMAGE_TAR="haystack_recommender-${IMAGE_TAG}.tar.gz"
 
           {
             echo "versioned_wheel=${VERSIONED_WHEEL}"
@@ -677,6 +731,7 @@ jobs:
             echo "version=${VERSION}"
             echo "short_sha=${SHORT_SHA}"
             echo "image_tag=${IMAGE_TAG}"
+            echo "previous_image_version=${PREVIOUS_IMAGE_VERSION}"
             echo "image_local=${IMAGE_LOCAL}"
             echo "image_local_latest=${IMAGE_LOCAL_LATEST}"
             echo "image_remote=${IMAGE_REMOTE}"
@@ -690,12 +745,14 @@ jobs:
             echo "| Field | Value |"
             echo "| --- | --- |"
             echo "| version | \`${VERSION}\` |"
+            echo "| Previous GHCR semver | \`${PREVIOUS_IMAGE_VERSION}\` |"
             echo "| Versioned wheel | \`${VERSIONED_WHEEL}\` |"
             echo "| Stable wheel | \`${STABLE_WHEEL}\` |"
             echo "| Versioned sdist | \`${VERSIONED_SDIST}\` |"
             echo "| Stable sdist | \`${STABLE_SDIST}\` |"
             echo "| Docker image (local) | \`${IMAGE_LOCAL}\` |"
             echo "| Docker image (GHCR) | \`${IMAGE_REMOTE}\` |"
+            echo "| Docker image (GHCR latest) | \`${IMAGE_REMOTE_LATEST}\` |"
             echo "| Image archive | \`${IMAGE_TAR}\` |"
           } >> "$GITHUB_STEP_SUMMARY"
 
@@ -888,12 +945,33 @@ jobs:
       - name: Push Docker image to GHCR
         if: github.event_name != 'pull_request'
         env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPOSITORY_OWNER: ${{ github.repository_owner }}
+          IMAGE_NAME: ${{ env.IMAGE_NAME }}
+          IMAGE_TAG: ${{ steps.package.outputs.image_tag }}
           IMAGE_REMOTE: ${{ steps.package.outputs.image_remote }}
           IMAGE_REMOTE_LATEST: ${{ steps.package.outputs.image_remote_latest }}
         run: |
           set -euo pipefail
           IMAGE_REMOTE="${IMAGE_REMOTE,,}"
           IMAGE_REMOTE_LATEST="${IMAGE_REMOTE_LATEST,,}"
+          OWNER="${GH_REPOSITORY_OWNER}"
+          PKG="${IMAGE_NAME,,}"
+
+          list_tags() {
+            local path="$1"
+            gh api --paginate "${path}" --jq '.[] | .metadata.container.tags[]?' 2>/dev/null || true
+          }
+
+          TAGS="$(list_tags "/orgs/${OWNER}/packages/container/${PKG}/versions")"
+          if [ -z "${TAGS}" ]; then
+            TAGS="$(list_tags "/users/${OWNER}/packages/container/${PKG}/versions")"
+          fi
+          if printf '%s\n' "${TAGS}" | grep -qx "${IMAGE_TAG}"; then
+            echo "::error::GHCR tag ${IMAGE_REMOTE} already exists; will not overwrite a version tag."
+            exit 1
+          fi
+
           docker push "${IMAGE_REMOTE}"
           docker push "${IMAGE_REMOTE_LATEST}"
           echo "Pushed:"
@@ -917,6 +995,7 @@ jobs:
           EVENT_NAME: ${{ github.event_name }}
           IMAGE_LOCAL: ${{ steps.package.outputs.image_local }}
           IMAGE_REMOTE: ${{ steps.package.outputs.image_remote }}
+          IMAGE_REMOTE_LATEST: ${{ steps.package.outputs.image_remote_latest }}
           IMAGE_TAR: ${{ steps.package.outputs.image_tar }}
           IMAGE_ID: ${{ steps.docker.outputs.image_id }}
         run: |
@@ -928,7 +1007,7 @@ jobs:
             echo "2. **Image archive** — \`docker load < ${IMAGE_TAR}\` then run \`${IMAGE_LOCAL}\` (id \`${IMAGE_ID}\`)."
           } >> "$GITHUB_STEP_SUMMARY"
           if [ "${EVENT_NAME}" != "pull_request" ]; then
-            echo "3. **GHCR** — \`docker pull ${IMAGE_REMOTE}\` (also tagged \`:latest\`)." >> "$GITHUB_STEP_SUMMARY"
+            echo "3. **GHCR** — \`docker pull ${IMAGE_REMOTE}\` or \`docker pull ${IMAGE_REMOTE_LATEST}\`." >> "$GITHUB_STEP_SUMMARY"
           else
             echo "3. **GHCR** — push skipped on pull_request; image is available as the tar artifact only." >> "$GITHUB_STEP_SUMMARY"
           fi

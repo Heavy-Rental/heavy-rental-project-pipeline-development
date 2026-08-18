@@ -48,7 +48,7 @@ Release adds **Packaging** (`uv build` wheel + sdist, then Docker image tar + GH
 | FS / CRITICAL SCA | Trivy |
 | Code scanning | CodeQL `python` |
 | Package | `uv build` (Hatchling wheel + sdist) |
-| Image | `docker build` (app Dockerfile or generated uv/uvicorn + `--extra neo4j`) → gzipped tar; GHCR off PR. No baked `POSTGRES_*` / `SOURCE_*` / `TARGET_*`; dummy `docker run -e` proves runtime env. Sidecar dirs copied only if present. |
+| Image | `docker build` (app Dockerfile or generated uv/uvicorn + `--extra neo4j`) → gzipped tar; GHCR `haystack_recommender:<semver>` + `:latest` off PR (semver is previous GHCR `x.y.z` + patch, or `1.0.0`). No baked `POSTGRES_*` / `SOURCE_*` / `TARGET_*`; dummy `docker run -e` proves runtime env. Sidecar dirs copied only if present. |
 
 CI-safe Haystack profile (matches `tests/conftest.py` and `QUICKSTART.md` Profile A):
 
