@@ -17,14 +17,14 @@ Specification: [`../specification/README.md`](../specification/README.md). CD wa
 
 | App (`develop`) | Release / CD contract |
 | --- | --- |
-| Java **21**, `packaging=war`, Tomcat `provided` | `tomcat:10.1-jdk21-temurin` + `ROOT.war` |
+| Java **21**, `packaging=war`, Tomcat `provided` | `tomcat:10.1-jdk21-temurin` + `ROOT.war` (not a fat JAR / `java -jar` image) |
 | `server.port=8080`, Actuator on the classpath | Health `GET :8080/actuator/health` or `/` |
-| No app `Dockerfile` | Release **generates** the Tomcat Dockerfile |
+| App `Dockerfile` ignored | Release **always** generates the Tomcat + WAR image. Runnable with `docker run -p 8080:8080 -e …` (Docker Desktop or any Engine) |
 
-Generated image (when the app has no Dockerfile):
+Generated image (app Dockerfile is ignored):
 
 ```dockerfile
-# Runtime env from heavy-rental/rest (do not ENV/ARG these):
+# Runtime env from docker -e / compose env_file (do not ENV/ARG these):
 #   POSTGRES_*, SPRING_DATASOURCE_*, HAYSTACK_BASE_URL, STRIPE_*, APP_JWT_SECRET
 FROM tomcat:10.1-jdk21-temurin
 COPY target/*.war /usr/local/tomcat/webapps/ROOT.war
@@ -32,7 +32,9 @@ EXPOSE 8080
 CMD ["catalina.sh", "run"]
 ```
 
-Packaging fails if the Dockerfile (generated or app-supplied) bakes `ENV`/`ARG` for those keys or copies a `.env`. After build it runs the image with dummy `SPRING_DATASOURCE_URL` / `POSTGRES_HOST` / `HAYSTACK_BASE_URL` / Stripe / JWT to prove they are visible. It does not start Tomcat or connect to RDS. `spring-datasource.env` is a Release artifact (no password) and is **not** copied into the image.
+Desktop / any Engine: `docker run -p 8080:8080 -e SPRING_DATASOURCE_URL=… ghcr.io/<owner>/heavy_rental_rest_api:<tag>`
+
+Packaging fails if the generated Dockerfile bakes `ENV`/`ARG` for those keys or copies a `.env`. After build it proves dummy `SPRING_DATASOURCE_URL` / `POSTGRES_HOST` / `HAYSTACK_BASE_URL` / Stripe / JWT are visible, confirms `ROOT.war` has `WEB-INF/`, and starts Tomcat only to prove `:8080` binds. It does not connect to RDS. `spring-datasource.env` is a Release artifact (no password) and is **not** copied into the image.
 
 GHCR name: `ghcr.io/<owner>/heavy_rental_rest_api` (lowercase). On `Heavy-Rental` that is `ghcr.io/heavy-rental/heavy_rental_rest_api:<x.y.z>` and `:latest`. The version tag is the previous GHCR semver with the patch bumped (first publish is `1.0.0`).
 

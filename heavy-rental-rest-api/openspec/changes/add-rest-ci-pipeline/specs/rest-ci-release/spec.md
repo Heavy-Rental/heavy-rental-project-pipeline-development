@@ -15,16 +15,28 @@ Packaging SHALL run only after Integration, Quality Control, Security Testing, a
 - THEN Packaging does not start
 
 ### Requirement: Versioned WAR
-Packaging SHALL run `./mvnw -DskipTests package`, prefer a `.war` (jar fallback), and SHALL stage versioned and stable filenames. The job SHALL fail if no package file exists.
+Packaging SHALL run `./mvnw -DskipTests package` and SHALL stage a `.war` that contains `WEB-INF/` as versioned and stable filenames. The job SHALL fail if no `.war` exists, if `packaging` is not `war`, or if the file is an executable JAR.
 
 #### Scenario: Both names uploaded
-- GIVEN package produced a WAR
+- GIVEN package produced a WAR with `WEB-INF/`
 - WHEN Packaging finishes
 - THEN a versioned WAR and a stable WAR copy are uploaded as artifacts
 - AND both files are non-empty
 
+#### Scenario: JAR is rejected
+- GIVEN `target/` has only an executable `.jar`
+- WHEN Packaging verifies the package
+- THEN the job fails
+- AND no image is built from that JAR as `ROOT.war`
+
 ### Requirement: Tomcat image
-Packaging SHALL build a Docker image from `tomcat:10.1-jdk21-temurin` with the WAR as `ROOT.war` when the application checkout has no Dockerfile, save a gzipped tar, and SHALL NOT start Tomcat as a long-running service on the runner.
+Packaging SHALL always generate and build an image from `tomcat:10.1-jdk21-temurin` with the WAR as `ROOT.war` and `EXPOSE 8080`. It SHALL NOT use an application `Dockerfile` as the GHCR / Docker Desktop / compose image. It SHALL save a gzipped tar that includes the local, `:latest`, and both GHCR tags.
+
+#### Scenario: App Dockerfile is not the deploy image
+- GIVEN the Spring repo contains a `Dockerfile`
+- WHEN Packaging prepares the image
+- THEN that file is moved aside
+- AND the generated Tomcat + `ROOT.war` Dockerfile is used for `docker build`
 
 #### Scenario: Image tar is non-empty
 - GIVEN `docker build` succeeds
@@ -69,10 +81,20 @@ The Dockerfile Packaging uses SHALL NOT set `ENV`/`ARG` for `POSTGRES_*`, `SPRIN
 - THEN the job fails before treating the image as releasable
 
 ### Requirement: Runtime env is visible without a live database
-After a successful build, Packaging SHALL inspect image `Config.Env` and SHALL run the image with dummy `SPRING_DATASOURCE_URL`, `POSTGRES_HOST`, `HAYSTACK_BASE_URL`, `STRIPE_PUBLISHABLE_KEY`, and `APP_JWT_SECRET`. Those dummy values SHALL be visible inside the container. Packaging SHALL NOT start Tomcat (`catalina.sh`) and SHALL NOT connect to Academy RDS.
+After a successful build, Packaging SHALL inspect image `Config.Env` and SHALL run the image with dummy `SPRING_DATASOURCE_URL`, `POSTGRES_HOST`, `HAYSTACK_BASE_URL`, `STRIPE_PUBLISHABLE_KEY`, and `APP_JWT_SECRET`. Those dummy values SHALL be visible inside the container. Packaging SHALL NOT connect to Academy RDS or QC Postgres.
 
 #### Scenario: Dummy guest keys are visible
 - GIVEN the image built
 - WHEN Packaging runs the container with `POSTGRES_HOST=sor.example.test` and `HAYSTACK_BASE_URL=http://haystack.example.test:8000`
 - THEN those values appear in the container environment
 - AND `Config.Env` does not contain baked `POSTGRES_*` / `SPRING_DATASOURCE_*` / `HAYSTACK_*` / `STRIPE_*` / `APP_JWT_*`
+
+### Requirement: Image is deployable on any Docker Engine
+After `docker build`, Packaging SHALL confirm the image exposes `8080/tcp`, SHALL confirm `/usr/local/tomcat/webapps/ROOT.war` exists and contains `WEB-INF/`, SHALL start Tomcat with dummy env, SHALL wait until TCP `:8080` accepts, and SHALL stop the container. Packaging SHALL NOT leave Tomcat running and SHALL NOT require actuator HTTP 200 (that needs a live database).
+
+#### Scenario: Tomcat binds 8080
+- GIVEN the image built
+- WHEN Packaging starts the container
+- THEN TCP `:8080` accepts
+- AND `ROOT.war` is a webapp with `WEB-INF/`
+- AND the container is removed before Packaging finishes
