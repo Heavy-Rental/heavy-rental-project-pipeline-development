@@ -23,10 +23,10 @@ On the Integration CI reusable workflow, Quality Control SHALL set `environment:
 - THEN the job fails before starting Postgres
 
 ### Requirement: Release uses Environment production
-On the Release reusable workflow, Quality Control SHALL set `environment: production` and SHALL require `REST_API_CLOUD_DB_HOST`, `REST_API_CLOUD_DB_NAME`, `REST_API_CLOUD_DB_USER`, `REST_API_CLOUD_DB_PASSWORD`, and `REST_API_CLOUD_DB_PORT`.
+On the Release reusable workflow, Quality Control SHALL set `environment: production` and SHALL require `REST_API_DB_NAME`, `REST_API_DB_USER`, `REST_API_DB_PASSWORD`, and `REST_API_DB_PORT`. It SHALL NOT require `REST_API_DB_URL` or `REST_API_CLOUD_DB_*`.
 
-#### Scenario: Missing cloud secret fails
-- GIVEN any required `REST_API_CLOUD_DB_*` secret is empty
+#### Scenario: Missing production secret fails
+- GIVEN any of `REST_API_DB_NAME`, `REST_API_DB_USER`, `REST_API_DB_PASSWORD`, `REST_API_DB_PORT` is empty
 - WHEN Release Quality Control verifies secrets
 - THEN the job fails before starting Postgres
 
@@ -34,7 +34,7 @@ On the Release reusable workflow, Quality Control SHALL set `environment: produc
 Quality Control SHALL start `postgres:16-alpine` on the runner, wait until it accepts connections, run `./mvnw test` against `jdbc:postgresql://localhost:<PORT>/<NAME>`, and stop the container even when tests fail. Tests SHALL bind the datasource password through env, not the Maven CLI.
 
 #### Scenario: Happy path
-- GIVEN secrets are present and tests pass
+- GIVEN `REST_API_DB_*` secrets are present and tests pass
 - WHEN Quality Control runs
 - THEN Postgres starts
 - AND Maven tests exit 0

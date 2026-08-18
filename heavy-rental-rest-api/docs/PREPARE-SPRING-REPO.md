@@ -37,7 +37,7 @@ Desktop / any Engine: `docker run -p 8080:8080 -e SPRING_DATASOURCE_URL=… ghcr
 
 Put timeouts, JPA logging, pricing defaults, and JWT issuer/TTL in `application-prod.properties`. Leave RDS, `HAYSTACK_BASE_URL`, Stripe, `APP_JWT_SECRET`, CORS, and OneMap to SM / `-e`. Sample to copy into the Spring repo: [`samples/application-prod.properties`](samples/application-prod.properties).
 
-Packaging fails if the generated Dockerfile bakes `ENV`/`ARG` for those keys or copies a `.env`. After build it proves dummy `SPRING_DATASOURCE_URL` / `POSTGRES_HOST` / `HAYSTACK_BASE_URL` / Stripe / JWT are visible, confirms `ROOT.war` has `WEB-INF/`, and starts Tomcat only to prove `:8080` binds. It does not connect to RDS. `spring-datasource.env` is a Release artifact (no password) and is **not** copied into the image.
+Packaging fails if the generated Dockerfile bakes `ENV`/`ARG` for those keys or copies a `.env`. After build it proves dummy `SPRING_DATASOURCE_URL` / `POSTGRES_HOST` / `HAYSTACK_BASE_URL` / Stripe / JWT are visible, confirms `ROOT.war` has `WEB-INF/`, and starts Tomcat only to prove `:8080` binds. It does not connect to RDS. `spring-datasource.env` is a Release artifact (localhost QC URL, no password) and is **not** copied into the image. Academy CD does not use it.
 
 GHCR name: `ghcr.io/<owner>/heavy_rental_rest_api` (lowercase). On `Heavy-Rental` that is `ghcr.io/heavy-rental/heavy_rental_rest_api:<x.y.z>` and `:latest`. The version tag is the previous GHCR semver with the patch bumped (first publish is `1.0.0`).
 
@@ -63,7 +63,7 @@ On app `develop` today:
 
 ## 3. Produce a pullable image
 
-1. CI Environment **`production`** (Release QC only) has `REST_API_CLOUD_DB_*` if QC is not already green. Those names are **not** CD and **not** what the guest reads.
+1. CI Environment **`production`** (Release QC) has `REST_API_DB_NAME` / `USER` / `PASSWORD` / `PORT`. Dummy local values are enough. Those names are **not** CD and **not** what the guest reads. Do not add `REST_API_CLOUD_DB_*`. `REST_API_DB_URL` is not a secret.
 2. Merge to `master` and **publish a GitHub Release**. That is what pushes GHCR.
 3. Org Packages → `heavy_rental_rest_api` → visibility **Public**. Private GHCR fails CD on purpose (no PAT on the guest).
 4. Record the tag, for example `ghcr.io/heavy-rental/heavy_rental_rest_api:1.0.0` (or `:latest`). Prefer a **new** version tag each deploy (`compose up` is not `--pull always`).
@@ -89,7 +89,7 @@ Everyday operate: [`BOOTSTRAP.md`](BOOTSTRAP.md).
 
 ## 5. GitHub Environment `academy`
 
-Create Environment **`academy`** on the Spring repo. Do **not** point CD at CI Environments `integration` or `production`.
+Create Environment **`academy`** on the Spring repo. Do **not** point CD at CI Environment `integration`.
 
 ### Secrets (runner only — optional fallback)
 
@@ -135,7 +135,7 @@ This CD does **not** create the ASG. Before any `deploy`:
 2. Infra `sync-secrets` filled **`heavy-rental/rest`**.
 3. Guests are InService and SSM Online (Start Lab if the session ended). Desired=0 → infra, not this CD.
 
-The guest (`LabRole`) reads `heavy-rental/rest`. CI `REST_API_CLOUD_DB_*` is never copied onto the instance.
+The guest (`LabRole`) reads `heavy-rental/rest`. Release QC Postgres is never copied onto the instance.
 
 ---
 
@@ -172,8 +172,9 @@ Re-run infra `configure-only` after this patch so guests get a new `.env` includ
 
 ## 9. Do not
 
-- Use CI Environments `integration` / `production` as CD
-- Treat `REST_API_CLOUD_DB_*` as the guest database config
+- Use CI Environment `integration` as CD
+- Treat `REST_API_DB_*` as the guest database config
+- Add `REST_API_CLOUD_DB_*` to Release or Academy
 - Put Vocareum keys or `sk_` in the image
 - Type instance IDs on the Run form
 - Run `terraform apply` from this workflow

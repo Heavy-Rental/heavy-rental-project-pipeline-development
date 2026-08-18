@@ -32,8 +32,10 @@ GHCR name: `ghcr.io/<owner>/heavy_rental_web_portal` (lowercase). On `Heavy-Rent
 
 | Release trigger | What you get |
 | --- | --- |
-| PR `develop` → `master` | `dist/` zip + docker **tar artifact**. **No GHCR push.** |
+| PR `develop` → `master` | `dist/` zip + docker **tar artifact**. **No GHCR push.** Login is skipped. |
 | **Published GitHub Release** | Tar **and** GHCR `<version>` + `:latest` |
+
+Step-by-step (do not set `GITHUB_TOKEN`, why login is skipped, publish Release, public package, `PORTAL_IMAGE`): [`GHCR-RELEASE.md`](GHCR-RELEASE.md).
 
 Academy guests pull **public** GHCR with no token. A PR build is not enough for `PORTAL_IMAGE=ghcr.io/…` unless you `docker load` the tar (`image_http_url` / `IMAGE_HTTP_URL`) or copy the image to ECR.
 

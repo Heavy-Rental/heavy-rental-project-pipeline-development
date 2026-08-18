@@ -66,14 +66,15 @@ Packaging SHALL push the image to `ghcr.io/<owner>/heavy_rental_rest_api` tagged
 - THEN no `docker push` runs
 - AND the gzipped image tar is still uploaded
 
-### Requirement: Cloud JDBC artifact has no password
-Packaging SHALL upload a datasource env file whose `SPRING_DATASOURCE_URL` uses `REST_API_CLOUD_DB_HOST` and SHALL NOT write `SPRING_DATASOURCE_PASSWORD` into that artifact. That file SHALL NOT be copied into the Docker image.
+### Requirement: Datasource env artifact has no password and no live RDS host
+Packaging SHALL upload a datasource env file whose `SPRING_DATASOURCE_URL` is the local QC JDBC URL (`jdbc:postgresql://localhost:<REST_API_DB_PORT>/<REST_API_DB_NAME>`). It SHALL NOT write `SPRING_DATASOURCE_PASSWORD` or an Academy / AWS RDS hostname into that artifact. That file SHALL NOT be copied into the Docker image. Academy CD SHALL NOT consume this file; the guest reads `heavy-rental/rest`.
 
 #### Scenario: Password omitted
 - GIVEN Packaging builds the deploy env file
 - WHEN the artifact is written
 - THEN it contains `SPRING_DATASOURCE_URL`
-- AND it does not contain the cloud database password
+- AND that URL uses `localhost`
+- AND it does not contain the QC or RDS password
 
 #### Scenario: Artifact stays out of the image
 - GIVEN the generated or application Dockerfile

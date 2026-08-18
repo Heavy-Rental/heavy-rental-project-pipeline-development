@@ -34,7 +34,7 @@ assert-caller
  GitHub Flow CI Gate
 ```
 
-Release adds **Packaging** after Integration + QC + Security + CodeQL. Release QC uses Environment `production` and `REST_API_CLOUD_DB_*` (still a **local** Docker Postgres for tests). Packaging writes a versioned WAR, a Tomcat image tar, GHCR push off PR, and a cloud JDBC env file **without password**. That env file is a workflow artifact only. The image must accept `POSTGRES_*` / `SPRING_DATASOURCE_*` / `HAYSTACK_BASE_URL` / Stripe / `APP_JWT_SECRET` at runtime (ADR 0007); Packaging proves that with dummy env and refuses baked hostnames.
+Release adds **Packaging** after Integration + QC + Security + CodeQL. Release QC uses Environment `production` and the same `REST_API_DB_*` names as Integration (still a **local** Docker Postgres). Packaging writes a versioned WAR, a Tomcat image tar, GHCR push off PR, and a localhost JDBC env file **without password**. That env file is a workflow artifact only; Academy CD does not use it. The image must accept `POSTGRES_*` / `SPRING_DATASOURCE_*` / `HAYSTACK_BASE_URL` / Stripe / `APP_JWT_SECRET` at runtime (ADR 0007); Packaging proves that with dummy env and refuses baked hostnames.
 
 QC “Package WAR” on Integration CI is **build verification**, not a deploy.
 
@@ -59,9 +59,9 @@ Configure on the **application** repo, not this pipeline-development repo.
 | Pipeline | Environment | Names |
 | --- | --- | --- |
 | Integration CI QC | `integration` | `REST_API_DB_NAME`, `REST_API_DB_USER`, `REST_API_DB_PASSWORD`, `REST_API_DB_PORT` |
-| Release QC + Packaging | `production` | `REST_API_CLOUD_DB_HOST`, `REST_API_CLOUD_DB_NAME`, `REST_API_CLOUD_DB_USER`, `REST_API_CLOUD_DB_PASSWORD`, `REST_API_CLOUD_DB_PORT` |
+| Release QC + Packaging | `production` | Same four names. Dummy local values are enough. |
 
-`REST_API_DB_URL` is **not** a secret. QC builds `jdbc:postgresql://localhost:<PORT>/<NAME>` after Docker Postgres starts. Do not treat `REST_API_CLOUD_DB_*` as guest CD config (that is `heavy-rental/rest` on the instance).
+`REST_API_DB_URL` is **not** a secret. QC builds `jdbc:postgresql://localhost:<PORT>/<NAME>` after Docker Postgres starts. Do not add `REST_API_CLOUD_DB_*`. Guest CD config is `heavy-rental/rest` on the instance.
 
 Caller jobs must use an explicit `secrets:` map. Do not set `environment:` on a `uses:` job.
 

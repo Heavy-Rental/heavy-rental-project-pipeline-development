@@ -54,7 +54,7 @@ assert-lab
 | Variable | `REST_IMAGE` | Public GHCR or ECR tag |
 | Variable | `IMAGE_HTTP_URL` | Optional HTTPS or `s3://` CI tar |
 
-Do **not** point this workflow at CI Environments `integration` or `production`. Do not copy `REST_API_CLOUD_DB_*` onto the guest.
+Do **not** point this workflow at CI Environments `integration` or `production`. Do not copy `REST_API_DB_*` onto the guest.
 
 The **runner** uses Vocareum keys. The **EC2** uses `LabRole`.
 

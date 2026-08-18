@@ -18,8 +18,7 @@ REST Fast Feedback / Integration / Release YAML already exists. Haystack and mob
 | Quality Control | Compile + Spring tests against Docker Postgres + package WAR (build verification) |
 | Security | Semgrep Java + Trivy CRITICAL gate |
 | Packaging | Versioned WAR + env-driven Tomcat image tar; GHCR off PR; `spring-datasource.env` not in the image |
-| `REST_API_DB_*` | Integration CI Environment `integration` — local Docker Postgres only |
-| `REST_API_CLOUD_DB_*` | Release Environment `production` — local Docker Postgres + cloud JDBC artifact (no password) |
+| `REST_API_DB_*` | Integration Environment `integration` and Release Environment `production` — local Docker Postgres only |
 | Guest SM | `heavy-rental/rest` on the instance — Academy CD, not this family |
 
 ## Stakeholders
@@ -31,7 +30,7 @@ REST Fast Feedback / Integration / Release YAML already exists. Haystack and mob
 ## Risks
 
 1. **Wrong toolchain** — Node, uv, or Gradle on this family. Forbidden.
-2. **Secret mix-up** — putting `REST_API_CLOUD_DB_*` on the guest or using them as Integration CI secrets.
+2. **Secret mix-up** — putting `REST_API_DB_*` on the guest or using them as Academy RDS.
 3. **`environment:` on `uses:`** — invalid; explicit secrets map only.
 4. **Scope creep** — Terraform or Ansible in CI YAML. Forbidden.
 

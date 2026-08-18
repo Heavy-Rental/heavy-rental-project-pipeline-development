@@ -15,7 +15,7 @@ When reality diverges, fix this prompt first — then update the YAML.
 - Release: published GitHub Release **or** PR `develop` → `master`. Same gates + Packaging (WAR + Tomcat image; tar always; GHCR off PR). Image is env-driven: refuse baked `POSTGRES_*` / `SPRING_DATASOURCE_*` / `HAYSTACK_*` / `STRIPE_*` / `APP_JWT_*`; prove dummy runtime env. Do not `COPY` `spring-datasource.env` into the image.
 - Java 21 Temurin + `./mvnw`. QC starts Docker `postgres:16-alpine`.
 - Integration QC secrets: `REST_API_DB_*` / Environment `integration`.
-- Release QC secrets: `REST_API_CLOUD_DB_*` / Environment `production`.
+- Release QC secrets: same `REST_API_DB_*` names / Environment `production`. `REST_API_DB_URL` is derived.
 - Specs live under `heavy-rental-rest-api/`.
 - This family stops at packaging. Academy CD is `deploy-pipeline/`.
 
@@ -101,7 +101,8 @@ Job `name:` values (branch protection):
 ## S — Safeguards (negative space)
 
 - **DO NOT** apply Terraform or compose onto `asg-rest` in this family.
-- **DO NOT** treat `REST_API_CLOUD_DB_*` as guest SM (`heavy-rental/rest`).
+- **DO NOT** treat `REST_API_DB_*` as guest SM (`heavy-rental/rest`).
+- **DO NOT** require `REST_API_CLOUD_DB_*` or `REST_API_DB_URL` as secrets.
 - **DO NOT** bake `POSTGRES_*`, `SPRING_DATASOURCE_*`, `HAYSTACK_*`, `STRIPE_*`, `APP_JWT_*`, or `REST_API_*` into the Release image (`ENV`/`ARG`/`COPY .env`/`--build-arg`).
 - **DO NOT** `COPY` `spring-datasource.env` into the image.
 - **DO NOT** require `REST_API_DB_URL` as a secret.
