@@ -32,7 +32,13 @@ Packaging SHALL zip the `dist/` contents and SHALL build `nginx:1.27-alpine` ser
 - THEN a gzipped tar artifact exists and is non-empty
 
 ### Requirement: GHCR push only off pull requests
-Packaging SHALL push `ghcr.io/{owner}/heavy-rental-web-portal` with the versioned tag and `:latest` when the event is not a pull request. On a `develop` → `master` pull request it SHALL skip the push and still upload the tar.
+Packaging SHALL push the image to `ghcr.io/<owner>/heavy_rental_web_portal` tagged with a new `x.y.z` semver and `:latest` when the event is not a pull request. The semver SHALL be the highest existing `x.y.z` tag on that GHCR package with the patch incremented; if no such tag exists, it SHALL be `1.0.0`. Packaging SHALL NOT overwrite an existing `x.y.z` tag. On a `develop` → `master` pull request it SHALL skip the push and still upload the tar.
+
+#### Scenario: Published release pushes
+- GIVEN a published GitHub Release triggered the release pipeline
+- AND the highest GHCR `heavy_rental_web_portal` semver tag is `1.0.1` or none exist
+- WHEN Packaging finishes the Docker build
+- THEN `docker push` runs for `ghcr.io/<owner>/heavy_rental_web_portal:1.0.2` (or `1.0.0` when none exist) and `:latest`
 
 #### Scenario: PR skips registry push
 - GIVEN a pull request from `develop` to `master` triggered the release pipeline

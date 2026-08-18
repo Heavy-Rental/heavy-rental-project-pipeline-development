@@ -19,7 +19,9 @@
 # Packaging output (Vite SPA static deploy):
 #   npm run build → dist/ (index.html + assets/*.js|*.css|…)
 #   Deploy archive: .zip of dist/ contents (web-server static root)
-#   Docker image:   nginx serving dist/ (SPA try_files); push to GHCR (not on PR)
+#   Docker image:   nginx serving dist/ (SPA try_files); GHCR
+#                   heavy_rental_web_portal:<semver> + :latest (not on PR)
+#                   <semver> is previous GHCR x.y.z patch-bumped (first: 1.0.0)
 #   Cloud-ready: no VITE_* lab URLs in the bundle; no REST_BASE_URL / Stripe sk_ /
 #   AWS keys in ENV/ARG/.env. Baked nginx is try_files only so CD can mount /api.
 #
@@ -94,7 +96,7 @@ env:
   APP_PATH: app
   DEFAULT_APP_REPOSITORY: SA62-team1/heavy-rental-react-web-portal
   DEFAULT_APP_REF: master
-  IMAGE_NAME: heavy-rental-web-portal
+  IMAGE_NAME: heavy_rental_web_portal
   NGINX_BASE_IMAGE: nginx:1.27-alpine
 
 jobs:
@@ -715,7 +717,8 @@ jobs:
   #   - build output dir: dist/ (default; index.html is the document root)
   #   - zip unit:         .zip of dist/ *contents* (extract → web server root)
   #   - docker unit:      nginx:alpine serving dist/ (SPA fallback to index.html)
-  #   - GHCR:             push on release (skipped on pull_request)
+  #   - GHCR:             heavy_rental_web_portal:<semver> + :latest
+  #                       on release (skipped on pull_request)
   # Do not ship source or node_modules in either package.
   # ---------------------------------------------------------------------------
   packaging:
@@ -825,6 +828,50 @@ jobs:
           fi
           echo "dist/ has no sk_/AWS/JDBC/localhost:8080|8000 bake-in."
 
+      - name: Resolve next heavy_rental_web_portal version
+        id: image-version
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPOSITORY_OWNER: ${{ github.repository_owner }}
+          IMAGE_NAME: ${{ env.IMAGE_NAME }}
+        run: |
+          set -euo pipefail
+          OWNER="${GH_REPOSITORY_OWNER}"
+          PKG="${IMAGE_NAME,,}"
+
+          list_tags() {
+            local path="$1"
+            gh api --paginate "${path}" --jq '.[] | .metadata.container.tags[]?' 2>/dev/null || true
+          }
+
+          TAGS="$(list_tags "/orgs/${OWNER}/packages/container/${PKG}/versions")"
+          if [ -z "${TAGS}" ]; then
+            TAGS="$(list_tags "/users/${OWNER}/packages/container/${PKG}/versions")"
+          fi
+
+          PREV="$(printf '%s\n' "${TAGS}" | grep -E '^[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -n1 || true)"
+          if [ -z "${PREV}" ]; then
+            NEXT="1.0.0"
+            PREV_DISPLAY="none"
+          else
+            IFS=. read -r MAJ MIN PAT <<< "${PREV}"
+            NEXT="${MAJ}.${MIN}.$((PAT + 1))"
+            PREV_DISPLAY="${PREV}"
+          fi
+
+          echo "previous_version=${PREV_DISPLAY}" >> "$GITHUB_OUTPUT"
+          echo "image_version=${NEXT}" >> "$GITHUB_OUTPUT"
+          echo "Resolved GHCR image version: previous=${PREV_DISPLAY} next=${NEXT}"
+          {
+            echo "### GHCR image version"
+            echo ""
+            echo "| Field | Value |"
+            echo "| --- | --- |"
+            echo "| Package | \`${PKG}\` |"
+            echo "| Previous semver | \`${PREV_DISPLAY}\` |"
+            echo "| Next semver | \`${NEXT}\` |"
+          } >> "$GITHUB_STEP_SUMMARY"
+
       - name: Create release package (.zip for Vite static web deploy)
         id: package
         working-directory: ${{ env.APP_PATH }}
@@ -833,6 +880,8 @@ jobs:
           GH_RUN_NUMBER: ${{ github.run_number }}
           GH_REPOSITORY_OWNER: ${{ github.repository_owner }}
           IMAGE_NAME: ${{ env.IMAGE_NAME }}
+          IMAGE_VERSION: ${{ steps.image-version.outputs.image_version }}
+          PREVIOUS_IMAGE_VERSION: ${{ steps.image-version.outputs.previous_version }}
         run: |
           set -euo pipefail
           DIST="${VITE_DIST_DIR}"
@@ -873,7 +922,11 @@ jobs:
           file "${ARCHIVE_PATH}" || true
           ls -lh "${ARCHIVE_PATH}" "${STABLE_PATH}"
 
-          IMAGE_TAG="v${VERSION}-build${RUN_ID}-${SHORT_SHA}"
+          IMAGE_TAG="${IMAGE_VERSION}"
+          if [ -z "${IMAGE_TAG}" ]; then
+            echo "::error::Resolved image version is empty"
+            exit 1
+          fi
           # GHCR requires lowercase image repository path segments
           IMAGE_NAME_LC="${IMAGE_NAME,,}"
           OWNER_LC="${GH_REPOSITORY_OWNER,,}"
@@ -881,7 +934,7 @@ jobs:
           IMAGE_LOCAL_LATEST="${IMAGE_NAME_LC}:latest"
           IMAGE_REMOTE="ghcr.io/${OWNER_LC}/${IMAGE_NAME_LC}:${IMAGE_TAG}"
           IMAGE_REMOTE_LATEST="ghcr.io/${OWNER_LC}/${IMAGE_NAME_LC}:latest"
-          IMAGE_TAR="heavy-rental-web-portal-v${VERSION}-build${RUN_ID}-${SHORT_SHA}.tar.gz"
+          IMAGE_TAR="heavy_rental_web_portal-${IMAGE_TAG}.tar.gz"
 
           {
             echo "archive_name=${ARCHIVE_NAME}"
@@ -890,6 +943,7 @@ jobs:
             echo "version=${VERSION}"
             echo "short_sha=${SHORT_SHA}"
             echo "image_tag=${IMAGE_TAG}"
+            echo "previous_image_version=${PREVIOUS_IMAGE_VERSION}"
             echo "image_local=${IMAGE_LOCAL}"
             echo "image_local_latest=${IMAGE_LOCAL_LATEST}"
             echo "image_remote=${IMAGE_REMOTE}"
@@ -1099,6 +1153,10 @@ jobs:
       - name: Push Docker image to GHCR
         if: github.event_name != 'pull_request'
         env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPOSITORY_OWNER: ${{ github.repository_owner }}
+          IMAGE_NAME: ${{ env.IMAGE_NAME }}
+          IMAGE_TAG: ${{ steps.package.outputs.image_tag }}
           IMAGE_REMOTE: ${{ steps.package.outputs.image_remote }}
           IMAGE_REMOTE_LATEST: ${{ steps.package.outputs.image_remote_latest }}
         run: |
@@ -1106,6 +1164,23 @@ jobs:
           # Repository path already lowercased at package time; re-enforce for GHCR
           IMAGE_REMOTE="${IMAGE_REMOTE,,}"
           IMAGE_REMOTE_LATEST="${IMAGE_REMOTE_LATEST,,}"
+          OWNER="${GH_REPOSITORY_OWNER}"
+          PKG="${IMAGE_NAME,,}"
+
+          list_tags() {
+            local path="$1"
+            gh api --paginate "${path}" --jq '.[] | .metadata.container.tags[]?' 2>/dev/null || true
+          }
+
+          TAGS="$(list_tags "/orgs/${OWNER}/packages/container/${PKG}/versions")"
+          if [ -z "${TAGS}" ]; then
+            TAGS="$(list_tags "/users/${OWNER}/packages/container/${PKG}/versions")"
+          fi
+          if printf '%s\n' "${TAGS}" | grep -qx "${IMAGE_TAG}"; then
+            echo "::error::GHCR tag ${IMAGE_REMOTE} already exists; will not overwrite a version tag."
+            exit 1
+          fi
+
           docker push "${IMAGE_REMOTE}"
           docker push "${IMAGE_REMOTE_LATEST}"
           echo "Pushed:"
@@ -1124,6 +1199,7 @@ jobs:
           STABLE_NAME: ${{ steps.package.outputs.stable_name }}
           IMAGE_LOCAL: ${{ steps.package.outputs.image_local }}
           IMAGE_REMOTE: ${{ steps.package.outputs.image_remote }}
+          IMAGE_REMOTE_LATEST: ${{ steps.package.outputs.image_remote_latest }}
           IMAGE_TAR: ${{ steps.package.outputs.image_tar }}
           IMAGE_ID: ${{ steps.docker.outputs.image_id }}
         run: |
@@ -1141,6 +1217,7 @@ jobs:
             echo "| Stable archive | \`${STABLE_NAME}\` |"
             echo "| Docker image (local) | \`${IMAGE_LOCAL}\` |"
             echo "| Docker image (GHCR) | \`${IMAGE_REMOTE}\` |"
+            echo "| Docker image (GHCR latest) | \`${IMAGE_REMOTE_LATEST}\` |"
             echo "| Image archive | \`${IMAGE_TAR}\` |"
             echo "| Image ID | \`${IMAGE_ID}\` |"
             echo "| Artifacts | \`web-portal-dist\`, \`web-portal-package\`, \`web-portal-release-docker-image\` |"
@@ -1150,7 +1227,7 @@ jobs:
             echo "1. **Zip** — download \`web-portal-package\` and unzip so \`index.html\` is the web root (nginx/IIS/S3/Azure static)."
             echo "2. **Image archive** — \`docker load < ${IMAGE_TAR}\` then run \`${IMAGE_LOCAL}\` (maps port 80)."
             if [ "${EVENT_NAME}" != "pull_request" ]; then
-              echo "3. **GHCR** — \`docker pull ${IMAGE_REMOTE}\` (also tagged \`:latest\`)."
+              echo "3. **GHCR** — \`docker pull ${IMAGE_REMOTE}\` or \`docker pull ${IMAGE_REMOTE_LATEST}\`."
             else
               echo "3. **GHCR** — push skipped on pull_request; image is available as the tar artifact only."
             fi

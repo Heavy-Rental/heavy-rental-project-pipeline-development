@@ -33,4 +33,4 @@ Infra must already have applied the estate and `sync-secrets` (`heavy-rental/por
 
 The **runner** still needs Vocareum keys (form or Environment `academy`) to call AWS. The **EC2** uses `LabRole`, not those keys.
 
-CI already builds `ghcr.io/<owner>/heavy-rental-web-portal:<tag>` on non-PR Release and a docker tar artifact. Public GHCR can be pulled without a GitHub token on the guest.
+CI already builds `ghcr.io/<owner>/heavy_rental_web_portal:<x.y.z>` and `:latest` on non-PR Release and a docker tar artifact. Public GHCR can be pulled without a GitHub token on the guest.

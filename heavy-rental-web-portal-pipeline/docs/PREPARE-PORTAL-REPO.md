@@ -24,7 +24,7 @@ Everyday operate after install: [`BOOTSTRAP.md`](BOOTSTRAP.md). Specification: [
 
 Packaging scans `dist/` and the image html tree for `sk_`, AWS secret material, JDBC URLs, and `localhost:8080`/`8000`. Stripe `pk_` is allowed. Generated nginx has no `proxy_pass` host.
 
-GHCR name: `ghcr.io/<owner>/heavy-rental-web-portal` (lowercase). On `Heavy-Rental` that is `ghcr.io/heavy-rental/heavy-rental-web-portal:<tag>` and `:latest`.
+GHCR name: `ghcr.io/<owner>/heavy_rental_web_portal` (lowercase). On `Heavy-Rental` that is `ghcr.io/heavy-rental/heavy_rental_web_portal:<x.y.z>` and `:latest`. The version tag is the previous GHCR semver with the patch bumped (first publish is `1.0.0`).
 
 | Release trigger | What you get |
 | --- | --- |
@@ -51,8 +51,8 @@ Do **not** copy `specification/`.
 ## 3. Produce a pullable image
 
 1. Merge to `master` and **publish a GitHub Release**. That is what pushes GHCR.
-2. Org Packages → `heavy-rental-web-portal` → visibility **Public**. Private GHCR fails CD on purpose (no PAT on the guest).
-3. Record the tag, for example `ghcr.io/heavy-rental/heavy-rental-web-portal:v0.0.1-build<run>-<sha>`. Prefer a **new** tag each deploy (`compose up` is not `--pull always`).
+2. Org Packages → `heavy_rental_web_portal` → visibility **Public**. Private GHCR fails CD on purpose (no PAT on the guest).
+3. Record the tag, for example `ghcr.io/heavy-rental/heavy_rental_web_portal:1.0.0` (or `:latest`). Prefer a **new** version tag each deploy (`compose up` is not `--pull always`).
 
 Optional Academy path: upload the Release tar to lab S3 and set `IMAGE_HTTP_URL` / `image_http_url`. You still need a compose tag that matches the loaded image name (`PORTAL_IMAGE` or `image_ref`).
 

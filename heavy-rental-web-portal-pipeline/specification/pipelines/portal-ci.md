@@ -51,7 +51,7 @@ No GitHub Environment or repository secrets are required for v1 CI.
 | SAST | Semgrep `p/typescript` `p/react` `p/javascript` + OWASP / audit / secrets |
 | SCA | npm audit converted to SARIF + Trivy FS |
 | Code scanning | CodeQL `javascript-typescript` |
-| Package | `npm run build` (no `VITE_*` backends) → `dist/` zip + `nginx:1.27-alpine` try_files. Scan dist/image for `sk_` and localhost:8080 / 8000. |
+| Package | `npm run build` (no `VITE_*` backends) → `dist/` zip + `nginx:1.27-alpine` try_files. GHCR `heavy_rental_web_portal:<semver>` + `:latest` off PR (semver is previous GHCR `x.y.z` + patch, or `1.0.0`). Scan dist/image for `sk_` and localhost:8080 / 8000. |
 
 ## Branch protection (application repo `develop`)
 
