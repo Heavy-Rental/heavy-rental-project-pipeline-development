@@ -1,6 +1,6 @@
 # Delta for haystack-cd-scope
 
-**Superseded** for compose by [`../../add-haystack-cd-academy-deploy/specs/haystack-cd-scope/spec.md`](../../add-haystack-cd-academy-deploy/specs/haystack-cd-scope/spec.md).
+**Superseded** for compose by [`../../../add-haystack-cd-academy-deploy/specs/haystack-cd-scope/spec.md`](../../../add-haystack-cd-academy-deploy/specs/haystack-cd-scope/spec.md).
 
 ## ADDED Requirements
 

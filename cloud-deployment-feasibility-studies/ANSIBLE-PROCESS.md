@@ -42,11 +42,7 @@ Infra CD  action=stop | destroy
 
 1. Actions runner installs Ansible (or uses an image that has it). Academy runner AWS creds: Vocareum form keys (masked via `$GITHUB_EVENT_PATH`) or Environment `academy` (not paid). Guest identity: **`LabInstanceProfile`** / **`LabRole`**.
 2. Dynamic inventory: four groups — `portal`, `rest`, `haystack`, `neo4j`. Discover **all** InService + SSM Online instances (two per ASG at desired=2).
-<<<<<<< Updated upstream
 3. `ansible_connection=amazon.aws.aws_ssm`; instance id from the ASG. No public IP. `ansible_host` is the instance id.
-=======
-3. `ansible_connection=aws_ssm` (or `community.aws.aws_ssm`); instance id from the ASG. No public IP. No `ansible_host`.
->>>>>>> Stashed changes
 4. RDS is **not** in inventory (no SSH guest OS).
 5. Everyday path is SSM. SSH PEM (`heavy-rental/ssh/*`) is break-glass only.
 
@@ -94,11 +90,7 @@ curl -fsSL -o /tmp/app.tar.gz "$IMAGE_HTTP_URL"
 docker load < /tmp/app.tar.gz
 ```
 
-<<<<<<< Updated upstream
-Instance still needs outbound HTTPS (same-AZ NAT Gateway or S3 endpoint). Live `get_url` / `aws s3 cp` + `docker load` is in the infra repo `guest_base` role.
-=======
-Instance still needs outbound HTTPS (same-AZ NAT Gateway or S3 endpoint). Stubs stay fail-closed until the other project implements `get_url` + `docker load`.
->>>>>>> Stashed changes
+Instance still needs outbound HTTPS (same-AZ NAT Gateway or S3 endpoint). Live `get_url` / `aws s3 cp` + `docker load` is in infra and app-CD `guest_base`.
 
 ---
 
@@ -120,7 +112,7 @@ Instance still needs outbound HTTPS (same-AZ NAT Gateway or S3 endpoint). Stubs 
 
 ### 4.3 `haystack` (`asg-haystack`)
 
-1. Read `heavy-rental/haystack` → Haystack RDS Postgres fields plus app aliases `POSTGRES_HOSTNAME` / `POSTGRES_DB` / `POSTGRES_USER`, `DATABASE_URL`, `FLEET_BACKEND=sql`, `NEO4J_BACKEND=bolt`, `NEO4J_URI` (Bolt NLB, not localhost, not a guest private IP), optional `LLM_API_KEY`.
+1. Read `heavy-rental/haystack` → Haystack RDS Postgres fields plus app aliases `POSTGRES_HOSTNAME` / `POSTGRES_DB` / `POSTGRES_USER`, `DATABASE_URL`, `SOURCE_*` (SoR RDS), `TARGET_*` (Haystack RDS), `FLEET_BACKEND=sql`, `NEO4J_BACKEND=bolt`, `NEO4J_URI` (Bolt NLB, not localhost, not a guest private IP), optional `LLM_API_KEY`. Do not invent `SOURCE_*` / `TARGET_*` in the playbook.
 2. Compose:
    - uvicorn (CI image) **:8000** — `768m` / `1.0`
    - `postgres-haystack-sync` — `256m` / `0.25`

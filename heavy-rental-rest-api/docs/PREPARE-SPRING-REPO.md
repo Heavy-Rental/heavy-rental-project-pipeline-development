@@ -7,6 +7,8 @@
 
 This file is the operator checklist. It does not apply Terraform or push images.
 
+Specification: [`../specification/README.md`](../specification/README.md). CD walkthrough: [`../specification/pipelines/rest-cd.md`](../specification/pipelines/rest-cd.md).
+
 ---
 
 ## 1. Can Release build the image CD expects?
@@ -22,11 +24,15 @@ This file is the operator checklist. It does not apply Terraform or push images.
 Generated image (when the app has no Dockerfile):
 
 ```dockerfile
+# Runtime env from heavy-rental/rest (do not ENV/ARG these):
+#   POSTGRES_*, SPRING_DATASOURCE_*, HAYSTACK_BASE_URL, STRIPE_*, APP_JWT_SECRET
 FROM tomcat:10.1-jdk21-temurin
 COPY target/*.war /usr/local/tomcat/webapps/ROOT.war
 EXPOSE 8080
 CMD ["catalina.sh", "run"]
 ```
+
+Packaging fails if the Dockerfile (generated or app-supplied) bakes `ENV`/`ARG` for those keys or copies a `.env`. After build it runs the image with dummy `SPRING_DATASOURCE_URL` / `POSTGRES_HOST` / `HAYSTACK_BASE_URL` / Stripe / JWT to prove they are visible. It does not start Tomcat or connect to RDS. `spring-datasource.env` is a Release artifact (no password) and is **not** copied into the image.
 
 GHCR name: `ghcr.io/<owner>/heavy-rental-rest-api` (lowercase). On `Heavy-Rental` that is `ghcr.io/heavy-rental/heavy-rental-rest-api:<tag>` and `:latest`.
 

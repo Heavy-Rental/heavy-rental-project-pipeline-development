@@ -78,9 +78,11 @@ From [`../../heavy-rental-web-portal-pipeline/release-pipeline/release-pipeline.
 | Image tar `heavy-rental-web-portal-v{version}-build{run}-{sha}.tar.gz` | Always on Packaging | Academy-friendly: download + `docker load` on the instance (or copy to ECR in-region) |
 | GHCR `ghcr.io/<owner>/heavy-rental-web-portal:<version>` and `:latest` | Published Release / non-PR only | Paid (and Academy if GHCR pull works). **Not** pushed on `develop`→`master` PR |
 
-Image contract: **nginx:1.27-alpine** serving Vite `dist/` on **`:80`**, SPA `try_files $uri $uri/ /index.html`, hashed `/assets/` cached. Build does **not** start a Node/Vite process, REST, or Stripe.
+Image contract: **nginx:1.27-alpine** serving Vite `dist/` on **`:80`**, SPA `try_files $uri $uri/ /index.html`, hashed `/assets/` cached. Build does **not** start a Node/Vite process, REST, or Stripe. Release **must not** inline `VITE_*` lab URLs or `sk_` into `dist/` (ADR 0007). Stripe `pk_` is allowed.
 
-CI-generated `nginx-spa.conf` (used when the app repo has no Dockerfile) has **SPA routing only**. It does **not** include `location /api`. App CD / infra first-compose **must** add that proxy on the guest (volume or `envsubst` template). See §5.6.
+CI-generated `nginx-spa.conf` (used when the app repo has no Dockerfile) has **SPA routing only**. It does **not** include `location /api`. App CD / infra first-compose **must** add that proxy on the guest (volume mount). See §5.6.
+
+Specs: [`../../heavy-rental-web-portal-pipeline/specification/`](../../heavy-rental-web-portal-pipeline/specification/).
 
 CI Environments: **none** for app config. Only `GITHUB_TOKEN` for GHCR. **No Stripe in CI.** Those names are **not** CD `academy` / `paid`. See AWS study §6.0c.
 
@@ -348,7 +350,7 @@ Actions → Run workflow  (action + environment; optional image_ref)
 
 **Live:** estate first-compose (`guest_base` / `portal`) **and** portal app CD branch 2 in [`../../heavy-rental-web-portal-pipeline/deploy-pipeline/`](../../heavy-rental-web-portal-pipeline/deploy-pipeline/) (same roles, `--limit portal`). Example YAML **in this folder** stays fail-closed.
 
-**Still later:** paid/OIDC portal CD; REST / Haystack app CD. Delivery split: [`IMPLEMENTATION-PLAN.md`](IMPLEMENTATION-PLAN.md).
+**Still later:** paid/OIDC portal CD. Academy REST / Haystack app CD already live in their pipeline trees. Delivery split: [`IMPLEMENTATION-PLAN.md`](IMPLEMENTATION-PLAN.md).
 
 ---
 

@@ -2,6 +2,8 @@
 # Specs live next to the workflows they describe.
 schema: spec-driven
 context: |
-  This folder specifies GitHub Actions pipelines for Heavy-Rental/heavy-rental-mobile.
+  This folder specifies GitHub Actions CI pipelines for Heavy-Rental/heavy-rental-mobile.
+  The family is Fast Feedback, Integration CI, and unsigned Release APK packaging.
+  There is no Academy app CD, GHCR image, or Play signing in this tree.
   Product behaviour for the Android app is NOT specified here — that lives in the
   application repository under specification/.

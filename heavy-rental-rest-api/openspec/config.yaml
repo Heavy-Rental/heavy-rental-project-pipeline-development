@@ -1,0 +1,15 @@
+# OpenSpec project config for the Heavy Rental Spring REST API pipeline family.
+# Specs live next to the workflows they describe.
+schema: spec-driven
+context: |
+  This folder specifies GitHub Actions pipelines for Heavy-Rental/heavy-rental-spring-rest-api.
+  Two families live here:
+    1. CI — Fast Feedback, Integration CI, and Release packaging
+       (openspec/changes/add-rest-ci-pipeline/). As-implemented of existing YAML.
+    2. Academy app CD — discover asg-rest and compose
+       (openspec/changes/add-rest-cd-academy-skeleton/ and
+       add-rest-cd-academy-deploy/).
+  Product behaviour for the Spring service is NOT specified here.
+  Infrastructure setup and operate (stop / destroy) belong to the infra project.
+  Authoring-tree DEFAULT_APP_REPOSITORY may still be SA62-team1/... for local act;
+  when installed in Heavy-Rental/heavy-rental-spring-rest-api, checkout is the caller.

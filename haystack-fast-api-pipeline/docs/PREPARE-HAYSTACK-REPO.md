@@ -10,7 +10,7 @@ This file is the operator checklist and readiness record. It does not apply Terr
 
 **Verdict: not ready to deploy today.** The FastAPI process matches the image contract. The live repo cannot yet produce a pullable GHCR image, cannot run the compose sidecars, and would stay on CI-safe fake/memory backends unless CD rewrites `.env` (this pipeline now does that).
 
-Everyday operate after install: [`BOOTSTRAP.md`](BOOTSTRAP.md).
+Everyday operate after install: [`BOOTSTRAP.md`](BOOTSTRAP.md). Specification: [`../specification/pipelines/haystack-cd.md`](../specification/pipelines/haystack-cd.md).
 
 ---
 
@@ -28,15 +28,20 @@ Everyday operate after install: [`BOOTSTRAP.md`](BOOTSTRAP.md).
 Generated image (when the app has no Dockerfile):
 
 ```dockerfile
+# Runtime env from heavy-rental/haystack (do not ENV/ARG these):
+#   DATABASE_URL, POSTGRES_*, SOURCE_* (SoR), TARGET_* (Haystack RDS), NEO4J_*
 FROM python:3.12-slim-bookworm
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
 WORKDIR /app
 COPY pyproject.toml uv.lock ./
 RUN uv sync --frozen --no-dev --extra neo4j
 COPY app ./app
+# COPY postgres_haystack_sync / neo4j_populate only if those dirs exist in the checkout
 EXPOSE 8000
 CMD ["uv", "run", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
 ```
+
+Packaging fails if the Dockerfile (generated or app-supplied) bakes `ENV`/`ARG` for `POSTGRES_*` / `SOURCE_*` / `TARGET_*` / `DATABASE_URL` / `NEO4J_PASSWORD` / `LLM_API_KEY` or copies a `.env`. After build it runs the image with dummy `SOURCE_*` / `TARGET_*` to prove they are visible. It does not connect to RDS.
 
 GHCR name: `ghcr.io/<owner>/haystack-fast-api` (lowercase). On `Heavy-Rental` that is `ghcr.io/heavy-rental/haystack-fast-api:<tag>` and `:latest`.
 
@@ -158,10 +163,14 @@ App `Settings` (`app/config.py`) uses different names and **CI-safe defaults**. 
 | `INDEXING_DOCUMENT_STORE` | not written → app default **`memory`** | **not** flipped (pgvector is optional) |
 | `NEED_DECOMPOSER` | not written → **`stub`** | left stub unless you set `llm` in SM |
 | `LLM_API_KEY` | optional | kept if present; never invented |
+| `SOURCE_HOST` / `SOURCE_PORT` / `SOURCE_DATABASE` | written (SoR / REST RDS `heavy_rental`) | **not** invented by CD |
+| `TARGET_HOST` / `TARGET_PORT` / `TARGET_DATABASE` | written (Haystack RDS — same host as `POSTGRES_*`) | **not** invented by CD |
+
+`postgres-haystack-sync` is supposed to copy SoR → Haystack RDS using those `SOURCE_*` / `TARGET_*` keys from `heavy-rental/haystack`. Infra `sync-secrets` is the owner. Haystack CD maps the secret to `.env` and must **not** invent hosts, invent a third database, or copy `heavy-rental/rest`. There is no separate `SOURCE_USER` / `SOURCE_PASSWORD` today — if the worker needs credentials it reuses `POSTGRES_USERNAME` / `POSTGRES_PASSWORD` (same Academy master password on both RDS instances).
 
 Re-run infra `configure-only` (or `apply`) so SM is rewritten. Infra first-compose then sees `sql` / `bolt` without waiting for app CD.
 
-Haystack RDS database name is **`haystack`**, not the app example `heavy_rental`. `DATABASE_URL` from SM is the source of truth.
+Haystack RDS database name is **`haystack`**, not the app example `heavy_rental`. `DATABASE_URL` from SM is the source of truth for uvicorn. `SOURCE_DATABASE` is **`heavy_rental`**.
 
 `INDEXING_DOCUMENT_STORE=pgvector` still needs `CREATE EXTENSION vector` on Haystack RDS (infra `rds_logical`) and a matching `INDEXING_EMBEDDING_DIM`. Set it in SM when you want shared chunks.
 

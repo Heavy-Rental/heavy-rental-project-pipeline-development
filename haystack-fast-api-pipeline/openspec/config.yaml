@@ -1,10 +1,15 @@
-# OpenSpec project config for the Heavy Rental haystack-fast-api CI family.
+# OpenSpec project config for the Heavy Rental haystack-fast-api pipeline family.
 # Specs live next to the workflows they describe.
 schema: spec-driven
 context: |
-  This folder specifies GitHub Actions CI pipelines for Heavy-Rental/haystack-fast-api.
-  The family is Fast Feedback, Integration CI, and Release packaging only.
+  This folder specifies GitHub Actions pipelines for Heavy-Rental/haystack-fast-api.
+  Two families live here:
+    1. CI — Fast Feedback, Integration CI, and Release packaging
+       (openspec/changes/add-haystack-ci-pipeline/).
+    2. Academy app CD — discover asg-haystack and compose
+       (openspec/changes/add-haystack-cd-academy-skeleton/ and
+       add-haystack-cd-academy-deploy/).
   Product behaviour for the FastAPI / Haystack service is NOT specified here —
   that lives in the application repository under openspec/.
-  Infrastructure setup, project deployment, and operate workflows are NOT
-  specified here — they belong to another project.
+  Infrastructure setup (VPC, ASGs, RDS, Neo4j) and operate (stop / destroy)
+  are NOT specified here — they belong to the infra project.

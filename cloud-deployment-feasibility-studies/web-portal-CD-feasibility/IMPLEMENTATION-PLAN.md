@@ -146,3 +146,4 @@ Infra **`apply`** still first-composes the portal. Infra **`configure-only`** do
 - Example: [`web-portal-cd-pipeline.example.yml`](web-portal-cd-pipeline.example.yml)
 - Infra operate: estate `docs/BOOTSTRAP.md` / `docs/ARCHITECTURE.md`
 - Ansible contract: [`../ANSIBLE-PROCESS.md`](../ANSIBLE-PROCESS.md)
+- Specs (OpenSpec / OpenSPDD / ADR): [`../../heavy-rental-web-portal-pipeline/specification/`](../../heavy-rental-web-portal-pipeline/specification/)

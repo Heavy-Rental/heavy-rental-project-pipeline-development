@@ -70,9 +70,9 @@ From [`haystack-fast-api-pipeline/specification/pipelines/haystack-ci.md`](../ha
 | GHCR `ghcr.io/<owner>/haystack-fast-api:<version>` and `:latest` | Published Release / non-PR only | Paid (and Academy if GHCR pull works). **Not** pushed on `develop`→`master` PR |
 | Wheel / sdist | Always | **Not** required on EC2 if the image is used |
 
-Image contract: **`python:3.12-slim-bookworm`** + uv + **uvicorn `app.main:app` on `:8000`**. GHCR `ghcr.io/<owner>/haystack-fast-api`. Build does **not** start Postgres, Neo4j, or an LLM.
+Image contract: **`python:3.12-slim-bookworm`** + uv + **uvicorn `app.main:app` on `:8000`** (`--extra neo4j`). GHCR `ghcr.io/<owner>/haystack-fast-api`. Build does **not** start Postgres, Neo4j, or an LLM. Release **refuses** baked `POSTGRES_*` / `SOURCE_*` / `TARGET_*` and proves dummy runtime env (ADR 0008).
 
-Runtime env (CD / Secrets Manager only): `POSTGRES_*` / `DATABASE_URL`, `NEO4J_URI` / user / password, optional `LLM_API_KEY`. Not `bolt://neo4j:7687` and not localhost.
+Runtime env (CD / Secrets Manager only): `POSTGRES_*` / `DATABASE_URL` (Haystack RDS), `SOURCE_*` (SoR / REST RDS), `TARGET_*` (Haystack RDS), `NEO4J_URI` / user / password, optional `LLM_API_KEY`. Not `bolt://neo4j:7687` and not localhost. Specs: [`../../haystack-fast-api-pipeline/specification/`](../../haystack-fast-api-pipeline/specification/).
 
 ---
 
@@ -298,5 +298,5 @@ Actions → Run workflow  (action + environment; optional image_ref)
 - Estate: [`../AWS-INFRASTRUCTURE-FEASIBILITY.md`](../AWS-INFRASTRUCTURE-FEASIBILITY.md) §6 (`asg-haystack`), §6.0c secrets, §6.10 fallacies (topology **changes**), §7.2c, §7.2e
 - Delivery split: [`IMPLEMENTATION-PLAN.md`](IMPLEMENTATION-PLAN.md)
 - Live Academy CD: [`../../haystack-fast-api-pipeline/deploy-pipeline/`](../../haystack-fast-api-pipeline/deploy-pipeline/)
-- CI: [`../../haystack-fast-api-pipeline/specification/pipelines/haystack-ci.md`](../../haystack-fast-api-pipeline/specification/pipelines/haystack-ci.md)
+- CI + CD specs (OpenSpec / OpenSPDD / ADR): [`../../haystack-fast-api-pipeline/specification/`](../../haystack-fast-api-pipeline/specification/)
 - Example workflows: [`haystack-cd-pipeline.example.yml`](haystack-cd-pipeline.example.yml), [`haystack-cd-paid-pipeline.example.yml`](haystack-cd-paid-pipeline.example.yml)

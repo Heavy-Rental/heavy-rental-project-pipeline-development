@@ -1,6 +1,8 @@
 # Portal app CD (Academy)
 
-This workflow discovers `asg-portal` and can re-run portal compose (branch 2). It does **not** run Terraform or create the ASG.
+This workflow discovers `asg-portal` and can re-run portal compose (branch 2). It does **not** run Terraform or create the ASG. The Release image is a static SPA (ADR 0007); this CD mounts nginx `/api` → `REST_BASE_URL`.
+
+Specification index: [`../specification/README.md`](../specification/README.md). CD walkthrough: [`../specification/pipelines/portal-cd.md`](../specification/pipelines/portal-cd.md). App-repo checklist: [`PREPARE-PORTAL-REPO.md`](PREPARE-PORTAL-REPO.md).
 
 Install from **`deploy-pipeline/`** into the React repo (same pattern as Release):
 

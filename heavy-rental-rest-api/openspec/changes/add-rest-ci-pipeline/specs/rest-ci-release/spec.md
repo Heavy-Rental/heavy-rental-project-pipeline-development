@@ -1,0 +1,77 @@
+# Delta for rest-ci-release
+
+## Purpose
+
+Release packaging produces a versioned WAR and a Tomcat Docker image after the quality and security gates pass. Deploying those artifacts is the Academy CD family, not this capability.
+
+## ADDED Requirements
+
+### Requirement: Packaging waits for gates
+Packaging SHALL run only after Integration, Quality Control, Security Testing, and CodeQL have succeeded.
+
+#### Scenario: Security red blocks packaging
+- GIVEN Security Testing failed
+- WHEN Packaging is evaluated
+- THEN Packaging does not start
+
+### Requirement: Versioned WAR
+Packaging SHALL run `./mvnw -DskipTests package`, prefer a `.war` (jar fallback), and SHALL stage versioned and stable filenames. The job SHALL fail if no package file exists.
+
+#### Scenario: Both names uploaded
+- GIVEN package produced a WAR
+- WHEN Packaging finishes
+- THEN a versioned WAR and a stable WAR copy are uploaded as artifacts
+- AND both files are non-empty
+
+### Requirement: Tomcat image
+Packaging SHALL build a Docker image from `tomcat:10.1-jdk21-temurin` with the WAR as `ROOT.war` when the application checkout has no Dockerfile, save a gzipped tar, and SHALL NOT start Tomcat as a long-running service on the runner.
+
+#### Scenario: Image tar is non-empty
+- GIVEN `docker build` succeeds
+- WHEN Packaging saves the image
+- THEN a gzipped tar artifact exists and is non-empty
+
+### Requirement: GHCR push only off pull requests
+Packaging SHALL push the image to `ghcr.io` tagged with the versioned tag and `:latest` when the event is not a pull request. On a `develop` → `master` pull request, Packaging SHALL skip the push and still upload the image tar.
+
+#### Scenario: Published release pushes
+- GIVEN a published GitHub Release triggered the release pipeline
+- WHEN Packaging finishes the Docker build
+- THEN `docker push` runs for the versioned GHCR tag and `:latest`
+
+#### Scenario: PR skips registry push
+- GIVEN a pull request from `develop` to `master` triggered the release pipeline
+- WHEN Packaging finishes the Docker build
+- THEN no `docker push` runs
+- AND the gzipped image tar is still uploaded
+
+### Requirement: Cloud JDBC artifact has no password
+Packaging SHALL upload a datasource env file whose `SPRING_DATASOURCE_URL` uses `REST_API_CLOUD_DB_HOST` and SHALL NOT write `SPRING_DATASOURCE_PASSWORD` into that artifact. That file SHALL NOT be copied into the Docker image.
+
+#### Scenario: Password omitted
+- GIVEN Packaging builds the deploy env file
+- WHEN the artifact is written
+- THEN it contains `SPRING_DATASOURCE_URL`
+- AND it does not contain the cloud database password
+
+#### Scenario: Artifact stays out of the image
+- GIVEN the generated or application Dockerfile
+- WHEN Packaging prepares the image
+- THEN the Dockerfile does not `COPY` `spring-datasource.env` or any `*.env`
+
+### Requirement: Image does not bake guest or CI database config
+The Dockerfile Packaging uses SHALL NOT set `ENV`/`ARG` for `POSTGRES_*`, `SPRING_DATASOURCE_*`, `SPRING_JPA_*`, `HAYSTACK_*`, `STRIPE_*`, `APP_JWT_*`, `REST_API_CLOUD_DB_*`, or `REST_API_DB_*`. `docker build` SHALL NOT pass `--build-arg` for those names.
+
+#### Scenario: Baked ENV fails Packaging
+- GIVEN the Dockerfile contains `ENV SPRING_DATASOURCE_URL=…` or `COPY .env`
+- WHEN Packaging prepares the image
+- THEN the job fails before treating the image as releasable
+
+### Requirement: Runtime env is visible without a live database
+After a successful build, Packaging SHALL inspect image `Config.Env` and SHALL run the image with dummy `SPRING_DATASOURCE_URL`, `POSTGRES_HOST`, `HAYSTACK_BASE_URL`, `STRIPE_PUBLISHABLE_KEY`, and `APP_JWT_SECRET`. Those dummy values SHALL be visible inside the container. Packaging SHALL NOT start Tomcat (`catalina.sh`) and SHALL NOT connect to Academy RDS.
+
+#### Scenario: Dummy guest keys are visible
+- GIVEN the image built
+- WHEN Packaging runs the container with `POSTGRES_HOST=sor.example.test` and `HAYSTACK_BASE_URL=http://haystack.example.test:8000`
+- THEN those values appear in the container environment
+- AND `Config.Env` does not contain baked `POSTGRES_*` / `SPRING_DATASOURCE_*` / `HAYSTACK_*` / `STRIPE_*` / `APP_JWT_*`
