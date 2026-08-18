@@ -32,10 +32,13 @@
 # An app Dockerfile is not the deploy image. Portable:
 #   docker run -p 8000:8000 -e DATABASE_URL=… <image>
 # Endpoints: GET /docs and GET /health on :8000.
-# The image is env-driven: no lab hostnames, POSTGRES_*,
-# SOURCE_* / TARGET_* (SoR → Haystack RDS sync), or NEO4J_* in ENV/ARG/.env.
-# Packaging refuses baked config, starts uvicorn briefly, and requires
-# GET /docs or GET /health (200–302). It does not connect to RDS or an LLM.
+# The image is env-driven for estate keys: no lab hostnames, POSTGRES_*,
+# SOURCE_* / TARGET_* (SoR → Haystack RDS sync), or NEO4J_URI in ENV/ARG.
+# Product knobs come from a sanitized .env.prod copied to /app/.env
+# (pydantic Settings env_file). Process env (compose SM / docker -e) wins.
+# Packaging refuses baked ENV/ARG and estate secrets in that file, starts
+# uvicorn briefly, and requires GET /docs or GET /health (200–302).
+# It does not connect to RDS or an LLM.
 #
 # Application:
 #   https://github.com/Heavy-Rental/haystack-fast-api
@@ -762,7 +765,7 @@ jobs:
       # -------------------------------------------------------------------
       # Docker image: always Python 3.12 + uv + uvicorn so any Docker Engine can run it.
       # An app Dockerfile is not the deploy image. Sidecar packages COPY only if present.
-      # Runtime env comes from docker run -e / compose env_file, not ENV/ARG.
+      # Product knobs: sanitized .env.prod → /app/.env (pydantic). Estate keys: -e / SM.
       # -------------------------------------------------------------------
       - name: Prepare Dockerfile for uvicorn image
         working-directory: ${{ env.APP_PATH }}
@@ -798,24 +801,125 @@ jobs:
             mv Dockerfile Dockerfile.app-repo
           fi
 
+          python3 - <<'PY'
+          import re
+          import sys
+          from pathlib import Path
+
+          estate = {
+              "POSTGRES_HOST", "POSTGRES_HOSTNAME", "POSTGRES_PORT",
+              "POSTGRES_DATABASE", "POSTGRES_DB", "POSTGRES_USERNAME",
+              "POSTGRES_USER", "POSTGRES_PASSWORD", "POSTGRES_URL", "DATABASE_URL",
+              "SOURCE_HOST", "SOURCE_PORT", "SOURCE_DATABASE", "SOURCE_USER",
+              "SOURCE_PASSWORD", "TARGET_HOST", "TARGET_PORT", "TARGET_DATABASE",
+              "TARGET_USER", "TARGET_PASSWORD",
+              "NEO4J_URI", "NEO4J_USER", "NEO4J_PASSWORD", "NEO4J_POPULATE_URL",
+              "LLM_API_KEY",
+          }
+          secret_re = re.compile(
+              r"(?i)(sk-[A-Za-z0-9]{10,}|whsec_|BEGIN (RSA |OPENSSH )?PRIVATE KEY)"
+          )
+          fallback = [
+              ("APP_NAME", "haystack-fast-api"),
+              ("APP_ENV", "prod"),
+              ("LOG_LEVEL", "INFO"),
+              ("NEED_DECOMPOSER", "stub"),
+              ("LLM_BASE_URL", "https://inference.do-ai.run/v1"),
+              ("LLM_MODEL", "router:default"),
+              ("LLM_TIMEOUT_SECONDS", "60"),
+              ("LLM_TEMPERATURE", "0.5"),
+              ("INDEXING_EMBEDDER", "mock"),
+              ("INDEXING_EMBEDDING_DIM", "384"),
+              ("INDEXING_SPLIT_LENGTH", "200"),
+              ("INDEXING_SPLIT_OVERLAP", "20"),
+              ("INDEXING_OPENAI_EMBEDDING_MODEL", "text-embedding-3-small"),
+              ("INDEXING_ST_MODEL", "sentence-transformers/all-MiniLM-L6-v2"),
+              ("INDEXING_DOCUMENT_STORE", "memory"),
+              ("INDEXING_CHUNK_TTL_SECONDS", "0"),
+              ("IDEMPOTENCY_TTL_SECONDS", "86400"),
+              ("INDEXING_VIA_AGENT_GATE", "false"),
+              ("FLEET_BACKEND", "sql"),
+              ("PRICING_SCHEMA", "primary_snapshot"),
+              ("NEO4J_BACKEND", "bolt"),
+              ("NEO4J_POPULATE_TIMEOUT_SECONDS", "2"),
+              ("RECOMMEND_VIA_AGENT_GRAPH", "false"),
+              ("RECOMMEND_FANOUT_CAP", "4"),
+              ("KG_ARTIFACT_DIR", "artifacts/kg"),
+              ("KG_APPLY_TRANSFORMS", "false"),
+              ("PROJECT_AGENT_MODE", "stub"),
+              ("PROJECT_AGENT_TOP_K", "5"),
+          ]
+          candidates = [
+              Path(".env.prod"),
+              Path("docs/samples/.env.prod"),
+          ]
+          src = next((p for p in candidates if p.is_file()), None)
+          rows = []
+          if src is not None:
+              for raw in src.read_text(encoding="utf-8").splitlines():
+                  line = raw.strip()
+                  if not line or line.startswith("#") or "=" not in line:
+                      continue
+                  key, _, val = line.partition("=")
+                  key = key.strip()
+                  val = val.strip().strip("'").strip('"')
+                  if secret_re.search(val):
+                      print(f"::error::{src} looks like it contains a secret in {key}.")
+                      sys.exit(1)
+                  if key == "LLM_API_KEY" and val:
+                      print(f"::error::{src} sets LLM_API_KEY. Use Secrets Manager or academy secret.")
+                      sys.exit(1)
+                  if key == "NEO4J_URI" and val:
+                      print(
+                          f"::error::{src} sets NEO4J_URI={val}. "
+                          "Infra sync-secrets owns Bolt NLB. Do not commit a compose hostname."
+                      )
+                      sys.exit(1)
+                  rows.append((key, val))
+              origin = str(src)
+          else:
+              rows = list(fallback)
+              origin = "generated production defaults (no app .env.prod)"
+
+          kept = []
+          seen = set()
+          for key, val in rows:
+              if key in estate or not key:
+                  continue
+              if key not in seen:
+                  kept.append((key, val))
+                  seen.add(key)
+          if "APP_ENV" not in seen:
+              kept.insert(0, ("APP_ENV", "prod"))
+          if not any(k == "APP_ENV" and v == "prod" for k, v in kept):
+              print("::warning::.env.prod APP_ENV is not prod; image /app/.env will keep the file value.")
+          out = Path("haystack.prod.env")
+          out.write_text("".join(f"{k}={v}\n" for k, v in kept), encoding="utf-8")
+          print(f"Wrote {out} from {origin} ({len(kept)} product keys). Estate keys stripped.")
+          PY
+
+          if [ -f .dockerignore ]; then
+            if grep -Eiq '^[[:space:]]*(\./)?haystack\.prod\.env[[:space:]]*$' .dockerignore \
+              || grep -Eiq '^[[:space:]]*\*\.env[[:space:]]*$' .dockerignore; then
+              echo "::error::.dockerignore excludes haystack.prod.env (or *.env); Release cannot COPY the production profile."
+              cat .dockerignore
+              exit 1
+            fi
+          fi
+
           echo "Generating uvicorn Dockerfile (Haystack FastAPI → ${PYTHON_BASE_IMAGE})"
           {
             echo "# Generated by haystack-fast-api release packaging (FastAPI + Haystack)"
             echo "# Portable: docker run -p 8000:8000 -e KEY=… <image>"
-            echo "# Runtime env from infra heavy-rental/haystack (sync-secrets) or docker -e."
-            echo "# Do not ENV/ARG any of these (Academy SM / compose env_file owns them):"
+            echo "# Product knobs: COPY haystack.prod.env → /app/.env (from app .env.prod)."
+            echo "# Estate keys from infra heavy-rental/haystack (sync-secrets) or docker -e."
+            echo "# Do not ENV/ARG any of these:"
             echo "#   Infra writes: DATABASE_URL, POSTGRES_*, SOURCE_*, TARGET_*,"
             echo "#     FLEET_BACKEND=sql, NEO4J_BACKEND=bolt, NEO4J_URI/USER/PASSWORD,"
             echo "#     optional LLM_API_KEY"
-            echo "#   App knobs (unset → develop defaults; set in SM or -e to override):"
-            echo "#     NEED_DECOMPOSER, LLM_BASE_URL, LLM_MODEL, LLM_TIMEOUT_SECONDS,"
-            echo "#     LLM_TEMPERATURE, INDEXING_EMBEDDER, INDEXING_EMBEDDING_DIM,"
-            echo "#     INDEXING_SPLIT_LENGTH, INDEXING_SPLIT_OVERLAP,"
-            echo "#     INDEXING_OPENAI_EMBEDDING_MODEL, INDEXING_DOCUMENT_STORE,"
-            echo "#     INDEXING_CHUNK_TTL_SECONDS, IDEMPOTENCY_TTL_SECONDS,"
-            echo "#     INDEXING_VIA_AGENT_GATE, PRICING_SCHEMA,"
-            echo "#     NEO4J_POPULATE_URL, NEO4J_POPULATE_TIMEOUT_SECONDS,"
-            echo "#     RECOMMEND_VIA_AGENT_GRAPH, KG_ARTIFACT_DIR, KG_APPLY_TRANSFORMS"
+            echo "#   App knobs (file defaults; SM / academy overlay / -e override):"
+            echo "#     APP_ENV, NEED_DECOMPOSER, LLM_BASE_URL, LLM_MODEL,"
+            echo "#     INDEXING_*, FLEET_BACKEND, PRICING_SCHEMA, NEO4J_BACKEND, KG_*"
             echo "FROM ${PYTHON_BASE_IMAGE}"
             echo "COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/"
             echo "LABEL org.opencontainers.image.title=\"${IMAGE_NAME}\""
@@ -828,6 +932,7 @@ jobs:
             echo "COPY pyproject.toml uv.lock ./"
             echo "RUN uv sync --frozen --no-dev --extra neo4j"
             echo "COPY app ./app"
+            echo "COPY haystack.prod.env .env"
             if [ -d postgres_haystack_sync ]; then
               echo "COPY postgres_haystack_sync ./postgres_haystack_sync"
             fi
@@ -841,13 +946,27 @@ jobs:
 
           echo "==> Dockerfile"
           cat Dockerfile
+          echo "==> haystack.prod.env (sanitized product profile)"
+          cat haystack.prod.env
 
-          if grep -Eiq '^[[:space:]]*(ENV|ARG)[[:space:]]+(POSTGRES_|SOURCE_|TARGET_|DATABASE_URL|NEED_DECOMPOSER|LLM_|INDEXING_|IDEMPOTENCY_|FLEET_BACKEND|PRICING_SCHEMA|NEO4J_|RECOMMEND_VIA_AGENT_GRAPH|KG_)' Dockerfile; then
-            echo "::error::Dockerfile bakes infra/app Haystack config (ENV/ARG). Use heavy-rental/haystack or docker -e."
+          if grep -Eiq '^[[:space:]]*(ENV|ARG)[[:space:]]+(POSTGRES_|SOURCE_|TARGET_|DATABASE_URL|NEED_DECOMPOSER|LLM_|INDEXING_|IDEMPOTENCY_|FLEET_BACKEND|PRICING_SCHEMA|NEO4J_|RECOMMEND_VIA_AGENT_GRAPH|KG_|APP_ENV|PROJECT_AGENT_)' Dockerfile; then
+            echo "::error::Dockerfile bakes infra/app Haystack config (ENV/ARG). Use .env.prod, heavy-rental/haystack, or docker -e."
             exit 1
           fi
-          if grep -Eiq '^[[:space:]]*COPY[[:space:]]+[^[:space:]]*\.env' Dockerfile; then
-            echo "::error::Dockerfile copies a .env file. Secrets belong in heavy-rental/haystack (or docker -e) at deploy."
+          if grep -Eiq '^[[:space:]]*COPY[[:space:]]+\.env' Dockerfile; then
+            echo "::error::Dockerfile copies a raw .env / .env.prod. Release may only COPY haystack.prod.env .env after sanitizing."
+            exit 1
+          fi
+          if ! grep -Eq '^COPY[[:space:]]+haystack\.prod\.env[[:space:]]+\.env$' Dockerfile; then
+            echo "::error::Generated Dockerfile must COPY haystack.prod.env .env so pydantic loads the production profile."
+            exit 1
+          fi
+          if grep -Eiq '^(POSTGRES_|SOURCE_|TARGET_|DATABASE_URL=|NEO4J_URI=|NEO4J_USER=|NEO4J_PASSWORD=|NEO4J_POPULATE_URL=|LLM_API_KEY=)' haystack.prod.env; then
+            echo "::error::haystack.prod.env still contains estate/secret keys. Strip them before COPY."
+            exit 1
+          fi
+          if ! grep -Eq '^APP_ENV=' haystack.prod.env; then
+            echo "::error::haystack.prod.env must set APP_ENV (production profile)."
             exit 1
           fi
           if ! grep -Eq 'uvicorn.*app\.main:app' Dockerfile; then
@@ -932,6 +1051,31 @@ jobs:
 
           docker run --rm --entrypoint /bin/sh "${IMAGE_LOCAL}" -c 'test -f /app/app/main.py'
           echo "Image contains /app/app/main.py (uvicorn app.main:app)"
+
+          docker run --rm --entrypoint /bin/sh "${IMAGE_LOCAL}" -c 'test -f /app/.env && grep -q "^APP_ENV=" /app/.env'
+          echo "Image contains sanitized /app/.env (from .env.prod) for pydantic Settings."
+          if docker run --rm --entrypoint /bin/sh "${IMAGE_LOCAL}" \
+            -c 'grep -Eq "^(POSTGRES_|SOURCE_|TARGET_|DATABASE_URL=|NEO4J_URI=|NEO4J_PASSWORD=|LLM_API_KEY=)" /app/.env'; then
+            echo "::error::Image /app/.env still has estate or secret keys."
+            docker run --rm --entrypoint /bin/sh "${IMAGE_LOCAL}" -c 'cat /app/.env'
+            exit 1
+          fi
+          PROFILE_ENV="$(
+            docker run --rm --entrypoint /bin/sh "${IMAGE_LOCAL}" \
+              -c 'uv run python -c "from app.config import Settings; print(Settings().app_env)"'
+          )"
+          echo "pydantic Settings().app_env=${PROFILE_ENV} (from /app/.env)"
+          if [ -z "${PROFILE_ENV}" ]; then
+            echo "::error::Settings() did not load APP_ENV from /app/.env."
+            exit 1
+          fi
+          OVERRIDE_ENV="$(
+            docker run --rm -e APP_ENV=ci-override --entrypoint /bin/sh "${IMAGE_LOCAL}" \
+              -c 'uv run python -c "from app.config import Settings; print(Settings().app_env)"'
+          )"
+          echo "APP_ENV override via -e → Settings().app_env=${OVERRIDE_ENV}"
+          echo "${OVERRIDE_ENV}" | grep -qx 'ci-override'
+          echo "Process env still wins over /app/.env (compose SM / overlay / docker -e)."
 
           # Dummy values only — not Vocareum, not Academy RDS, not a real LLM.
           # Infra sync-secrets writes FLEET_BACKEND/NEO4J_*/LLM_API_KEY/DB; the rest
@@ -1100,7 +1244,8 @@ jobs:
             echo ""
             echo "Generated \`python:3.12-slim-bookworm\` + uv + \`uvicorn app.main:app --host 0.0.0.0 --port 8000\`."
             echo "No baked POSTGRES_/SOURCE_/TARGET_/DATABASE_URL/NEED_DECOMPOSER/LLM_/INDEXING_/NEO4J_/FLEET_/KG_ in Config.Env."
-            echo "Infra \`heavy-rental/haystack\` (and optional SM extras from \`.env.example\`) inject at runtime."
+            echo "Product knobs from sanitized \`.env.prod\` live in \`/app/.env\` (pydantic). Process env still wins."
+            echo "Infra \`heavy-rental/haystack\` injects estate keys at runtime. \`Settings().app_env\` loaded from the file."
             echo "Dummy compose-style env is visible. \`EXPOSE 8000\`."
             echo "Started uvicorn and reached \`GET /docs\` (${docs}) and \`GET /health\` (${health}); container was removed."
             echo "Run anywhere: \`docker run -p 8000:8000 -e DATABASE_URL=… <image>\` (Docker Desktop, compose, or Academy)."

@@ -2,15 +2,15 @@
 
 **App repo:** [Heavy-Rental/haystack-fast-api](https://github.com/Heavy-Rental/haystack-fast-api)  
 **Checked:** `develop` @ `a25128cb` (2026-08-17), open [PR #99](https://github.com/Heavy-Rental/haystack-fast-api/pull/99) (`HR-155`)  
-**Release CI:** `release-pipeline/` in this tree — **not** on app `develop` / `master`  
+**Release CI:** `release-pipeline/` in this tree — **not** on app `develop` / `master`. Packaging sanitizes `.env.prod` → `/app/.env`.  
 **App CD:** `deploy-pipeline/` (this tree — **not** in the app repo yet)  
 **Estate:** infra `apply` + `sync-secrets` must have created `asg-haystack` and `heavy-rental/haystack`
 
 This file is the operator checklist and readiness record. It does not apply Terraform, merge the app PR, or push images.
 
-**Verdict: not ready to deploy today.** The FastAPI process matches the image contract. The live repo cannot yet produce a pullable GHCR image, cannot run the compose sidecars, and would stay on CI-safe fake/memory backends unless CD rewrites `.env` (this pipeline now does that).
+**Verdict: not ready to deploy today.** The FastAPI process matches the image contract. The live repo cannot yet produce a pullable GHCR image and cannot run the compose sidecars. Product knobs ship as `/app/.env` from sanitized `.env.prod`; estate URLs still require infra `sync-secrets`. CD overlays academy Profile vars onto guest `.env` after SM (see [`BOOTSTRAP.md`](BOOTSTRAP.md)).
 
-Everyday operate after install: [`BOOTSTRAP.md`](BOOTSTRAP.md). Specification: [`../specification/pipelines/haystack-cd.md`](../specification/pipelines/haystack-cd.md).
+Everyday operate after install (academy inventory, every-run steps, do-nots): [`BOOTSTRAP.md`](BOOTSTRAP.md). Specification: [`../specification/pipelines/haystack-cd.md`](../specification/pipelines/haystack-cd.md). Sample product file: [`samples/.env.prod`](samples/.env.prod).
 
 ---
 
@@ -28,22 +28,26 @@ Everyday operate after install: [`BOOTSTRAP.md`](BOOTSTRAP.md). Specification: [
 Generated image (app Dockerfile is ignored):
 
 ```dockerfile
-# Runtime env from heavy-rental/haystack (do not ENV/ARG these):
+# Runtime estate keys from heavy-rental/haystack (do not ENV/ARG these):
 #   DATABASE_URL, POSTGRES_*, SOURCE_* (SoR), TARGET_* (Haystack RDS), NEO4J_*
+# Product knobs: sanitized .env.prod → /app/.env (pydantic Settings).
 FROM python:3.12-slim-bookworm
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
 WORKDIR /app
 COPY pyproject.toml uv.lock ./
 RUN uv sync --frozen --no-dev --extra neo4j
 COPY app ./app
+COPY haystack.prod.env .env
 # COPY postgres_haystack_sync / neo4j_populate only if those dirs exist in the checkout
 EXPOSE 8000
 CMD ["uv", "run", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
 ```
 
-Packaging fails if the generated Dockerfile bakes `ENV`/`ARG` for infra `heavy-rental/haystack` keys or `.env.example` knobs (`NEED_DECOMPOSER`, `LLM_*`, `INDEXING_*`, `IDEMPOTENCY_*`, `FLEET_BACKEND`, `PRICING_SCHEMA`, `NEO4J_*`, `RECOMMEND_VIA_AGENT_GRAPH`, `KG_*`) or copies a `.env`. After build it proves dummy values for those names are visible, then starts uvicorn and requires `GET /docs` or `GET /health` on `:8000` (200–302). `/health` may be `degraded` without Postgres. It does not connect to RDS or an LLM.
+Packaging fails if the generated Dockerfile bakes `ENV`/`ARG` for infra `heavy-rental/haystack` keys or Profile knobs, or `COPY`s a raw `.env` / `.env.prod`. It **does** sanitize app `.env.prod` (or `docs/samples/.env.prod`, or generated production defaults), strip estate keys and secrets, and `COPY haystack.prod.env .env` so pydantic loads `APP_ENV=prod` and the other product knobs. After build it proves `Settings().app_env` comes from `/app/.env`, that `docker run -e` still overrides the file, that dummy SM names are visible, then starts uvicorn and requires `GET /docs` or `GET /health` on `:8000` (200–302). `/health` may be `degraded` without Postgres. It does not connect to RDS or an LLM.
 
-Desktop / any Engine: `docker run -p 8000:8000 -e DATABASE_URL=… -e FLEET_BACKEND=sql … ghcr.io/<owner>/haystack_recommender:<tag>`. Academy: infra `sync-secrets` → guest `.env` → compose `env_file`.
+Desktop / any Engine: `docker run -p 8000:8000 -e DATABASE_URL=… ghcr.io/<owner>/haystack_recommender:<tag>` — product knobs already come from `/app/.env`. Academy: infra `sync-secrets` → guest `.env` → compose `env_file` (process env wins over the image file).
+
+Operator checklist for the file: [`samples/.env.prod`](samples/.env.prod). Copy it to the **app** repo as `.env.prod` (repo root) so Packaging uses your values instead of generated defaults. Do not put RDS hosts, `NEO4J_URI=bolt://neo4j:7687`, or `LLM_API_KEY` in that file.
 
 GHCR name: `ghcr.io/<owner>/haystack_recommender` (lowercase). On `Heavy-Rental` that is `ghcr.io/heavy-rental/haystack_recommender:<x.y.z>` and `:latest`. The version tag is the previous GHCR semver with the patch bumped (first publish is `1.0.0`).
 
@@ -93,14 +97,15 @@ Copy from this tree’s `deploy-pipeline/`:
 | `haystack-cd-academy.yml` | `.github/workflows/` |
 | `resolve-vocareum-aws/action.yml` | `.github/actions/resolve-vocareum-aws/` |
 | `ansible/` | **`deploy-pipeline/ansible/`** (keep this path) |
+| [`docs/samples/.env.prod`](samples/.env.prod) | **`.env.prod`** at the app repo root (Release sanitizes this to `/app/.env`) |
 
-Do **not** copy `specification/`. Everyday operate: [`BOOTSTRAP.md`](BOOTSTRAP.md).
+Do **not** copy `specification/`. Everyday operate after this copy: [`BOOTSTRAP.md`](BOOTSTRAP.md) (same four CD files and the same academy inventory).
 
 ---
 
 ## 5. GitHub Environment `academy`
 
-Create Environment **`academy`** on the Haystack repo. Do **not** point CD at CI Environments `integration` or `production`.
+Create Environment **`academy`** on the Haystack repo. Do **not** point CD at CI Environments `integration` or `production`. Same inventory as [`BOOTSTRAP.md`](BOOTSTRAP.md).
 
 ### Secrets (runner only — optional fallback)
 
@@ -111,6 +116,7 @@ Paste Vocareum AWS Details on each Run after Start Lab, **or** store these as En
 | `AWS_ACCESS_KEY_ID` | If the Run form fields are empty |
 | `AWS_SECRET_ACCESS_KEY` | If the Run form fields are empty |
 | `AWS_SESSION_TOKEN` | If the Run form fields are empty |
+| `LLM_API_KEY` | Optional overlay onto guest `.env`. Never on the Run form, never in `.env.prod`, never baked into the image. |
 
 ### Variables (not secrets)
 
@@ -119,6 +125,15 @@ Paste Vocareum AWS Details on each Run after Start Lab, **or** store these as En
 | `AWS_REGION` | Recommended | Defaults to `us-east-1` if empty |
 | `HAYSTACK_IMAGE` | Required for `deploy` / `configure-only` unless `image_ref` is set | Public GHCR or ECR tag. **No stock uvicorn.** |
 | `IMAGE_HTTP_URL` | Optional | HTTPS or `s3://` CI `.tar.gz` for `docker load` |
+| `APP_NAME`, `APP_ENV`, `LOG_LEVEL` | Optional | Overlay; empty keeps image `/app/.env` (`haystack-fast-api` / `prod` / `INFO`) |
+| `NEED_DECOMPOSER`, `LLM_BASE_URL`, `LLM_MODEL`, `LLM_TIMEOUT_SECONDS`, `LLM_TEMPERATURE` | Optional | Overlay; empty keeps image `/app/.env`. Pair `NEED_DECOMPOSER=llm` with secret `LLM_API_KEY` |
+| `INDEXING_EMBEDDER`, `INDEXING_EMBEDDING_DIM`, `INDEXING_SPLIT_LENGTH`, `INDEXING_SPLIT_OVERLAP`, `INDEXING_OPENAI_EMBEDDING_MODEL`, `INDEXING_ST_MODEL`, `INDEXING_DOCUMENT_STORE`, `INDEXING_CHUNK_TTL_SECONDS` | Optional | Overlay; empty keeps image `/app/.env` (mock / memory). `pgvector` still needs `CREATE EXTENSION vector` |
+| `IDEMPOTENCY_TTL_SECONDS`, `INDEXING_VIA_AGENT_GATE` | Optional | Overlay; empty keeps image `/app/.env` |
+| `FLEET_BACKEND`, `PRICING_SCHEMA`, `NEO4J_BACKEND` | Optional | Overlay only. Infra SM already writes `sql` / `bolt` if missing |
+| `NEO4J_POPULATE_TIMEOUT_SECONDS` | Optional | Overlay; empty keeps image `/app/.env` (`2`). **Not** `NEO4J_POPULATE_URL` |
+| `RECOMMEND_VIA_AGENT_GRAPH`, `RECOMMEND_FANOUT_CAP`, `KG_ARTIFACT_DIR`, `KG_APPLY_TRANSFORMS`, `PROJECT_AGENT_MODE`, `PROJECT_AGENT_TOP_K` | Optional | Overlay; empty keeps image `/app/.env` |
+
+Do **not** set `NEO4J_URI`, `NEO4J_POPULATE_URL`, `NEO4J_USER`, `NEO4J_PASSWORD`, `POSTGRES_*`, `DATABASE_URL`, `SOURCE_*`, or `TARGET_*` on this Environment. CD will not overlay them.
 
 ### Run form
 
@@ -142,15 +157,15 @@ This CD does **not** create the ASG or start Neo4j. Before any `deploy`:
 2. Infra `sync-secrets` filled **`heavy-rental/haystack`**.
 3. Guests are InService and SSM Online (Start Lab if the session ended). Desired=0 → infra, not this CD.
 
-The guest (`LabRole`) reads `heavy-rental/haystack`. `LLM_API_KEY` is never on the Run form or in the image.
+The guest (`LabRole`) reads `heavy-rental/haystack`. `LLM_API_KEY` is never on the Run form, never in `.env.prod`, and never baked into the image (academy Environment secret or infra SM only).
 
 ---
 
 ## 7. Runtime env names (image can be right; keys may not)
 
-App `Settings` (`app/config.py`) uses different names and **CI-safe defaults**. `DATABASE_URL` from SM wins for Postgres and is rewritten `postgresql://` → `postgresql+psycopg://`.
+App `Settings` (`app/config.py`) uses different names. Code defaults are still CI-safe (`fake` / `memory` / `stub`). The Release image `/app/.env` (from `.env.prod`) and infra SM override those. `DATABASE_URL` from SM wins for Postgres and is rewritten `postgresql://` → `postgresql+psycopg://`.
 
-**Owner:** infra `sync-secrets` writes the names the app reads (same idea as REST aliases). Haystack CD still **fills missing keys only** after SM → `.env` so an old secret still works. It does not overwrite a value already in the secret.
+**Owner** (same three layers as [`BOOTSTRAP.md`](BOOTSTRAP.md)): infra `sync-secrets` writes estate names the app reads. The image ships product knobs in `/app/.env`. Haystack CD fills **missing** Postgres aliases and `sql` / `bolt` after SM → guest `.env`, then overlays non-empty academy Profile vars. It does not overwrite a value already in the secret unless the overlay sets that key.
 
 | App reads | `heavy-rental/haystack` after the SM patch | CD `.env` if SM omitted the key |
 | --- | --- | --- |
@@ -162,16 +177,18 @@ App `Settings` (`app/config.py`) uses different names and **CI-safe defaults**. 
 | `FLEET_BACKEND` | **`sql`** | set `sql` if absent |
 | `NEO4J_BACKEND` | **`bolt`** | set `bolt` if absent |
 | `NEO4J_URI` / `USER` / `PASSWORD` | written (NLB, not `bolt://neo4j:7687`) | kept |
-| `INDEXING_DOCUMENT_STORE` | not written → app default **`memory`** | **not** flipped (pgvector is optional) |
-| `NEED_DECOMPOSER` | not written → **`stub`** | Haystack Environment `NEED_DECOMPOSER` overlays if set |
-| `LLM_API_KEY` | optional on infra SM | Haystack Environment secret overlays if set; never invented |
-| `LLM_BASE_URL` / `LLM_MODEL` / `LLM_TIMEOUT_SECONDS` / `LLM_TEMPERATURE` | not written → app defaults | set in SM or `docker -e` |
-| `INDEXING_EMBEDDER` / `INDEXING_EMBEDDING_DIM` / `INDEXING_SPLIT_*` / `INDEXING_OPENAI_EMBEDDING_MODEL` / `INDEXING_CHUNK_TTL_SECONDS` | not written → mock / 384 / 200 / 20 / `text-embedding-3-small` / 0 | set in SM or `docker -e` |
-| `IDEMPOTENCY_TTL_SECONDS` / `INDEXING_VIA_AGENT_GATE` | not written → 86400 / `false` | set in SM or `docker -e` |
-| `PRICING_SCHEMA` | not written → `primary_snapshot` | set in SM (`public` for live Spring tables) |
-| `NEO4J_POPULATE_URL` | **`http://neo4j-populate:8089/v1/populate`** (compose worker on `asg-haystack`) | **not** overlaid; infra SM owns it |
-| `NEO4J_POPULATE_TIMEOUT_SECONDS` | not written → `2` | Haystack Environment overlay if set |
-| `RECOMMEND_VIA_AGENT_GRAPH` / `KG_ARTIFACT_DIR` / `KG_APPLY_TRANSFORMS` | not written → `false` / `artifacts/kg` / `false` | set in SM or `docker -e` |
+| `INDEXING_DOCUMENT_STORE` | not written → image `/app/.env` **`memory`** | academy overlay if set; **not** flipped by CD aliases (pgvector is optional) |
+| `APP_NAME` / `APP_ENV` / `LOG_LEVEL` | not written | image `/app/.env` (`prod` / `INFO`); academy overlay if set |
+| `NEED_DECOMPOSER` | not written → image `/app/.env` **`stub`** | Haystack Environment `NEED_DECOMPOSER` overlays if set |
+| `LLM_API_KEY` | optional on infra SM | Haystack Environment secret overlays if set; never invented; never in `.env.prod` |
+| `LLM_BASE_URL` / `LLM_MODEL` / `LLM_TIMEOUT_SECONDS` / `LLM_TEMPERATURE` | not written → image `/app/.env` | academy overlay or `docker -e` |
+| `INDEXING_EMBEDDER` / `INDEXING_EMBEDDING_DIM` / `INDEXING_SPLIT_*` / `INDEXING_OPENAI_EMBEDDING_MODEL` / `INDEXING_ST_MODEL` / `INDEXING_CHUNK_TTL_SECONDS` | not written → image `/app/.env` (mock / 384 / …) | academy overlay or `docker -e` |
+| `IDEMPOTENCY_TTL_SECONDS` / `INDEXING_VIA_AGENT_GATE` | not written → image `/app/.env` | academy overlay if set |
+| `PRICING_SCHEMA` | not written → image `/app/.env` `primary_snapshot` | academy overlay (`public` for live Spring tables) |
+| `NEO4J_POPULATE_URL` | **`http://neo4j-populate:8089/v1/populate`** (compose worker on `asg-haystack`) | **not** overlaid; infra SM owns it; stripped from `.env.prod` |
+| `NEO4J_POPULATE_TIMEOUT_SECONDS` | not written → image `/app/.env` `2` | Haystack Environment overlay if set |
+| `RECOMMEND_VIA_AGENT_GRAPH` / `RECOMMEND_FANOUT_CAP` / `KG_ARTIFACT_DIR` / `KG_APPLY_TRANSFORMS` | not written → image `/app/.env` | academy overlay or `docker -e` |
+| `PROJECT_AGENT_MODE` / `PROJECT_AGENT_TOP_K` | not written → image `/app/.env` (`stub` / `5`) | academy overlay if set |
 | `SOURCE_HOST` / `SOURCE_PORT` / `SOURCE_DATABASE` | written (SoR / REST RDS `heavy_rental`) | **not** invented by CD |
 | `TARGET_HOST` / `TARGET_PORT` / `TARGET_DATABASE` | written (Haystack RDS — same host as `POSTGRES_*`) | **not** invented by CD |
 
@@ -183,7 +200,7 @@ Haystack RDS database name is **`haystack`**, not the app example `heavy_rental`
 
 `INDEXING_DOCUMENT_STORE=pgvector` still needs `CREATE EXTENSION vector` on Haystack RDS (infra `rds_logical`) and a matching `INDEXING_EMBEDDING_DIM`. Set `INDEXING_DOCUMENT_STORE` (and dim) on the **Haystack** Environment `academy`, then run Haystack CD `configure-only` — do not put that in infra `sync-secrets`.
 
-Profile knobs (`NEED_DECOMPOSER`, `LLM_*`, `INDEXING_*`, `PRICING_SCHEMA`, `KG_*`, …) are Haystack project Environment variables/secrets. Infra still owns hosts, Bolt NLB `NEO4J_URI`, and RDS passwords.
+Profile knobs (`APP_ENV`, `NEED_DECOMPOSER`, `LLM_*`, `INDEXING_*`, `PRICING_SCHEMA`, `KG_*`, …) ship as image `/app/.env` from `.env.prod` and may be overlaid from Haystack Environment `academy`. Infra still owns hosts, Bolt NLB `NEO4J_URI`, and RDS passwords. pydantic does **not** auto-load a file named `.env.prod`; Release copies the sanitized file to `.env`.
 
 ---
 
@@ -222,19 +239,23 @@ That is still not the full QUICKSTART Profile B path until the sidecars (or HTTP
 
 ## 10. First CD run
 
+Same sequence as [`BOOTSTRAP.md`](BOOTSTRAP.md) “Every run”:
+
 1. Instructure → Start Lab → AWS Details.
 2. Actions → **Haystack CD (Academy)** → Environment `academy` → paste the three keys (or use Environment fallback).
 3. `action=verify` — assert-lab + discover + SSM `GET :8000/docs` or `/health` (SoR/Bolt down does not fail this job by itself if uvicorn answers).
-4. `action=deploy` with a **new** public GHCR or ECR tag (or tar URL + matching tag).
-5. `action=configure-only` refreshes `.env` from `heavy-rental/haystack` and applies the aliases/live flags (still needs `HAYSTACK_IMAGE` or `image_ref` — no stock uvicorn).
+4. `action=deploy` with a **new** public GHCR or ECR tag (or tar URL + matching tag). Prefer a **new tag**.
+5. `action=configure-only` refreshes guest `.env` from `heavy-rental/haystack`, adds Postgres aliases / `FLEET_BACKEND=sql` / `NEO4J_BACKEND=bolt` if missing, overlays non-empty academy Profile vars (still needs `HAYSTACK_IMAGE` or `image_ref` — no stock uvicorn).
+
+Sidecar crash-loops do not fail `verify` if uvicorn answers. A green verify is not proof that sync or populate ran.
 
 ---
 
 ## 11. Do not
 
 - Use CI Environments `integration` / `production` as CD
-- Expect GHCR from HR-155 or a `develop`→`master` PR alone
-- Put Vocareum keys or `LLM_API_KEY` in the image or on the Run form
+- Expect GHCR from HR-155 or a `develop` → `master` PR alone (publish a GitHub Release)
+- Put Vocareum keys or `LLM_API_KEY` in the image, in `.env.prod`, or on the Run form
 - Type instance IDs on the Run form
 - Run `terraform apply` from this workflow
 - Start a `neo4j` container on `asg-haystack`

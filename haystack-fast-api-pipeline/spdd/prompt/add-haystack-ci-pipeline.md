@@ -75,7 +75,7 @@ Artifacts:
 - Integration resolve: `uv lock --check` then `uv sync --frozen --all-groups`, then a Haystack/FastAPI smoke (`create_app`, `build_indexing_pipeline`, `build_intake_front_pipeline`).
 - QC: `uv run ruff check app tests` then `uv run pytest tests/` with CI-safe Haystack env.
 - Security: Semgrep `p/python` `p/owasp-top-ten` `p/security-audit` `p/secrets`; `uvx pip-audit` report-only; Trivy FS two-pass + CRITICAL gate; CodeQL `python`.
-- Release: `uv build`, then always-generated Python 3.12 + uv + uvicorn `app.main:app :8000` + `--extra neo4j` (app Dockerfile moved aside). Refuse baked estate/Profile knobs (ADR 0008 / 0009). Prove dummy `-e` and `GET /docs` or `/health`. `COPY` sidecar dirs only if present. `docker save` all four tags; GHCR `haystack_recommender` when not a pull request.
+- Release: `uv build`, then always-generated Python 3.12 + uv + uvicorn `app.main:app :8000` + `--extra neo4j` (app Dockerfile moved aside). Sanitize `.env.prod` → `/app/.env` (product knobs only). Refuse `ENV`/`ARG`, raw `COPY .env`, estate secrets (ADR 0008 / 0009). Do not read Environment `academy`. Prove dummy `-e` (process env wins) and `GET /docs` or `/health`. `COPY` sidecar dirs only if present. `docker save` all four tags; GHCR `haystack_recommender` when not a pull request.
 
 ## S — Structure
 
@@ -142,7 +142,7 @@ Job `name:` values (branch protection):
 - **DO NOT** start Postgres, pgvector, or Neo4j; **DO NOT** set `RUN_PGVECTOR_TESTS` or `RUN_NEO4J_TESTS`.
 - **DO NOT** set `LLM_API_KEY` or call DigitalOcean Inference.
 - **DO NOT** `uv sync --extra neo4j` on Fast Feedback / Integration / QC (test install). Release **image** install SHALL use `--extra neo4j`.
-- **DO NOT** bake `SOURCE_*`, `TARGET_*`, `POSTGRES_*`, `DATABASE_URL`, `NEO4J_PASSWORD`, or `LLM_API_KEY` into the Release image (`ENV`/`ARG`/`COPY .env`/`--build-arg`).
+- **DO NOT** bake `SOURCE_*`, `TARGET_*`, `POSTGRES_*`, `DATABASE_URL`, `NEO4J_PASSWORD`, or `LLM_API_KEY` into the Release image (`ENV`/`ARG`/`COPY .env`/`--build-arg`). A sanitized `COPY haystack.prod.env .env` (product knobs only, estate keys stripped) is required.
 - **DO NOT** add Docker build or `packages: write` on Fast Feedback or Integration CI.
 - **DO NOT** commit a Dockerfile into this repo or the application product tree; generate one at Release packaging time only if the app checkout has none.
 - **DO NOT** start Postgres, Neo4j, or call an LLM during `docker build`.

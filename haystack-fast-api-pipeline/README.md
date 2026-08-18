@@ -11,8 +11,8 @@ Start here: [`specification/README.md`](specification/README.md). App-repo CD ch
 | `specification/` | Human index and CI + CD walkthroughs |
 | `openspec/` | OpenSpec behavior (requirements + scenarios) |
 | `spdd/` | OpenSPDD analysis + REASONS Canvas |
-| `docs/adr/` | ADRs for CI (0005–0008) and CD (0001–0004) |
-| `docs/` | Academy CD operate + [`PREPARE-HAYSTACK-REPO.md`](docs/PREPARE-HAYSTACK-REPO.md) |
+| `docs/adr/` | ADRs 0001–0009 (CI 0005–0008; CD 0001–0004; 0009 spans both) |
+| `docs/` | Academy CD operate ([`BOOTSTRAP.md`](docs/BOOTSTRAP.md), [`PREPARE-HAYSTACK-REPO.md`](docs/PREPARE-HAYSTACK-REPO.md), [`samples/.env.prod`](docs/samples/.env.prod)) |
 | `fast-feedback-ci-pipeline/` | Integration-only feature-branch pipeline |
 | `integration-pipeline/` | PR / `develop` merge gate |
 | `release-pipeline/` | `develop` → `master` / GitHub Release + `uv build` + Docker/GHCR |

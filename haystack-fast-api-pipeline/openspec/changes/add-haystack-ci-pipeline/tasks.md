@@ -20,6 +20,7 @@
 
 - [x] 4.1 Author `release-pipeline/release-pipeline.yml` (CI gates + `uv build`)
 - [x] 4.2 Author `release-pipeline/haystack-release-caller.yml` (published release or `develop` → `master` PR)
+- [x] 4.3 Sanitize `.env.prod` → `/app/.env`; refuse estate secrets and raw `COPY .env`; prove `-e` still wins (ADR 0008)
 
 ## 5. Verify
 

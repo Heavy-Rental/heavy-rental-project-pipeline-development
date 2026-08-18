@@ -47,6 +47,7 @@ Packaging SHALL build a Docker image after staging wheel/sdist artifacts and SHA
 - THEN it installs the locked uv environment with `--extra neo4j`
 - AND the default command is uvicorn serving `app.main:app` on port 8000
 - AND the file does not set `ENV` or `ARG` for infra SM keys or Profile knobs (`POSTGRES_*`, `NEED_DECOMPOSER`, `LLM_*`, `INDEXING_*`, `NEO4J_*`, …)
+- AND the file copies a sanitized `haystack.prod.env` to `.env` so pydantic loads the production profile
 
 #### Scenario: Image tar is non-empty
 - GIVEN `docker build` succeeds
@@ -54,12 +55,25 @@ Packaging SHALL build a Docker image after staging wheel/sdist artifacts and SHA
 - THEN `haystack_recommender-{semver}.tar.gz` exists and is non-empty
 
 ### Requirement: Image does not bake database or sync config
-The Dockerfile Packaging uses SHALL NOT set `ENV`/`ARG` for `POSTGRES_*`, `SOURCE_*`, `TARGET_*`, `DATABASE_URL`, `NEED_DECOMPOSER`, `LLM_*`, `INDEXING_*`, `IDEMPOTENCY_*`, `FLEET_BACKEND`, `PRICING_SCHEMA`, `NEO4J_*`, `RECOMMEND_VIA_AGENT_GRAPH`, or `KG_*`, and SHALL NOT `COPY` a `.env` file. `docker build` SHALL NOT pass `--build-arg` for those names. Infra `sync-secrets` (`heavy-rental/haystack`) is the Academy owner of DB/sync/`FLEET_BACKEND`/`NEO4J_URI`/`NEO4J_POPULATE_URL`/`NEO4J_USER`/`NEO4J_PASSWORD` (ADR 0009). Product knobs stay injectable at runtime.
+The Dockerfile Packaging uses SHALL NOT set `ENV`/`ARG` for `POSTGRES_*`, `SOURCE_*`, `TARGET_*`, `DATABASE_URL`, `NEED_DECOMPOSER`, `LLM_*`, `INDEXING_*`, `IDEMPOTENCY_*`, `FLEET_BACKEND`, `PRICING_SCHEMA`, `NEO4J_*`, `RECOMMEND_VIA_AGENT_GRAPH`, or `KG_*`, and SHALL NOT `COPY` a raw `.env` or `.env.prod`. `docker build` SHALL NOT pass `--build-arg` for those names. Packaging SHALL sanitize `.env.prod` (app checkout `.env.prod` or `docs/samples/.env.prod`, else generated production defaults), drop estate keys and secrets, and `COPY haystack.prod.env .env` so pydantic `Settings` loads product knobs. Packaging SHALL NOT read Haystack Environment `academy` variables or secrets. Infra `sync-secrets` (`heavy-rental/haystack`) is the Academy owner of DB/sync/`NEO4J_URI`/`NEO4J_POPULATE_URL`/`NEO4J_USER`/`NEO4J_PASSWORD` (ADR 0009). Product knobs stay injectable at runtime (process env wins over `/app/.env`).
 
 #### Scenario: Baked ENV fails Packaging
 - GIVEN the Dockerfile contains `ENV POSTGRES_HOST=…`, `ENV NEED_DECOMPOSER=stub`, or `COPY .env`
 - WHEN Packaging prepares the image
 - THEN the job fails before or instead of treating the image as releasable
+
+#### Scenario: Production profile file is sanitized into the image
+- GIVEN the app checkout has `.env.prod` (or Packaging generated production defaults)
+- WHEN Packaging prepares the image
+- THEN `haystack.prod.env` has no `POSTGRES_*`, `DATABASE_URL`, `NEO4J_URI`, `NEO4J_PASSWORD`, or `LLM_API_KEY`
+- AND the Dockerfile contains `COPY haystack.prod.env .env`
+- AND `/app/.env` is present after `docker build`
+
+#### Scenario: Academy Environment is not read at Packaging
+- GIVEN Haystack Environment `academy` has `NEED_DECOMPOSER=llm`
+- WHEN Packaging builds the image
+- THEN the image `/app/.env` is produced only from the app `.env.prod` (or generated defaults)
+- AND Packaging does not consult Environment `academy` variables or secrets
 
 ### Requirement: Runtime env is visible without a live database
 After a successful build, Packaging SHALL inspect the image `Config.Env` and SHALL run the image with dummy values for infra `heavy-rental/haystack` keys (`SOURCE_*`, `TARGET_*`, `POSTGRES_*`, `DATABASE_URL`, `FLEET_BACKEND`, `NEO4J_*`, `LLM_API_KEY`) and for the remaining `.env.example` knobs (`NEED_DECOMPOSER`, `LLM_BASE_URL`, `LLM_MODEL`, `LLM_TIMEOUT_SECONDS`, `LLM_TEMPERATURE`, `INDEXING_*`, `IDEMPOTENCY_TTL_SECONDS`, `INDEXING_VIA_AGENT_GATE`, `PRICING_SCHEMA`, `RECOMMEND_VIA_AGENT_GRAPH`, `KG_ARTIFACT_DIR`, `KG_APPLY_TRANSFORMS`). Those dummy values SHALL be visible inside the container. Packaging SHALL NOT start Postgres, SHALL NOT connect to Academy RDS, and SHALL NOT call an LLM.
@@ -75,6 +89,8 @@ After a successful build, Packaging SHALL inspect the image `Config.Env` and SHA
 - WHEN Packaging runs the container with dummy `NEED_DECOMPOSER`, `LLM_*`, `INDEXING_*`, `FLEET_BACKEND`, `NEO4J_*`, and `KG_*`
 - THEN those values appear in the container environment
 - AND `Config.Env` does not contain baked `NEED_DECOMPOSER` / `LLM_*` / `INDEXING_*` / `FLEET_BACKEND` / `NEO4J_*` / `KG_*`
+- AND `Settings().app_env` is loaded from `/app/.env`
+- AND `docker run -e APP_ENV=ci-override` makes `Settings().app_env` equal `ci-override`
 
 ### Requirement: Image is deployable and endpoints are reachable
 After `docker build`, Packaging SHALL confirm the image exposes `8000/tcp`, SHALL confirm `/app/app/main.py` exists, SHALL start the default uvicorn command with dummy DB/sync env and CI-safe Haystack flags (not baked into the image), SHALL wait until `GET /docs` or `GET /health` on port 8000 returns HTTP 200–302, and SHALL stop the container. Packaging SHALL NOT leave uvicorn running and SHALL NOT require a live Postgres (`/health` may be `degraded`).

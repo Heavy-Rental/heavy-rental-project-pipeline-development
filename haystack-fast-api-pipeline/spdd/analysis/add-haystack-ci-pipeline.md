@@ -21,7 +21,7 @@ Infrastructure setup, project deployment, and operate are another project's prob
 | Integration | Highest-priority job: checkout + CPython 3.12 + uv + Haystack pipeline smoke. Not “run pytest” |
 | Quality Control | Ruff + pytest (Haystack + FastAPI TestClient). Not live pgvector, not LLM eval |
 | Security | Semgrep `p/python` + pip-audit report + Trivy CRITICAL gate |
-| Packaging | `uv build` wheel/sdist plus env-driven Docker image tar; GHCR push outside pull requests |
+| Packaging | `uv build` wheel/sdist plus env-driven Docker image tar (sanitized `.env.prod` → `/app/.env`); GHCR push outside pull requests |
 | Infrastructure | Create or change the platform (IaC). Infra project. Not this CI family |
 | Deploy | Put Release artifacts onto existing infrastructure. Academy CD in `deploy-pipeline/` |
 | Operate | Keep the live system healthy after deploy. Needs infra knowledge; does not create infra. Another project |
@@ -38,7 +38,7 @@ Infrastructure setup, project deployment, and operate are another project's prob
 1. **Wrong toolchain** — inheriting Java, Gradle, Node, or Maven. Forbidden.
 2. **Secrets theatre** — inventing `environment: integration`, `REST_API_DB_*`, or `LLM_API_KEY`. The unmarked pytest suite is CI-safe without them.
 3. **Live backend spend** — `RUN_PGVECTOR_TESTS`, `RUN_NEO4J_TESTS`, or `NEED_DECOMPOSER=llm`. Forbidden in v1.
-4. **Inventing a Dockerfile in the application repo** — do not commit one here. Release always generates the uvicorn image; an app `Dockerfile` is not the GHCR/CD image. Env-driven (ADR 0008 / 0009): no baked estate or Profile knobs.
+4. **Inventing a Dockerfile in the application repo** — do not commit one here. Release always generates the uvicorn image; an app `Dockerfile` is not the GHCR/CD image. Env-driven (ADR 0008 / 0009): no estate/`ENV`/`ARG`; sanitized `.env.prod` → `/app/.env` for product knobs; academy Environment vars are CD-only.
 5. **Semgrep injection** — interpolating `${{ github.* }}` / `${{ inputs.* }}` inside `run:` scripts.
 6. **Caller bypass** — a reusable file with `push:` in addition to `workflow_call`.
 7. **Scope creep into another project** — Terraform/Bicep, rollout jobs, or operate monitors in this tree. Forbidden.
@@ -55,7 +55,7 @@ Infrastructure setup, project deployment, and operate are another project's prob
 - Six YAML files exist, `actionlint`-clean, Semgrep-safe.
 - Job names match the branch-protection list in the CI caller header.
 - Toolchain is Python 3.12 + uv + Ruff + pytest + Haystack smoke.
-- Release Packaging always generates uvicorn `app.main:app :8000` (`--extra neo4j`), refuses baked estate/Profile knobs, proves dummy `-e` injection and `GET /docs` or `/health`, copies sidecar dirs only if present, uploads a gzipped tar (all four tags), and pushes GHCR `haystack_recommender` off PR. Fast Feedback and Integration CI still have no `packages: write`.
+- Release Packaging always generates uvicorn `app.main:app :8000` (`--extra neo4j`), sanitizes `.env.prod` → `/app/.env` (estate keys and `LLM_API_KEY` stripped), refuses `ENV`/`ARG` and raw `COPY .env`, proves dummy `-e` injection (process env wins) and `GET /docs` or `/health`, copies sidecar dirs only if present, uploads a gzipped tar (all four tags), and pushes GHCR `haystack_recommender` off PR. Packaging does not read Environment `academy`. Fast Feedback and Integration CI still have no `packages: write`.
 - No LLM/Postgres/Neo4j secrets in CI.
 - Specs and headers name `haystack-fast-api-pipeline/` as the authoring tree and `Heavy-Rental/haystack-fast-api` as the application.
 - No infrastructure, compose, or operate jobs in this CI family (ADR 0007–0008).
