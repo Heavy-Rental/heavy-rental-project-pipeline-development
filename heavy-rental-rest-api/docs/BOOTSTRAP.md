@@ -35,4 +35,4 @@ Do **not** point this workflow at CI Environments `integration` or `production`.
 
 The **runner** still needs Vocareum keys. The **EC2** uses `LabRole`, not those keys.
 
-CI already builds `ghcr.io/<owner>/heavy-rental-rest-api:<tag>` on non-PR Release and a docker tar artifact.
+CI already builds `ghcr.io/<owner>/heavy_rental_rest_api:<x.y.z>` and `:latest` on non-PR Release and a docker tar artifact.

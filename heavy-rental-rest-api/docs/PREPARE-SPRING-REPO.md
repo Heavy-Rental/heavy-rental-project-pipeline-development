@@ -34,7 +34,7 @@ CMD ["catalina.sh", "run"]
 
 Packaging fails if the Dockerfile (generated or app-supplied) bakes `ENV`/`ARG` for those keys or copies a `.env`. After build it runs the image with dummy `SPRING_DATASOURCE_URL` / `POSTGRES_HOST` / `HAYSTACK_BASE_URL` / Stripe / JWT to prove they are visible. It does not start Tomcat or connect to RDS. `spring-datasource.env` is a Release artifact (no password) and is **not** copied into the image.
 
-GHCR name: `ghcr.io/<owner>/heavy-rental-rest-api` (lowercase). On `Heavy-Rental` that is `ghcr.io/heavy-rental/heavy-rental-rest-api:<tag>` and `:latest`.
+GHCR name: `ghcr.io/<owner>/heavy_rental_rest_api` (lowercase). On `Heavy-Rental` that is `ghcr.io/heavy-rental/heavy_rental_rest_api:<x.y.z>` and `:latest`. The version tag is the previous GHCR semver with the patch bumped (first publish is `1.0.0`).
 
 | Release trigger | What you get |
 | --- | --- |
@@ -60,8 +60,8 @@ On app `develop` today:
 
 1. CI Environment **`production`** (Release QC only) has `REST_API_CLOUD_DB_*` if QC is not already green. Those names are **not** CD and **not** what the guest reads.
 2. Merge to `master` and **publish a GitHub Release**. That is what pushes GHCR.
-3. Org Packages → `heavy-rental-rest-api` → visibility **Public**. Private GHCR fails CD on purpose (no PAT on the guest).
-4. Record the tag, for example `ghcr.io/heavy-rental/heavy-rental-rest-api:v0.0.1-build<run>-<sha>`. Prefer a **new** tag each deploy (`compose up` is not `--pull always`).
+3. Org Packages → `heavy_rental_rest_api` → visibility **Public**. Private GHCR fails CD on purpose (no PAT on the guest).
+4. Record the tag, for example `ghcr.io/heavy-rental/heavy_rental_rest_api:1.0.0` (or `:latest`). Prefer a **new** version tag each deploy (`compose up` is not `--pull always`).
 
 Optional Academy path: upload the Release tar to lab S3 and set `IMAGE_HTTP_URL` / `image_http_url` (`s3://` or HTTPS). You still need a compose tag that matches the loaded image name (`REST_IMAGE` or `image_ref`).
 

@@ -7,7 +7,8 @@
 #   3. Security Testing needs Integration — SAST (Semgrep) + SCA/FS (Trivy)
 #   4. CodeQL Analysis  needs Integration — GitHub CodeQL (Java) security + quality
 #   5. Packaging        needs Integration + QC + Security + CodeQL — versioned WAR +
-#                       Docker image (tar artifact; push to GHCR when not a PR)
+#                       Docker image (tar artifact; GHCR heavy_rental_rest_api:<semver>
+#                       + :latest, off PR)
 #
 # Security report format (standard): SARIF 2.1.0
 #   - Semgrep → semgrep.sarif
@@ -36,6 +37,8 @@
 #   HAYSTACK_*, STRIPE_*, APP_JWT_*, or REST_API_* in ENV/ARG/.env.
 #   Packaging refuses baked config and proves dummy runtime env is visible.
 #   Image saved as gzipped tar artifact; also pushed to GHCR outside PRs
+#   as ghcr.io/<owner>/heavy_rental_rest_api:<x.y.z> and :latest.
+#   <x.y.z> is the previous GHCR semver patch-bumped (first publish: 1.0.0).
 #   spring-datasource.env is a workflow artifact (no password), not copied into the image.
 #
 # Application:
@@ -161,7 +164,7 @@ env:
   DEFAULT_APP_REPOSITORY: SA62-team1/heavy-rental-spring-rest-api
   DEFAULT_APP_REF: master
   # Docker image naming (Tomcat hosts the Spring Boot WAR)
-  IMAGE_NAME: heavy-rental-rest-api
+  IMAGE_NAME: heavy_rental_rest_api
   TOMCAT_BASE_IMAGE: tomcat:10.1-jdk21-temurin
   # Non-sensitive Spring/JPA settings only — credentials come from GitHub Secrets
   SPRING_DATASOURCE_DRIVER_CLASS_NAME: org.postgresql.Driver
@@ -853,6 +856,7 @@ jobs:
   #   - base: tomcat:10.1-jdk21-temurin (matches Spring Boot 4 / Jakarta EE)
   #   - WAR copied to /usr/local/tomcat/webapps/ROOT.war
   #   - image saved as .tar.gz artifact; pushed to GHCR outside pull requests
+  #     as heavy_rental_rest_api:<semver> and :latest
   # Do not ship source trees or the local .m2 cache.
   # ---------------------------------------------------------------------------
   packaging:
@@ -953,6 +957,50 @@ jobs:
           echo "==> target/ after package"
           ls -lah target/ || true
 
+      - name: Resolve next heavy_rental_rest_api version
+        id: image-version
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPOSITORY_OWNER: ${{ github.repository_owner }}
+          IMAGE_NAME: ${{ env.IMAGE_NAME }}
+        run: |
+          set -euo pipefail
+          OWNER="${GH_REPOSITORY_OWNER}"
+          PKG="${IMAGE_NAME,,}"
+
+          list_tags() {
+            local path="$1"
+            gh api --paginate "${path}" --jq '.[] | .metadata.container.tags[]?' 2>/dev/null || true
+          }
+
+          TAGS="$(list_tags "/orgs/${OWNER}/packages/container/${PKG}/versions")"
+          if [ -z "${TAGS}" ]; then
+            TAGS="$(list_tags "/users/${OWNER}/packages/container/${PKG}/versions")"
+          fi
+
+          PREV="$(printf '%s\n' "${TAGS}" | grep -E '^[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -n1 || true)"
+          if [ -z "${PREV}" ]; then
+            NEXT="1.0.0"
+            PREV_DISPLAY="none"
+          else
+            IFS=. read -r MAJ MIN PAT <<< "${PREV}"
+            NEXT="${MAJ}.${MIN}.$((PAT + 1))"
+            PREV_DISPLAY="${PREV}"
+          fi
+
+          echo "previous_version=${PREV_DISPLAY}" >> "$GITHUB_OUTPUT"
+          echo "image_version=${NEXT}" >> "$GITHUB_OUTPUT"
+          echo "Resolved GHCR image version: previous=${PREV_DISPLAY} next=${NEXT}"
+          {
+            echo "### GHCR image version"
+            echo ""
+            echo "| Field | Value |"
+            echo "| --- | --- |"
+            echo "| Package | \`${PKG}\` |"
+            echo "| Previous semver | \`${PREV_DISPLAY}\` |"
+            echo "| Next semver | \`${NEXT}\` |"
+          } >> "$GITHUB_STEP_SUMMARY"
+
       - name: Verify and stage release package (WAR)
         id: package
         working-directory: ${{ env.APP_PATH }}
@@ -961,6 +1009,8 @@ jobs:
           GH_RUN_NUMBER: ${{ github.run_number }}
           GH_REPOSITORY_OWNER: ${{ github.repository_owner }}
           IMAGE_NAME: ${{ env.IMAGE_NAME }}
+          IMAGE_VERSION: ${{ steps.image-version.outputs.image_version }}
+          PREVIOUS_IMAGE_VERSION: ${{ steps.image-version.outputs.previous_version }}
         run: |
           set -euo pipefail
           VERSION="$(./mvnw -B -q -DforceStdout help:evaluate -Dexpression=project.version)"
@@ -1009,7 +1059,11 @@ jobs:
           file "${VERSIONED_PATH}" || true
           ls -lh "${VERSIONED_PATH}" "${STABLE_PATH}" "${BUILD_FILE}"
 
-          IMAGE_TAG="v${VERSION}-build${RUN_ID}-${SHORT_SHA}"
+          IMAGE_TAG="${IMAGE_VERSION}"
+          if [ -z "${IMAGE_TAG}" ]; then
+            echo "::error::Resolved image version is empty"
+            exit 1
+          fi
           # GHCR (and Docker Hub) require image repository path segments to be lowercase
           IMAGE_NAME_LC="${IMAGE_NAME,,}"
           OWNER_LC="${GH_REPOSITORY_OWNER,,}"
@@ -1017,7 +1071,7 @@ jobs:
           IMAGE_LOCAL_LATEST="${IMAGE_NAME_LC}:latest"
           IMAGE_REMOTE="ghcr.io/${OWNER_LC}/${IMAGE_NAME_LC}:${IMAGE_TAG}"
           IMAGE_REMOTE_LATEST="ghcr.io/${OWNER_LC}/${IMAGE_NAME_LC}:latest"
-          IMAGE_TAR="heavy-rental-rest-api-v${VERSION}-build${RUN_ID}-${SHORT_SHA}.tar.gz"
+          IMAGE_TAR="heavy_rental_rest_api-${IMAGE_TAG}.tar.gz"
 
           {
             echo "version=${VERSION}"
@@ -1030,6 +1084,7 @@ jobs:
             echo "build_file=${BUILD_FILE}"
             echo "build_file_rel=${BUILD_FILE_REL}"
             echo "image_tag=${IMAGE_TAG}"
+            echo "previous_image_version=${PREVIOUS_IMAGE_VERSION}"
             echo "image_local=${IMAGE_LOCAL}"
             echo "image_local_latest=${IMAGE_LOCAL_LATEST}"
             echo "image_remote=${IMAGE_REMOTE}"
@@ -1234,6 +1289,10 @@ jobs:
       - name: Push Docker image to GHCR
         if: github.event_name != 'pull_request'
         env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPOSITORY_OWNER: ${{ github.repository_owner }}
+          IMAGE_NAME: ${{ env.IMAGE_NAME }}
+          IMAGE_TAG: ${{ steps.package.outputs.image_tag }}
           IMAGE_REMOTE: ${{ steps.package.outputs.image_remote }}
           IMAGE_REMOTE_LATEST: ${{ steps.package.outputs.image_remote_latest }}
         run: |
@@ -1241,6 +1300,23 @@ jobs:
           # Repository path already lowercased at package time; re-enforce for GHCR
           IMAGE_REMOTE="${IMAGE_REMOTE,,}"
           IMAGE_REMOTE_LATEST="${IMAGE_REMOTE_LATEST,,}"
+          OWNER="${GH_REPOSITORY_OWNER}"
+          PKG="${IMAGE_NAME,,}"
+
+          list_tags() {
+            local path="$1"
+            gh api --paginate "${path}" --jq '.[] | .metadata.container.tags[]?' 2>/dev/null || true
+          }
+
+          TAGS="$(list_tags "/orgs/${OWNER}/packages/container/${PKG}/versions")"
+          if [ -z "${TAGS}" ]; then
+            TAGS="$(list_tags "/users/${OWNER}/packages/container/${PKG}/versions")"
+          fi
+          if printf '%s\n' "${TAGS}" | grep -qx "${IMAGE_TAG}"; then
+            echo "::error::GHCR tag ${IMAGE_REMOTE} already exists; will not overwrite a version tag."
+            exit 1
+          fi
+
           docker push "${IMAGE_REMOTE}"
           docker push "${IMAGE_REMOTE_LATEST}"
           echo "Pushed:"
@@ -1260,6 +1336,7 @@ jobs:
           STABLE_NAME: ${{ steps.package.outputs.stable_name }}
           IMAGE_LOCAL: ${{ steps.package.outputs.image_local }}
           IMAGE_REMOTE: ${{ steps.package.outputs.image_remote }}
+          IMAGE_REMOTE_LATEST: ${{ steps.package.outputs.image_remote_latest }}
           IMAGE_TAR: ${{ steps.package.outputs.image_tar }}
           IMAGE_ID: ${{ steps.docker.outputs.image_id }}
           EXT: ${{ steps.package.outputs.ext }}
@@ -1279,6 +1356,7 @@ jobs:
             echo "| Stable WAR | \`${STABLE_NAME}\` |"
             echo "| Docker image (local) | \`${IMAGE_LOCAL}\` |"
             echo "| Docker image (GHCR) | \`${IMAGE_REMOTE}\` |"
+            echo "| Docker image (GHCR latest) | \`${IMAGE_REMOTE_LATEST}\` |"
             echo "| Image archive | \`${IMAGE_TAR}\` |"
             echo "| Image ID | \`${IMAGE_ID}\` |"
             echo "| Artifacts | \`rest-api-release-target\`, \`rest-api-release-package\`, \`rest-api-release-docker-image\` |"
@@ -1288,7 +1366,7 @@ jobs:
             echo "1. **WAR** — download \`rest-api-release-package\` and deploy \`.${EXT}\` to a servlet container."
             echo "2. **Image archive** — \`docker load < ${IMAGE_TAR}\` then run \`${IMAGE_LOCAL}\`."
             if [ "${EVENT_NAME}" != "pull_request" ]; then
-              echo "3. **GHCR** — \`docker pull ${IMAGE_REMOTE}\` (also tagged \`:latest\`)."
+              echo "3. **GHCR** — \`docker pull ${IMAGE_REMOTE}\` or \`docker pull ${IMAGE_REMOTE_LATEST}\`."
             else
               echo "3. **GHCR** — push skipped on pull_request; image is available as the tar artifact only."
             fi
