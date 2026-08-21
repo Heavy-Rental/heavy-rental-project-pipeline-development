@@ -9,7 +9,7 @@
 #   5. Packaging        needs Integration + QC + Security + CodeQL — unsigned APK
 #
 # Security report format (standard): SARIF 2.1.0
-#   - Semgrep → semgrep.sarif + semgrep.json + semgrep.txt (all severities)
+#   - Semgrep → semgrep.sarif
 #   - Trivy FS → trivy-fs.sarif
 #   - CodeQL → GitHub Code Scanning (native SARIF via analyze)
 #
