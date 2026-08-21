@@ -8,7 +8,7 @@
 #   4. CodeQL Analysis   — GitHub CodeQL for JavaScript/TypeScript (needs Integration)
 #   5. Packaging         — Vite dist zip + Docker image (needs Integration + QC + Security + CodeQL)
 #   Security report format (standard): SARIF 2.1.0
-#     - Semgrep → semgrep.sarif + semgrep.json + semgrep.txt (all severities)
+#     - Semgrep → semgrep.sarif
 #     - npm audit → npm-audit.sarif (converted from audit JSON)
 #     - Trivy FS → trivy-fs.sarif
 #     - CodeQL → GitHub Code Scanning (native SARIF via analyze)
@@ -957,7 +957,6 @@ jobs:
           path: ${{ github.workspace }}
 
       - name: Load image and start target
-        id: start-dast
         env:
           IMAGE_LOCAL: ${{ needs.packaging.outputs.image_local }}
           IMAGE_TAR: ${{ needs.packaging.outputs.image_tar }}
@@ -966,7 +965,7 @@ jobs:
           IMAGE_LOCAL="${IMAGE_LOCAL,,}"
           TAR="${GITHUB_WORKSPACE}/${IMAGE_TAR}"
           gzip -dc "${TAR}" | docker load
-          docker network inspect dastnet >/dev/null 2>&1 || docker network create dastnet
+          docker network create dastnet
           docker run -d --name dast-app --network dastnet --network-alias dast-app \
             -p 80:80 \
 
@@ -996,7 +995,7 @@ jobs:
           chmod 777 "${GITHUB_WORKSPACE}/dast-reports"
 
       - name: OWASP ZAP baseline
-        if: ${{ always() && steps.start-dast.outcome == 'success' }}
+        if: always()
         run: |
           set -euo pipefail
           REPORTS="${GITHUB_WORKSPACE}/dast-reports"
@@ -1022,7 +1021,7 @@ jobs:
           fi
 
       - name: Dastardly
-        if: ${{ always() && steps.start-dast.outcome == 'success' }}
+        if: always()
         run: |
           set -euo pipefail
           REPORTS="${GITHUB_WORKSPACE}/dast-reports"
@@ -1047,7 +1046,7 @@ jobs:
           fi
 
       - name: Nuclei (report-only)
-        if: ${{ always() && steps.start-dast.outcome == 'success' }}
+        if: always()
         continue-on-error: true
         run: |
           set -euo pipefail
