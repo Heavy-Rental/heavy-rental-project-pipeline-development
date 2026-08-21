@@ -87,5 +87,5 @@ The **runner** uses Vocareum keys. The **EC2** uses `LabRole`.
 - Expect GitHub `VITE_*` vars to reconfigure the running SPA
 - Type instance IDs on the Run form
 - Run `terraform apply` from this workflow
-- Expect GHCR from a `develop` → `master` PR alone (publish a GitHub Release — [`GHCR-RELEASE.md`](GHCR-RELEASE.md))
+- Expect GHCR from a `develop` → `master` PR alone (run **Actions → Release** after merge; the pipeline creates the GitHub Release)
 - Treat a green `verify` as proof that `/api` reached REST

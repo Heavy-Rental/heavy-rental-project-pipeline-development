@@ -13,8 +13,7 @@ This family validates the app and produces an unsigned APK. There is **no Academ
 ```
 feature branch push  →  Fast Feedback (Integration only)
 PR / push → develop  →  Integration CI (full gates, no packaging)
-develop → master PR or published GitHub Release
-                     →  Release (full gates + unsigned APK)
+workflow_dispatch     →  Release (master + QC + APK + MobSF + GitHub Release)
 ```
 
 ## Job graph (Integration CI)

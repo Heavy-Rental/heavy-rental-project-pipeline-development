@@ -86,7 +86,7 @@ The **runner** uses Vocareum keys. The **EC2** uses `LabRole`.
 ## Do not (same as PREPARE §11)
 
 - Use CI Environments `integration` / `production` as CD
-- Expect GHCR from a `develop` → `master` PR alone (publish a GitHub Release)
+- Expect GHCR from a `develop` → `master` PR alone (run **Actions → Release** after merge; the pipeline creates the GitHub Release)
 - Put Vocareum keys or `LLM_API_KEY` in the image, in `.env.prod`, or on the Run form
 - Type instance IDs on the Run form
 - Run `terraform apply` from this workflow

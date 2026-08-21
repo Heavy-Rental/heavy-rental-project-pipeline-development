@@ -13,8 +13,7 @@ When the caller runs **in** the portal repo, checkout is the calling repo (into 
 ```
 feature branch push  →  Fast Feedback (Integration only)
 PR / push → develop  →  Integration CI (full gates, no packaging)
-develop → master PR or published GitHub Release
-                     →  Release (full gates + dist zip + Docker)
+workflow_dispatch     →  Release (master + QC + image + DAST + public GHCR + GitHub Release)
 ```
 
 ## Job graph (Integration CI)

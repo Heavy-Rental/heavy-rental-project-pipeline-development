@@ -56,7 +56,7 @@ Do **not** copy `specification/`.
 
 ## 3. Produce a pullable image
 
-1. Merge to `master` and **publish a GitHub Release**. That is what pushes GHCR.
+1. Merge to `master`, then run **Actions → Release → Run workflow**. That checks out `master`, runs DAST, pushes public GHCR, and creates the GitHub Release.
 2. Org Packages → `heavy_rental_web_portal` → visibility **Public**. Private GHCR fails CD on purpose (no PAT on the guest).
 3. Record the tag, for example `ghcr.io/heavy-rental/heavy_rental_web_portal:1.0.0` (or `:latest`). Prefer a **new** version tag each deploy (`compose up` is not `--pull always`).
 

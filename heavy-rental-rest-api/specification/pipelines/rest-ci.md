@@ -12,9 +12,8 @@ Reusable YAML `DEFAULT_APP_REPOSITORY` is `SA62-team1/heavy-rental-spring-rest-a
 
 ```
 feature branch push  →  Fast Feedback (Integration only)
-PR / push → develop  →  Integration CI (full gates, no packaging)
-develop → master PR or published GitHub Release
-                     →  Release (full gates + WAR + Docker)
+PR / push → develop  →  Integration CI (full gates, no packaging; SAST here)
+workflow_dispatch     →  Release (master + QC + image + DAST + public GHCR + GitHub Release)
 ```
 
 ## Job graph (Integration CI)
