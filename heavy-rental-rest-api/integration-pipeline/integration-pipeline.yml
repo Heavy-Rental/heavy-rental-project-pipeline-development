@@ -9,7 +9,7 @@
 #   5. GitHub Flow CI Gate — aggregate: Integration first, then QC + Security + CodeQL
 #
 # Security report format (standard): SARIF 2.1.0
-#   - Semgrep → semgrep.sarif
+#   - Semgrep → semgrep.sarif + semgrep.json + semgrep.txt (all severities)
 #   - Trivy FS → trivy-fs.sarif
 #   - CodeQL → GitHub Code Scanning (native SARIF via analyze)
 # Human-readable console output is for gates/logs only, not the report standard.
@@ -834,6 +834,68 @@ jobs:
             echo "::warning::semgrep.sarif was not produced (exit=${SARIF_RC})"
           fi
 
+          echo "==> Semgrep report (JSON + text, all severities; does not fail)"
+          set +e
+          semgrep scan "${SEMGREP_COMMON[@]}" \
+            --json \
+            --output="${REPORT_DIR}/semgrep.json" \
+            .
+          JSON_RC=$?
+          semgrep scan "${SEMGREP_COMMON[@]}" \
+            --text \
+            --output="${REPORT_DIR}/semgrep.txt" \
+            .
+          TEXT_RC=$?
+          set -e
+          if [ -f "${REPORT_DIR}/semgrep.json" ]; then
+            echo "JSON written: ${REPORT_DIR}/semgrep.json (semgrep exit=${JSON_RC}; non-zero is OK for report pass)"
+          else
+            echo "::warning::semgrep.json was not produced (exit=${JSON_RC})"
+          fi
+          if [ -f "${REPORT_DIR}/semgrep.txt" ]; then
+            echo "Text written: ${REPORT_DIR}/semgrep.txt (semgrep exit=${TEXT_RC}; non-zero is OK for report pass)"
+            echo "==> Semgrep findings (all severities; report-only)"
+            cat "${REPORT_DIR}/semgrep.txt"
+          else
+            echo "::warning::semgrep.txt was not produced (exit=${TEXT_RC})"
+          fi
+          python3 - "${REPORT_DIR}/semgrep.json" <<'PY' || true
+          import json
+          import os
+          import sys
+
+          path = sys.argv[1]
+          counts = {"ERROR": 0, "WARNING": 0, "INFO": 0}
+          total = 0
+          try:
+              data = json.loads(open(path, encoding="utf-8").read() or "{}")
+              results = data.get("results") or []
+              total = len(results)
+              for item in results:
+                  sev = str((item.get("extra") or {}).get("severity") or "INFO").upper()
+                  counts[sev] = counts.get(sev, 0) + 1
+          except Exception as exc:
+              print(f"::warning::Could not summarize semgrep.json: {exc}")
+
+          lines = [
+              "### Semgrep SAST",
+              "",
+              f"- Findings (all severities): **{total}**",
+              f"- ERROR: {counts.get('ERROR', 0)}",
+              f"- WARNING: {counts.get('WARNING', 0)}",
+              f"- INFO: {counts.get('INFO', 0)}",
+              "",
+              "Reports: `security-reports/semgrep.sarif`, `semgrep.json`, `semgrep.txt`. Gate fails on ERROR only.",
+              "",
+          ]
+          text = "\n".join(lines) + "\n"
+          print(text, end="")
+          summary = os.environ.get("GITHUB_STEP_SUMMARY")
+          if summary:
+              with open(summary, "a", encoding="utf-8") as handle:
+                  handle.write(text)
+          PY
+
           # --- Pass 2: CI gate — fail only if ERROR-severity findings exist. ---
           # --error makes Semgrep exit 1 when any matching finding is present.
           # A "successful" SARIF write can still leave this gate red if ERROR issues exist.
@@ -961,6 +1023,8 @@ jobs:
           name: security-reports-sarif
           path: |
             security-reports/*.sarif
+            security-reports/semgrep.json
+            security-reports/semgrep.txt
           retention-days: 30
           if-no-files-found: warn
 

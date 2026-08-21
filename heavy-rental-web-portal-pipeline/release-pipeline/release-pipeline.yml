@@ -8,7 +8,7 @@
 #   4. CodeQL Analysis   — GitHub CodeQL for JavaScript/TypeScript (needs Integration)
 #   5. Packaging         — Vite dist zip + Docker image (needs Integration + QC + Security + CodeQL)
 #   Security report format (standard): SARIF 2.1.0
-#     - Semgrep → semgrep.sarif
+#     - Semgrep → semgrep.sarif + semgrep.json + semgrep.txt (all severities)
 #     - npm audit → npm-audit.sarif (converted from audit JSON)
 #     - Trivy FS → trivy-fs.sarif
 #     - CodeQL → GitHub Code Scanning (native SARIF via analyze)

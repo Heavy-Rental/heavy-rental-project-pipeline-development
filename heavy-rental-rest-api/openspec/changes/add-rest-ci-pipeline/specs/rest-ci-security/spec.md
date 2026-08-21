@@ -10,13 +10,20 @@ Static and supply-chain scanning of the Java / Spring application. Standard repo
 Security Testing SHALL run only after Integration succeeds, in parallel with Quality Control, and SHALL scan the same application source.
 
 ### Requirement: Semgrep Java SAST
-Security Testing SHALL run Semgrep with Java, OWASP Top Ten, security-audit, secrets, CWE Top 25, FindSecBugs, Gitleaks, SQL injection, JWT, and insecure-transport rulesets, plus custom ERROR-severity rules that flag hard-coded credentials in Spring properties/YAML, `${VAR:plaintext}` credential defaults, JDBC URLs with embedded user:password, hard-coded Java password/secret assignments, fully exposed Actuator endpoints, and globally disabled Spring Security. It SHALL always attempt to write `semgrep.sarif`. It SHALL fail the job only when ERROR-severity findings exist (or Semgrep cannot complete the gate scan). It SHALL NOT use the removed `p/spring` ruleset as a required config.
+Security Testing SHALL run Semgrep with Java, OWASP Top Ten, security-audit, secrets, CWE Top 25, FindSecBugs, Gitleaks, SQL injection, JWT, and insecure-transport rulesets, plus custom ERROR-severity rules that flag hard-coded credentials in Spring properties/YAML, `${VAR:plaintext}` credential defaults, JDBC URLs with embedded user:password, hard-coded Java password/secret assignments, fully exposed Actuator endpoints, and globally disabled Spring Security. It SHALL always attempt to write `semgrep.sarif`, `semgrep.json`, and `semgrep.txt` covering all severities (not only ERROR). It SHALL fail the job only when ERROR-severity findings exist (or Semgrep cannot complete the gate scan). It SHALL NOT use the removed `p/spring` ruleset as a required config.
 
 #### Scenario: SARIF written on clean scan
 - GIVEN Semgrep finds no ERROR-severity issues
 - WHEN Security Testing runs
 - THEN `security-reports/semgrep.sarif` exists
+- AND `security-reports/semgrep.json` exists
+- AND `security-reports/semgrep.txt` exists
 - AND the Semgrep gate step succeeds
+
+#### Scenario: full report when ERROR gate fails
+- GIVEN Semgrep reports at least one ERROR-severity finding
+- WHEN the Semgrep gate fails
+- THEN `semgrep.sarif`, `semgrep.json`, and `semgrep.txt` are still uploaded when present
 
 #### Scenario: ERROR findings fail the job
 - GIVEN Semgrep reports at least one ERROR-severity finding
@@ -45,7 +52,7 @@ Security Testing SHALL run Trivy filesystem scanning, write `trivy-fs.sarif`, an
 - THEN the job fails
 
 ### Requirement: Publish SARIF
-Security Testing SHALL upload Semgrep and Trivy SARIF files as a workflow artifact and SHALL attempt to publish them to GitHub Code Scanning. A Code Scanning upload failure SHALL NOT fail the job.
+Security Testing SHALL upload Semgrep SARIF/JSON/text and Trivy SARIF files as a workflow artifact and SHALL attempt to publish SARIF to GitHub Code Scanning. A Code Scanning upload failure SHALL NOT fail the job.
 
 #### Scenario: Code Scanning optional
 - GIVEN SARIF files exist and the Code Scanning API rejects the upload
