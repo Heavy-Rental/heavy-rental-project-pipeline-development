@@ -46,6 +46,7 @@ Release adds **Packaging** (`assembleRelease` unsigned APK) after Integration + 
 | Mocks | Node scripts `mock:prepare` / `mock:prism` / `mock:verify` on `:8081` |
 | SAST / SCA | Semgrep `p/kotlin` `p/java` + OWASP / audit / secrets / CWE Top 25 / FindSecBugs / Gitleaks / SQL injection / JWT / insecure-transport, plus custom ERROR rules for plaintext credentials (reports: `semgrep.sarif` + `semgrep.json` + `semgrep.txt`, ERROR-only gate); Trivy FS SARIF |
 | Human security report | Combined PDF artifact `security-combined-report-pdf`; download from the PR Checks tab (workflow Summary → Artifacts, or Security Testing job summary) |
+| Human DAST report | Combined PDF artifact `dast-combined-report-pdf` (`dast-reports/combined-dast-report.pdf`); download from the Release run Summary → Artifacts, the DAST job summary link, or the GitHub Release |
 | Code scanning | CodeQL `java-kotlin` |
 | Package | `:app:assembleRelease` unsigned APK |
 
