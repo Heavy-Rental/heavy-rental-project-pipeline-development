@@ -49,6 +49,7 @@ No GitHub Environment or repository secrets are required for v1 CI.
 | Mock URL | `http://127.0.0.1:4010` (`MOCK_API_*`) |
 | SAST | Semgrep `p/typescript` `p/react` `p/javascript` `p/nodejs` + OWASP / audit / secrets / CWE Top 25 / Gitleaks / SQL injection / JWT / insecure-transport, plus custom ERROR rules for plaintext credentials in `.env`/YAML and JS/TS assignments. Reports: `semgrep.sarif` + `semgrep.json` + `semgrep.txt` (all severities); gate is ERROR-only |
 | SCA | npm audit converted to SARIF + Trivy FS |
+| Human security report | Combined PDF artifact `security-combined-report-pdf`; download from the PR Checks tab (workflow Summary → Artifacts, or Security Testing job summary) |
 | Code scanning | CodeQL `javascript-typescript` |
 | Package | Seed/scan `.env.production` + `tsc -b` + `vite build --mode api` (empty `VITE_API_TARGET`) → `dist/` zip + always-generated `nginx:1.27-alpine` try_files. GHCR `heavy_rental_web_portal:<semver>` + `:latest` off PR. Scan for `sk_`, localhost, `heavy-rental-rest-api`. |
 
