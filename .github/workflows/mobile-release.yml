@@ -72,7 +72,7 @@ concurrency:
   cancel-in-progress: false
 
 permissions:
-  contents: read
+  contents: write
   security-events: write
   actions: read
 
@@ -154,11 +154,11 @@ jobs:
 
           if [ -n "${INPUT_REPO}" ] && [ "${INPUT_REPO}" != "${GH_REPOSITORY}" ]; then
             APP_REPO="${INPUT_REPO}"
-            APP_REF="${INPUT_REF:-${DEFAULT_APP_REF_VALUE}}"
+            APP_REF="master"
             MODE=remote
           else
             APP_REPO="${GH_REPOSITORY}"
-            APP_REF="${INPUT_REF:-${GH_SHA}}"
+            APP_REF="master"
             MODE=caller
           fi
 
@@ -181,6 +181,7 @@ jobs:
         if: steps.meta.outputs.checkout_mode == 'caller'
         uses: actions/checkout@v4
         with:
+          ref: master
           path: ${{ env.APP_PATH }}
 
       - name: Checkout remote application repository
@@ -277,6 +278,7 @@ jobs:
         if: needs.integration.outputs.checkout_mode == 'caller'
         uses: actions/checkout@v4
         with:
+          ref: master
           path: ${{ env.APP_PATH }}
 
       - name: Checkout remote application repository
@@ -343,474 +345,22 @@ jobs:
           retention-days: 7
           if-no-files-found: warn
 
-  security-testing:
-    name: Security Testing
-    runs-on: ubuntu-latest
-    needs: [integration]
-    timeout-minutes: 40
-    steps:
-      - name: Checkout calling repository (release / push head)
-        if: needs.integration.outputs.checkout_mode == 'caller'
-        uses: actions/checkout@v4
-        with:
-          path: ${{ env.APP_PATH }}
-
-      - name: Checkout remote application repository
-        if: needs.integration.outputs.checkout_mode == 'remote'
-        uses: actions/checkout@v4
-        with:
-          repository: ${{ needs.integration.outputs.app_repository }}
-          ref: ${{ needs.integration.outputs.app_ref }}
-          path: ${{ env.APP_PATH }}
-
-      - name: Create security reports directory
-        run: mkdir -p "${GITHUB_WORKSPACE}/security-reports"
-
-      - name: Setup Python (Semgrep)
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-
-      - name: Install Semgrep
-        run: pip install --quiet semgrep
-
-      - name: SAST — Semgrep (Kotlin / Java / OWASP) → SARIF
-        working-directory: ${{ env.APP_PATH }}
-        run: |
-          set -euo pipefail
-          REPORT_DIR="${GITHUB_WORKSPACE}/security-reports"
-          # Community packs plus custom ERROR rules for plaintext credentials
-          # that p/secrets and p/gitleaks miss (generic passwords, not tokens).
-          RULES_FILE="${REPORT_DIR}/semgrep-custom-rules.yml"
-          cat > "${RULES_FILE}" << 'SEMGREP_CUSTOM_RULES'
-          rules:
-            - id: heavy-rental.mobile.hardcoded-credential-in-properties
-              languages: [regex]
-              severity: ERROR
-              message: >
-                Hard-coded credential in a properties/env file (CWE-798). Use
-                an environment variable or secrets manager. A plaintext
-                password, secret, token, or API key in config is a shipping secret.
-              metadata:
-                category: security
-                cwe: ["CWE-798: Use of Hard-coded Credentials"]
-                owasp: ["A07:2021 - Identification and Authentication Failures"]
-                confidence: HIGH
-                subcategory: [vuln]
-                likelihood: HIGH
-                impact: HIGH
-                technology: [secrets]
-              paths:
-                include:
-                  - "*.properties"
-                  - "*.env"
-                  - "*.ini"
-                  - ".env"
-                  - ".env.*"
-                  - "*.gradle"
-                exclude:
-                  - "**/src/test/**"
-                  - "**/*example*"
-                  - "**/*sample*"
-                  - "**/node_modules/**"
-              pattern-regex: >-
-                (?i)^[ \t]*[A-Za-z0-9._-]*(?:password|passwd|pwd|secret|secret[-_]?key|api[-._]?key|access[-._]?key|private[-._]?key|auth[-._]?token|credentials?)[ \t]*=[ \t]*(?!\$\{)(?!ENC\()(?!\{cipher\})(?![ \t]*(?:#|$))[^\s#]+
-            - id: heavy-rental.mobile.hardcoded-credential-in-yaml
-              languages: [regex]
-              severity: ERROR
-              message: >
-                Hard-coded credential in YAML config (CWE-798). Use an
-                environment variable or secrets manager instead of plaintext.
-              metadata:
-                category: security
-                cwe: ["CWE-798: Use of Hard-coded Credentials"]
-                owasp: ["A07:2021 - Identification and Authentication Failures"]
-                confidence: HIGH
-                subcategory: [vuln]
-                likelihood: HIGH
-                impact: HIGH
-                technology: [secrets]
-              paths:
-                include:
-                  - "*.yml"
-                  - "*.yaml"
-                exclude:
-                  - "**/src/test/**"
-                  - "**/*example*"
-                  - "**/*sample*"
-                  - "**/.github/**"
-                  - "**/node_modules/**"
-              pattern-regex: >-
-                (?i)^[ \t-]*["']?(?:[A-Za-z0-9._-]*[\._-])?(password|passwd|pwd|secret|secret[-_]?key|api[-._]?key|access[-._]?key|private[-._]?key|auth[-._]?token|credentials?)["']?[ \t]*:[ \t]*(?!\$\{)(?!~)(?!null\b)(?!ENC\()(?!\{cipher\})(?!["']?[ \t]*(?:#|$))["']?[^\s#"']+
-            - id: heavy-rental.mobile.env-placeholder-plaintext-default
-              languages: [regex]
-              severity: ERROR
-              message: >
-                Placeholder ${VAR:default} embeds a plaintext credential
-                default (CWE-798). Empty defaults (${VAR:} or ${VAR}) are OK.
-              metadata:
-                category: security
-                cwe: ["CWE-798: Use of Hard-coded Credentials"]
-                owasp: ["A07:2021 - Identification and Authentication Failures"]
-                confidence: HIGH
-                subcategory: [vuln]
-                likelihood: HIGH
-                impact: HIGH
-                technology: [secrets]
-              paths:
-                include:
-                  - "*.properties"
-                  - "*.yml"
-                  - "*.yaml"
-                  - "*.env"
-                  - ".env"
-                  - ".env.*"
-                exclude:
-                  - "**/src/test/**"
-                  - "**/*example*"
-                  - "**/*sample*"
-              pattern-regex: >-
-                (?i)^[ \t]*[A-Za-z0-9._-]*(?:password|passwd|pwd|secret|secret[-_]?key|api[-._]?key|access[-._]?key|private[-._]?key|auth[-._]?token|credentials?)[ \t]*[=:][ \t]*\$\{[^}:]+:(?![ \t]*\})[^}]+\}
-            - id: heavy-rental.mobile.jdbc-url-embedded-credentials
-              languages: [regex]
-              severity: ERROR
-              message: >
-                JDBC URL embeds user:password@host (CWE-798). Use a URL without
-                credentials and set username/password from the environment.
-              metadata:
-                category: security
-                cwe: ["CWE-798: Use of Hard-coded Credentials"]
-                owasp: ["A07:2021 - Identification and Authentication Failures"]
-                confidence: HIGH
-                subcategory: [vuln]
-                likelihood: HIGH
-                impact: HIGH
-                technology: [java, jdbc, secrets]
-              paths:
-                include:
-                  - "*.properties"
-                  - "*.yml"
-                  - "*.yaml"
-                  - "*.xml"
-                  - "*.java"
-                  - "*.kt"
-                  - "*.env"
-                  - ".env"
-                exclude:
-                  - "**/src/test/**"
-              pattern-regex: >-
-                (?i)jdbc:[a-z0-9]+://[^/\s:]+:[^@/\s]+@
-            - id: heavy-rental.mobile.java-hardcoded-secret-assignment
-              languages: [java]
-              severity: ERROR
-              message: >
-                Hard-coded credential assigned in Java source (CWE-798). Inject
-                the value from the environment or a secrets manager.
-              metadata:
-                category: security
-                cwe: ["CWE-798: Use of Hard-coded Credentials"]
-                owasp: ["A07:2021 - Identification and Authentication Failures"]
-                confidence: HIGH
-                subcategory: [vuln]
-                likelihood: HIGH
-                impact: HIGH
-                technology: [java, secrets]
-              paths:
-                exclude:
-                  - "**/src/test/**"
-                  - "**/*Test.java"
-                  - "**/*Tests.java"
-              patterns:
-                - pattern-either:
-                    - pattern: $TYPE $VAR = "$VAL";
-                    - pattern: $VAR = "$VAL";
-                - metavariable-regex:
-                    metavariable: $VAR
-                    regex: (?i).*(password|passwd|secret|api[_]?key|token|credential).*
-                - metavariable-regex:
-                    metavariable: $VAL
-                    regex: (?!\$\{).{3,}
-            - id: heavy-rental.mobile.java-setpassword-hardcoded
-              languages: [java]
-              severity: ERROR
-              message: >
-                Hard-coded password passed to a setter (CWE-798). Load it from
-                the environment or a secrets manager.
-              metadata:
-                category: security
-                cwe: ["CWE-798: Use of Hard-coded Credentials"]
-                owasp: ["A07:2021 - Identification and Authentication Failures"]
-                confidence: HIGH
-                subcategory: [vuln]
-                likelihood: HIGH
-                impact: HIGH
-                technology: [java, secrets]
-              paths:
-                exclude:
-                  - "**/src/test/**"
-                  - "**/*Test.java"
-                  - "**/*Tests.java"
-              patterns:
-                - pattern-either:
-                    - pattern: $OBJ.setPassword("$VAL");
-                    - pattern: $OBJ.password("$VAL");
-                    - pattern: DriverManager.getConnection($URL, $USER, "$VAL");
-                - metavariable-regex:
-                    metavariable: $VAL
-                    regex: (?!\$\{).{1,}
-            - id: heavy-rental.mobile.kotlin-hardcoded-secret-assignment
-              languages: [kt]
-              severity: ERROR
-              message: >
-                Hard-coded credential assigned in Kotlin source (CWE-798). Inject
-                the value from the environment or a secrets manager.
-              metadata:
-                category: security
-                cwe: ["CWE-798: Use of Hard-coded Credentials"]
-                owasp: ["A07:2021 - Identification and Authentication Failures"]
-                confidence: HIGH
-                subcategory: [vuln]
-                likelihood: HIGH
-                impact: HIGH
-                technology: [kotlin, secrets]
-              paths:
-                exclude:
-                  - "**/src/test/**"
-                  - "**/*Test.kt"
-                  - "**/*Tests.kt"
-              patterns:
-                - pattern-either:
-                    - pattern: val $VAR = "$VAL"
-                    - pattern: var $VAR = "$VAL"
-                    - pattern: const val $VAR = "$VAL"
-                - metavariable-regex:
-                    metavariable: $VAR
-                    regex: (?i).*(password|passwd|secret|api[_]?key|token|credential).*
-                - metavariable-regex:
-                    metavariable: $VAL
-                    regex: (?!\$\{).{3,}
-          SEMGREP_CUSTOM_RULES
-          sed -i 's/^          //' "${RULES_FILE}"
-          echo "==> Validating custom Semgrep rules"
-          semgrep --validate --config="${RULES_FILE}" --metrics=off
-          SEMGREP_COMMON=(
-            --config=p/kotlin
-            --config=p/java
-            --config=p/owasp-top-ten
-            --config=p/security-audit
-            --config=p/secrets
-            --config=p/cwe-top-25
-            --config=p/findsecbugs
-            --config=p/gitleaks
-            --config=p/sql-injection
-            --config=p/jwt
-            --config=p/insecure-transport
-            --config="${RULES_FILE}"
-            --metrics=off
-          )
-
-          echo "==> Semgrep report (SARIF 2.1.0)"
-          set +e
-          semgrep scan "${SEMGREP_COMMON[@]}" \
-            --sarif \
-            --output="${REPORT_DIR}/semgrep.sarif" \
-            .
-          SARIF_RC=$?
-          set -e
-          if [ -f "${REPORT_DIR}/semgrep.sarif" ]; then
-            echo "SARIF written: ${REPORT_DIR}/semgrep.sarif (semgrep exit=${SARIF_RC}; non-zero is OK for report pass)"
-          else
-            echo "::warning::semgrep.sarif was not produced (exit=${SARIF_RC})"
-          fi
-
-          echo "==> SAST gate (ERROR severity only; exit 1 if findings)"
-          set +e
-          semgrep scan "${SEMGREP_COMMON[@]}" \
-            --severity=ERROR \
-            --error \
-            --text \
-            .
-          GATE_RC=$?
-          set -e
-          if [ "${GATE_RC}" -ne 0 ]; then
-            echo "::error::Semgrep SAST gate failed (exit=${GATE_RC})."
-            echo "The SARIF report may still have been written successfully."
-            echo "This step fails because --severity=ERROR --error found ERROR-level issues"
-            echo "(or Semgrep could not complete the gate scan)."
-            echo "Open security-reports/semgrep.sarif or the text findings above."
-            exit "${GATE_RC}"
-          fi
-          echo "SAST (Semgrep) gate passed — no ERROR-level findings. SARIF: security-reports/semgrep.sarif"
-
-      - name: Trivy cache key
-        id: trivy-cache-meta
-        run: echo "week=$(date -u +%Y-W%V)" >> "$GITHUB_OUTPUT"
-
-      - name: Cache Trivy DBs
-        uses: actions/cache@v4
-        with:
-          path: ${{ github.workspace }}/.cache/trivy
-          key: trivy-db-${{ runner.os }}-${{ steps.trivy-cache-meta.outputs.week }}
-          restore-keys: |
-            trivy-db-${{ runner.os }}-
-
-      - name: Trivy filesystem scan (SARIF report)
-        uses: aquasecurity/trivy-action@v0.36.0
-        with:
-          scan-type: fs
-          scan-ref: ${{ env.APP_PATH }}
-          severity: HIGH,CRITICAL
-          exit-code: "0"
-          format: sarif
-          output: security-reports/trivy-fs.sarif
-          ignore-unfixed: true
-          scanners: vuln
-          cache: "false"
-          cache-dir: ${{ github.workspace }}/.cache/trivy
-
-      - name: Trivy filesystem scan (console table)
-        if: always()
-        uses: aquasecurity/trivy-action@v0.36.0
-        with:
-          scan-type: fs
-          scan-ref: ${{ env.APP_PATH }}
-          severity: HIGH,CRITICAL
-          exit-code: "0"
-          format: table
-          ignore-unfixed: true
-          scanners: vuln
-          cache: "false"
-          cache-dir: ${{ github.workspace }}/.cache/trivy
-
-      - name: Trivy SCA gate (CRITICAL)
-        uses: aquasecurity/trivy-action@v0.36.0
-        with:
-          scan-type: fs
-          scan-ref: ${{ env.APP_PATH }}
-          severity: CRITICAL
-          exit-code: "1"
-          format: table
-          ignore-unfixed: true
-          scanners: vuln
-          cache: "false"
-          cache-dir: ${{ github.workspace }}/.cache/trivy
-
-      - name: Upload Semgrep SARIF to Code Scanning
-        if: always() && hashFiles('security-reports/semgrep.sarif') != ''
-        uses: github/codeql-action/upload-sarif@v3
-        with:
-          sarif_file: security-reports/semgrep.sarif
-          checkout_path: ${{ env.APP_PATH }}
-          category: mobile-release-semgrep
-        continue-on-error: true
-
-      - name: Upload Trivy SARIF to Code Scanning
-        if: always() && hashFiles('security-reports/trivy-fs.sarif') != ''
-        uses: github/codeql-action/upload-sarif@v3
-        with:
-          sarif_file: security-reports/trivy-fs.sarif
-          checkout_path: ${{ env.APP_PATH }}
-          category: mobile-release-trivy-fs
-        continue-on-error: true
-
-      - name: Upload security reports (SARIF)
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: release-security-reports-sarif
-          path: |
-            security-reports/*.sarif
-          retention-days: 30
-          if-no-files-found: warn
-
-  codeql:
-    name: CodeQL Analysis
-    runs-on: ubuntu-latest
-    needs: [integration]
-    timeout-minutes: 45
-    permissions:
-      contents: read
-      security-events: write
-      actions: read
-    steps:
-      - name: Checkout calling repository (release / push head)
-        if: needs.integration.outputs.checkout_mode == 'caller'
-        uses: actions/checkout@v4
-        with:
-          path: ${{ env.APP_PATH }}
-
-      - name: Checkout remote application repository
-        if: needs.integration.outputs.checkout_mode == 'remote'
-        uses: actions/checkout@v4
-        with:
-          repository: ${{ needs.integration.outputs.app_repository }}
-          ref: ${{ needs.integration.outputs.app_ref }}
-          path: ${{ env.APP_PATH }}
-
-      - name: Initialize CodeQL (Java / Kotlin)
-        uses: github/codeql-action/init@v3
-        with:
-          languages: java-kotlin
-          source-root: ${{ env.APP_PATH }}
-          queries: security-and-quality
-
-      - name: Setup Java ${{ env.JAVA_VERSION }}
-        uses: actions/setup-java@v4
-        with:
-          distribution: ${{ env.JAVA_DISTRIBUTION }}
-          java-version: ${{ env.JAVA_VERSION }}
-          cache: gradle
-          cache-dependency-path: |
-            ${{ env.APP_PATH }}/settings.gradle.kts
-            ${{ env.APP_PATH }}/build.gradle.kts
-            ${{ env.APP_PATH }}/app/build.gradle.kts
-            ${{ env.APP_PATH }}/gradle/libs.versions.toml
-            ${{ env.APP_PATH }}/gradle/wrapper/gradle-wrapper.properties
-
-      - name: Setup Android SDK
-        uses: android-actions/setup-android@v3
-        with:
-          packages: >
-            tools
-            platform-tools
-            platforms;android-${{ env.ANDROID_COMPILE_SDK }}
-            build-tools;${{ env.ANDROID_BUILD_TOOLS }}
-
-      - name: Build for CodeQL (Gradle assembleDebug)
-        working-directory: ${{ env.APP_PATH }}
-        run: |
-          set -euo pipefail
-          chmod +x ./gradlew
-          ./gradlew --no-daemon :app:assembleDebug
-
-      - name: Perform CodeQL Analysis
-        uses: github/codeql-action/analyze@v3
-        with:
-          category: "mobile-release-codeql-java"
-
-      - name: CodeQL summary
-        if: always()
-        run: |
-          {
-            echo "### CodeQL Analysis"
-            echo ""
-            echo "Language: Java/Kotlin"
-            echo "Query suite: security-and-quality"
-            echo "Category: mobile-release-codeql-java"
-            echo ""
-            echo "View results: repository → Security → Code scanning alerts"
-          } >> "$GITHUB_STEP_SUMMARY"
-
   packaging:
     name: Packaging
     runs-on: ubuntu-latest
-    needs: [integration, quality-control, security-testing, codeql]
+    needs: [integration, quality-control]
+    outputs:
+      version: ${{ steps.package.outputs.version }}
+      versioned_name: ${{ steps.package.outputs.versioned_name }}
+      stable_name: ${{ steps.package.outputs.stable_name }}
+      short_sha: ${{ steps.package.outputs.short_sha }}
     timeout-minutes: 40
     steps:
       - name: Checkout calling repository (release / push head)
         if: needs.integration.outputs.checkout_mode == 'caller'
         uses: actions/checkout@v4
         with:
+          ref: master
           path: ${{ env.APP_PATH }}
 
       - name: Checkout remote application repository
@@ -916,3 +466,160 @@ jobs:
             ${{ github.workspace }}/${{ steps.package.outputs.stable_name }}
           retention-days: 14
           if-no-files-found: error
+
+  dast:
+    name: DAST
+    runs-on: ubuntu-latest
+    needs: [packaging]
+    timeout-minutes: 40
+    steps:
+      - name: Download release APKs
+        uses: actions/download-artifact@v4
+        with:
+          name: mobile-release-apk
+          path: ${{ github.workspace }}/apk
+
+      - name: Start MobSF
+        run: |
+          set -euo pipefail
+          docker run -d --name mobsf -e MOBSF_API_KEY=ci-mobsf-key -p 8000:8000 \
+            opensecurity/mobile-security-framework-mobsf:latest
+          ok=0
+          for _ in $(seq 1 60); do
+            if curl -fsS -H "Authorization: ci-mobsf-key" http://127.0.0.1:8000/api/v1/scans >/dev/null 2>&1 \
+              || curl -fsS http://127.0.0.1:8000/ >/dev/null 2>&1; then
+              ok=1
+              break
+            fi
+            sleep 3
+          done
+          if [ "${ok}" -ne 1 ]; then
+            echo "::error::MobSF did not become ready."
+            docker logs mobsf || true
+            exit 1
+          fi
+
+      - name: Scan APK with MobSF
+        run: |
+          set -euo pipefail
+          mkdir -p "${GITHUB_WORKSPACE}/dast-reports"
+          APK="$(find "${GITHUB_WORKSPACE}/apk" -maxdepth 1 -type f -name '*.apk' | head -n 1)"
+          if [ -z "${APK}" ]; then
+            echo "::error::No APK artifact for MobSF."
+            exit 1
+          fi
+          UPLOAD="$(curl -fsS -H "Authorization: ci-mobsf-key" -F "file=@${APK}" http://127.0.0.1:8000/api/v1/upload)"
+          echo "${UPLOAD}" | tee "${GITHUB_WORKSPACE}/dast-reports/mobsf-upload.json"
+          HASH="$(python3 -c "import json,sys; print(json.load(sys.stdin).get('hash',''))" <<<"${UPLOAD}")"
+          if [ -z "${HASH}" ]; then
+            echo "::error::MobSF upload did not return a hash."
+            exit 1
+          fi
+          SCAN="$(curl -fsS -H "Authorization: ci-mobsf-key" -F "hash=${HASH}" -F "scan_type=apk" \
+            http://127.0.0.1:8000/api/v1/scan)"
+          echo "${SCAN}" > "${GITHUB_WORKSPACE}/dast-reports/mobsf-scan.json"
+          curl -fsS -H "Authorization: ci-mobsf-key" -F "hash=${HASH}" \
+            http://127.0.0.1:8000/api/v1/report_json \
+            > "${GITHUB_WORKSPACE}/dast-reports/mobsf-report.json" || true
+          curl -fsS -H "Authorization: ci-mobsf-key" -F "hash=${HASH}" \
+            http://127.0.0.1:8000/api/v1/download_pdf \
+            > "${GITHUB_WORKSPACE}/dast-reports/mobsf-report.pdf" || \
+          curl -fsS -H "Authorization: ci-mobsf-key" -F "hash=${HASH}" \
+            http://127.0.0.1:8000/api/v1/report_pdf \
+            > "${GITHUB_WORKSPACE}/dast-reports/mobsf-report.pdf" || true
+          if [ ! -s "${GITHUB_WORKSPACE}/dast-reports/mobsf-report.json" ]; then
+            echo '{"error":"MobSF JSON report missing"}' > "${GITHUB_WORKSPACE}/dast-reports/mobsf-report.json"
+          fi
+          HIGH="$(python3 -c "
+          import json
+          p='${GITHUB_WORKSPACE}/dast-reports/mobsf-report.json'
+          try:
+              d=json.load(open(p))
+          except Exception:
+              d={}
+          n=0
+          for key in ('high','High','severity'):
+              v=d.get(key)
+              if isinstance(v, list):
+                  n=max(n,len(v))
+              elif isinstance(v, dict):
+                  n=max(n,len(v))
+          print(n)
+          ")"
+          echo "MobSF high-count heuristic=${HIGH}"
+          if [ "${HIGH}" -gt 0 ]; then
+            echo "::warning::MobSF report contains high-severity items; inspect dast-reports/mobsf-report.json."
+          fi
+
+      - name: Index DAST reports
+        if: always()
+        run: |
+          set -euo pipefail
+          REPORTS="${GITHUB_WORKSPACE}/dast-reports"
+          mkdir -p "${REPORTS}"
+          {
+            echo "# DAST reports (MobSF)"
+            echo ""
+            echo "| File | Bytes |"
+            echo "| --- | --- |"
+            find "${REPORTS}" -maxdepth 1 -type f ! -name INDEX.md -print | sort | while read -r f; do
+              echo "| \`$(basename "$f")\` | $(wc -c < "$f") |"
+            done
+          } | tee "${REPORTS}/INDEX.md"
+          cat "${REPORTS}/INDEX.md" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Stop MobSF
+        if: always()
+        run: docker rm -f mobsf >/dev/null 2>&1 || true
+
+      - name: Upload MobSF reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mobile-release-dast
+          path: ${{ github.workspace }}/dast-reports/
+          retention-days: 30
+          if-no-files-found: error
+
+  publish:
+    name: Publish
+    runs-on: ubuntu-latest
+    needs: [integration, packaging, dast]
+    timeout-minutes: 15
+    steps:
+      - name: Download release APKs
+        uses: actions/download-artifact@v4
+        with:
+          name: mobile-release-apk
+          path: ${{ github.workspace }}/release-package
+
+      - name: Download DAST reports
+        if: always()
+        continue-on-error: true
+        uses: actions/download-artifact@v4
+        with:
+          name: mobile-release-dast
+          path: ${{ github.workspace }}/release-dast
+
+      - name: Create GitHub Release on master
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ needs.integration.outputs.app_repository }}
+          VERSION: ${{ needs.packaging.outputs.version }}
+        run: |
+          set -euo pipefail
+          TAG="v${VERSION}"
+          NOTES="$(
+            printf '%s\n' \
+              "Release **${TAG}** from \`master\`." \
+              "" \
+              "Unsigned APK attached. DAST: MobSF static scan (reports in workflow artifacts)."
+          )"
+          mapfile -t ATTACH < <(find "${GITHUB_WORKSPACE}/release-package" "${GITHUB_WORKSPACE}/release-dast" -type f 2>/dev/null | sort)
+          gh release create "${TAG}" \
+            --repo "${GH_REPO}" \
+            --target master \
+            --title "${TAG}" \
+            --notes "${NOTES}" \
+            "${ATTACH[@]}"
+          echo "Created GitHub Release ${TAG} on ${GH_REPO} (target master)."

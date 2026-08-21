@@ -79,7 +79,7 @@ Zero GitHub Releases. Zero GHCR packages for this repo (checked 2026-08-17).
 ## 3. Produce a pullable image
 
 1. Merge HR-155 (or copy Fast Feedback + Integration + Release onto `develop`).
-2. Merge to `master` and **publish a GitHub Release**. That is what pushes GHCR.
+2. Merge to `master`, then run **Actions → Release → Run workflow**. That checks out `master`, runs DAST, pushes public GHCR, and creates the GitHub Release.
 3. Org Packages → `haystack_recommender` → visibility **Public**. Private GHCR fails CD on purpose (no PAT on the guest).
 4. Record the tag, for example `ghcr.io/heavy-rental/haystack_recommender:1.0.0` (or `:latest`). Prefer a **new** version tag each deploy (`compose up` is not `--pull always`).
 

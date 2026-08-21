@@ -11,8 +11,7 @@ This family validates and packages the service. It does not create infrastructur
 ```
 feature branch push  →  Fast Feedback (Integration only)
 PR / push → develop  →  Integration CI (full gates, no packaging)
-develop → master PR or published GitHub Release
-                     →  Release (full gates + uv build wheel/sdist + Docker)
+workflow_dispatch     →  Release (master + QC + image + DAST + public GHCR + GitHub Release)
 ```
 
 ## Job graph (Integration CI)

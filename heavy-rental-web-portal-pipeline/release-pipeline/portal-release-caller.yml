@@ -2,9 +2,8 @@
 # Install into: heavy-rental-react-web-portal
 # Path:         .github/workflows/portal-release-caller.yml
 # =============================================================================
-# Release caller — runs only when:
-#   1. A GitHub Release is published, or
-#   2. A pull request is opened/updated from develop → master
+# Release caller — manual dispatch only (Actions → Release → Run workflow).
+# Checks out master, QC, image, DAST, then public GHCR + GitHub Release.
 #
 # Feature-branch PR validation remains CI (portal-ci-caller.yml).
 #
@@ -56,38 +55,19 @@
 name: Release
 
 on:
-  # When a GitHub Release is published
-  release:
-    types: [published]
-  # PRs targeting master; job-level if further requires head branch == develop
-  pull_request:
-    branches: [master]
-    types: [opened, synchronize, reopened, ready_for_review]
+  workflow_dispatch:
 
-# One run per release tag or develop→master PR; do not cancel in-flight packaging
 concurrency:
-  group: portal-release-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  group: portal-release-${{ github.workflow }}-${{ github.repository }}
   cancel-in-progress: false
 
 permissions:
-  contents: read
-  pull-requests: read
-  # Forwarded to reusable workflow for CodeQL / Code Scanning
+  contents: write
   security-events: write
   actions: read
-  # Forwarded for GHCR image push on published releases
   packages: write
 
 jobs:
   release-pipeline:
     name: Release pipeline
-    # release published, OR pull request develop → master only
-    if: >
-      github.event_name == 'release' ||
-      (github.event_name == 'pull_request' &&
-       github.head_ref == 'develop' &&
-       github.base_ref == 'master')
-    # Same-repo reusable workflow — both files live under .github/workflows/
     uses: ./.github/workflows/release-pipeline.yml
-    # No inputs: checks out this portal repo at github.sha
-    # (release tag commit, or PR merge commit for develop→master)

@@ -2,9 +2,8 @@
 # Install into: heavy-rental-mobile
 # Path:         .github/workflows/mobile-release-caller.yml
 # =============================================================================
-# Release caller — runs only when:
-#   1. A GitHub Release is published, or
-#   2. A pull request is opened/updated from develop → master
+# Release caller — manual dispatch only (Actions → Release → Run workflow).
+# Checks out master, QC, unsigned APK, MobSF, then GitHub Release (no GHCR).
 #
 # Feature-branch PR validation remains CI (mobile-ci-caller.yml).
 #
@@ -44,30 +43,18 @@
 name: Release
 
 on:
-  release:
-    types: [published]
-  pull_request:
-    branches: [master]
-    types: [opened, synchronize, reopened, ready_for_review]
+  workflow_dispatch:
 
 concurrency:
-  group: mobile-release-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  group: mobile-release-${{ github.workflow }}-${{ github.repository }}
   cancel-in-progress: false
 
 permissions:
-  contents: read
-  pull-requests: read
+  contents: write
   security-events: write
   actions: read
 
 jobs:
   release-pipeline:
     name: Release pipeline
-    if: >
-      github.event_name == 'release' ||
-      (github.event_name == 'pull_request' &&
-       github.head_ref == 'develop' &&
-       github.base_ref == 'master')
     uses: ./.github/workflows/release-pipeline.yml
-    # No inputs: checks out this mobile repo at github.sha
-    # No secrets: unsigned assembleRelease only
