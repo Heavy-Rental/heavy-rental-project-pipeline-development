@@ -1,6 +1,6 @@
 # ADR 0001: REST app CD is Academy / Vocareum first
 
-- **Status:** Accepted
+- **Status:** Restored for the academy caller by [0008](0008-two-cd-actions-academy-paid.md). Paid is `rest-api-cd-paid-caller.yml`.
 - **Date:** 2026-08-17
 - **Change:** `add-rest-cd-academy-skeleton`
 

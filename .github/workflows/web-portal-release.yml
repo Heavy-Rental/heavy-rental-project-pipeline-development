@@ -299,7 +299,7 @@ jobs:
     name: Security Testing
     runs-on: ubuntu-latest
     needs: integration
-    timeout-minutes: 25
+    timeout-minutes: 40
     steps:
       - name: Checkout calling repository (release / push head)
         if: needs.integration.outputs.checkout_mode == 'caller'
@@ -332,31 +332,188 @@ jobs:
         run: |
           set -euo pipefail
           REPORT_DIR="${{ github.workspace }}/security-reports"
-          # Standard security report format: SARIF 2.1.0
-          semgrep scan \
-            --config=p/typescript \
-            --config=p/react \
-            --config=p/javascript \
-            --config=p/owasp-top-ten \
-            --config=p/security-audit \
-            --metrics=off \
+          # Community packs plus custom ERROR rules for plaintext credentials
+          # that p/secrets and p/gitleaks miss (generic passwords, not tokens).
+          RULES_FILE="${REPORT_DIR}/semgrep-custom-rules.yml"
+          cat > "${RULES_FILE}" << 'SEMGREP_CUSTOM_RULES'
+          rules:
+            - id: heavy-rental.portal.hardcoded-credential-in-properties
+              languages: [regex]
+              severity: ERROR
+              message: >
+                Hard-coded credential in a properties/env file (CWE-798). Use
+                an environment variable or secrets manager. A plaintext
+                password, secret, token, or API key in config is a shipping secret.
+              metadata:
+                category: security
+                cwe: ["CWE-798: Use of Hard-coded Credentials"]
+                owasp: ["A07:2021 - Identification and Authentication Failures"]
+                confidence: HIGH
+                subcategory: [vuln]
+                likelihood: HIGH
+                impact: HIGH
+                technology: [secrets]
+              paths:
+                include:
+                  - "*.properties"
+                  - "*.env"
+                  - "*.ini"
+                  - ".env"
+                  - ".env.*"
+                exclude:
+                  - "**/src/test/**"
+                  - "**/*example*"
+                  - "**/*sample*"
+                  - "**/node_modules/**"
+              pattern-regex: >-
+                (?i)^[ \t]*[A-Za-z0-9._-]*(?:password|passwd|pwd|secret|secret[-_]?key|api[-._]?key|access[-._]?key|private[-._]?key|auth[-._]?token|credentials?)[ \t]*=[ \t]*(?!\$\{)(?!ENC\()(?!\{cipher\})(?![ \t]*(?:#|$))[^\s#]+
+            - id: heavy-rental.portal.hardcoded-credential-in-yaml
+              languages: [regex]
+              severity: ERROR
+              message: >
+                Hard-coded credential in YAML config (CWE-798). Use an
+                environment variable or secrets manager instead of plaintext.
+              metadata:
+                category: security
+                cwe: ["CWE-798: Use of Hard-coded Credentials"]
+                owasp: ["A07:2021 - Identification and Authentication Failures"]
+                confidence: HIGH
+                subcategory: [vuln]
+                likelihood: HIGH
+                impact: HIGH
+                technology: [secrets]
+              paths:
+                include:
+                  - "*.yml"
+                  - "*.yaml"
+                exclude:
+                  - "**/src/test/**"
+                  - "**/*example*"
+                  - "**/*sample*"
+                  - "**/.github/**"
+                  - "**/node_modules/**"
+              pattern-regex: >-
+                (?i)^[ \t-]*["']?(?:[A-Za-z0-9._-]*[\._-])?(password|passwd|pwd|secret|secret[-_]?key|api[-._]?key|access[-._]?key|private[-._]?key|auth[-._]?token|credentials?)["']?[ \t]*:[ \t]*(?!\$\{)(?!~)(?!null\b)(?!ENC\()(?!\{cipher\})(?!["']?[ \t]*(?:#|$))["']?[^\s#"']+
+            - id: heavy-rental.portal.env-placeholder-plaintext-default
+              languages: [regex]
+              severity: ERROR
+              message: >
+                Placeholder ${VAR:default} embeds a plaintext credential
+                default (CWE-798). Empty defaults (${VAR:} or ${VAR}) are OK.
+              metadata:
+                category: security
+                cwe: ["CWE-798: Use of Hard-coded Credentials"]
+                owasp: ["A07:2021 - Identification and Authentication Failures"]
+                confidence: HIGH
+                subcategory: [vuln]
+                likelihood: HIGH
+                impact: HIGH
+                technology: [secrets]
+              paths:
+                include:
+                  - "*.properties"
+                  - "*.yml"
+                  - "*.yaml"
+                  - "*.env"
+                  - ".env"
+                  - ".env.*"
+                exclude:
+                  - "**/src/test/**"
+                  - "**/*example*"
+                  - "**/*sample*"
+              pattern-regex: >-
+                (?i)^[ \t]*[A-Za-z0-9._-]*(?:password|passwd|pwd|secret|secret[-_]?key|api[-._]?key|access[-._]?key|private[-._]?key|auth[-._]?token|credentials?)[ \t]*[=:][ \t]*\$\{[^}:]+:(?![ \t]*\})[^}]+\}
+            - id: heavy-rental.portal.js-hardcoded-secret-assignment
+              languages: [javascript, typescript]
+              severity: ERROR
+              message: >
+                Hard-coded credential assigned in JavaScript/TypeScript (CWE-798).
+                Inject the value from the environment or a secrets manager.
+              metadata:
+                category: security
+                cwe: ["CWE-798: Use of Hard-coded Credentials"]
+                owasp: ["A07:2021 - Identification and Authentication Failures"]
+                confidence: HIGH
+                subcategory: [vuln]
+                likelihood: HIGH
+                impact: HIGH
+                technology: [javascript, typescript, secrets]
+              paths:
+                exclude:
+                  - "**/src/test/**"
+                  - "**/*.spec.js"
+                  - "**/*.spec.ts"
+                  - "**/*.test.js"
+                  - "**/*.test.ts"
+                  - "**/node_modules/**"
+                  - "**/dist/**"
+              patterns:
+                - pattern-either:
+                    - pattern: const $VAR = "$VAL"
+                    - pattern: let $VAR = "$VAL"
+                    - pattern: var $VAR = "$VAL"
+                    - pattern: $OBJ.$VAR = "$VAL"
+                - metavariable-regex:
+                    metavariable: $VAR
+                    regex: (?i).*(password|passwd|secret|api[_]?key|token|credential).*
+                - metavariable-regex:
+                    metavariable: $VAL
+                    regex: (?!\$\{|process\.env|import\.meta).{3,}
+          SEMGREP_CUSTOM_RULES
+          sed -i 's/^          //' "${RULES_FILE}"
+          echo "==> Validating custom Semgrep rules"
+          semgrep --validate --config="${RULES_FILE}" --metrics=off
+          SEMGREP_COMMON=(
+            --config=p/typescript
+            --config=p/react
+            --config=p/javascript
+            --config=p/nodejs
+            --config=p/owasp-top-ten
+            --config=p/security-audit
+            --config=p/secrets
+            --config=p/cwe-top-25
+            --config=p/gitleaks
+            --config=p/sql-injection
+            --config=p/jwt
+            --config=p/insecure-transport
+            --config="${RULES_FILE}"
+            --metrics=off
+          )
+
+          # --- Pass 1: always write SARIF (standard report). Does not fail the step. ---
+          echo "==> Semgrep report (SARIF 2.1.0)"
+          set +e
+          semgrep scan "${SEMGREP_COMMON[@]}" \
             --sarif \
             --output="${REPORT_DIR}/semgrep.sarif" \
-            . || true
-          # Gate CI: fail on ERROR findings (console only; report remains SARIF)
-          echo "==> SAST gate (ERROR severity)"
-          semgrep scan \
-            --config=p/typescript \
-            --config=p/react \
-            --config=p/javascript \
-            --config=p/owasp-top-ten \
-            --config=p/security-audit \
-            --metrics=off \
+            .
+          SARIF_RC=$?
+          set -e
+          if [ -f "${REPORT_DIR}/semgrep.sarif" ]; then
+            echo "SARIF written: ${REPORT_DIR}/semgrep.sarif (semgrep exit=${SARIF_RC}; non-zero is OK for report pass)"
+          else
+            echo "::warning::semgrep.sarif was not produced (exit=${SARIF_RC})"
+          fi
+
+          # --- Pass 2: CI gate — fail only if ERROR-severity findings exist. ---
+          echo "==> SAST gate (ERROR severity only; exit 1 if findings)"
+          set +e
+          semgrep scan "${SEMGREP_COMMON[@]}" \
             --severity=ERROR \
             --error \
             --text \
             .
-          echo "SAST (Semgrep) passed — SARIF report: security-reports/semgrep.sarif"
+          GATE_RC=$?
+          set -e
+          if [ "${GATE_RC}" -ne 0 ]; then
+            echo "::error::Semgrep SAST gate failed (exit=${GATE_RC})."
+            echo "The SARIF report may still have been written successfully."
+            echo "This step fails because --severity=ERROR --error found ERROR-level issues"
+            echo "(or Semgrep could not complete the gate scan)."
+            echo "Open security-reports/semgrep.sarif or the text findings above."
+            exit "${GATE_RC}"
+          fi
+          echo "SAST (Semgrep) gate passed — no ERROR-level findings. SARIF: security-reports/semgrep.sarif"
 
       # --- SCA: dependency vulnerabilities (npm audit → SARIF) ---
       - name: Setup Node.js

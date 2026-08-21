@@ -1,0 +1,14 @@
+{
+  "comment": "OIDC role for portal/REST/Haystack app CD on Environment AWS_ACTUAL. Add each app repo to StringLike sub. Do not grant terraform apply. Do not put AWS_ACCESS_KEY_ID on AWS_ACTUAL.",
+  "trust_policy_sub": "repo:ORG/<app-repo>:*",
+  "needed_actions": [
+    "sts:GetCallerIdentity",
+    "autoscaling:DescribeAutoScalingGroups",
+    "ssm:DescribeInstanceInformation",
+    "ssm:SendCommand",
+    "ssm:GetCommandInvocation",
+    "secretsmanager:DescribeSecret",
+    "elasticloadbalancing:DescribeLoadBalancers",
+    "s3:ListBucket / GetObject / PutObject / DeleteObject on heavy-rental-ssm-ACCOUNT-actual only"
+  ]
+}

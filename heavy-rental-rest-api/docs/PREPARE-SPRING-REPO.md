@@ -79,8 +79,10 @@ Copy from this tree’s `deploy-pipeline/`:
 | Source | Destination in the Spring repo |
 | --- | --- |
 | `rest-api-cd-academy-caller.yml` | `.github/workflows/` |
-| `rest-api-cd-academy.yml` | `.github/workflows/` |
+| `rest-api-cd-paid-caller.yml` | `.github/workflows/` (billed AWS / OIDC) |
+| `rest-api-cd-academy.yml` | `.github/workflows/` (shared jobs) |
 | `resolve-vocareum-aws/action.yml` | `.github/actions/resolve-vocareum-aws/` |
+| `resolve-aws-profile/action.yml` | `.github/actions/resolve-aws-profile/` |
 | `ansible/` | **`deploy-pipeline/ansible/`** (keep this path) |
 
 Everyday operate: [`BOOTSTRAP.md`](BOOTSTRAP.md).

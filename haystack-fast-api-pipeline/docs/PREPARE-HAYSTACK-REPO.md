@@ -94,8 +94,10 @@ Copy from this tree’s `deploy-pipeline/`:
 | Source | Destination in haystack-fast-api |
 | --- | --- |
 | `haystack-cd-academy-caller.yml` | `.github/workflows/` |
-| `haystack-cd-academy.yml` | `.github/workflows/` |
+| `haystack-cd-paid-caller.yml` | `.github/workflows/` (billed AWS / OIDC) |
+| `haystack-cd-academy.yml` | `.github/workflows/` (shared jobs) |
 | `resolve-vocareum-aws/action.yml` | `.github/actions/resolve-vocareum-aws/` |
+| `resolve-aws-profile/action.yml` | `.github/actions/resolve-aws-profile/` |
 | `ansible/` | **`deploy-pipeline/ansible/`** (keep this path) |
 | [`docs/samples/.env.prod`](samples/.env.prod) | **`.env.prod`** at the app repo root (Release sanitizes this to `/app/.env`) |
 

@@ -10,7 +10,7 @@ Static and supply-chain scanning of the Python + Haystack application. Standard 
 Security Testing SHALL run only after Integration succeeds, in parallel with Quality Control, and SHALL scan the same application source.
 
 ### Requirement: Semgrep Python SAST
-Security Testing SHALL run Semgrep with Python, OWASP Top Ten, security-audit, and secrets rulesets. It SHALL always attempt to write `semgrep.sarif`. It SHALL fail the job only when ERROR-severity findings exist (or Semgrep cannot complete the gate scan). It SHALL NOT use Kotlin or Java rulesets.
+Security Testing SHALL run Semgrep with Python, FastAPI, OWASP Top Ten, security-audit, secrets, CWE Top 25, Gitleaks, SQL injection, JWT, and insecure-transport rulesets, plus custom ERROR-severity rules that flag hard-coded credentials in `.env`/properties/YAML and hard-coded password/secret assignments in Python. It SHALL always attempt to write `semgrep.sarif`. It SHALL fail the job only when ERROR-severity findings exist (or Semgrep cannot complete the gate scan). It SHALL NOT use Kotlin or Java rulesets.
 
 #### Scenario: SARIF written on clean scan
 - GIVEN Semgrep finds no ERROR-severity issues
@@ -23,6 +23,12 @@ Security Testing SHALL run Semgrep with Python, OWASP Top Ten, security-audit, a
 - WHEN the Semgrep gate runs
 - THEN the job fails
 - AND the SARIF file is still uploaded when present
+
+#### Scenario: plaintext password in env or Python
+- GIVEN `.env` contains `password=` with a literal value, or Python assigns `password = "..."` in non-test source
+- WHEN Semgrep SAST runs
+- THEN the finding is ERROR severity
+- AND the Semgrep gate fails
 
 ### Requirement: pip-audit lockfile report
 Security Testing SHALL export the frozen production lock with uv and run `pip-audit` against that export. A pip-audit finding SHALL NOT fail the job in this change (report only). The report SHALL be uploaded when present.

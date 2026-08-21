@@ -11,7 +11,8 @@ Operator checklist: [`../../docs/PREPARE-PORTAL-REPO.md`](../../docs/PREPARE-POR
 ## Actions
 
 ```
-workflow_dispatch (Environment academy + Vocareum keys)
+workflow_dispatch (Academy: Environment academy + Vocareum keys.
+Paid: Environment AWS_ACTUAL + OIDC, no Vocareum keys)
       │
       ▼
  assert-lab          refuse non-academy; resolve keys (masked); sts

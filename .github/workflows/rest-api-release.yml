@@ -530,7 +530,7 @@ jobs:
     runs-on: ubuntu-latest
     # Highest-priority gate: never start Security unless Integration passed
     needs: [integration]
-    timeout-minutes: 25
+    timeout-minutes: 40
     steps:
       - name: Checkout calling repository (release / push head)
         if: needs.integration.outputs.checkout_mode == 'caller'
@@ -563,12 +563,243 @@ jobs:
         run: |
           set -euo pipefail
           REPORT_DIR="${{ github.workspace }}/security-reports"
-          # Note: p/spring was removed from the Semgrep registry (HTTP 404).
+          # p/spring was removed from the Semgrep registry (HTTP 404).
+          # Community packs: Java/OWASP/CWE plus secrets, injection, JWT, TLS.
+          # Custom rules catch plaintext credentials in Spring properties/YAML
+          # that p/secrets and p/gitleaks miss (generic passwords, not tokens).
+          RULES_FILE="${REPORT_DIR}/semgrep-custom-rules.yml"
+          cat > "${RULES_FILE}" << 'SEMGREP_CUSTOM_RULES'
+          rules:
+            - id: heavy-rental.rest-api.hardcoded-credential-in-properties
+              languages: [regex]
+              severity: ERROR
+              message: >
+                Hard-coded credential in a properties/env file (CWE-798). Use
+                ${ENV_VAR} or a secrets manager. A plaintext password, secret,
+                token, or API key in application.properties is a shipping secret.
+              metadata:
+                category: security
+                cwe: ["CWE-798: Use of Hard-coded Credentials"]
+                owasp: ["A07:2021 - Identification and Authentication Failures"]
+                technology: [spring, secrets]
+                confidence: HIGH
+                subcategory: [vuln]
+                likelihood: HIGH
+                impact: HIGH
+              paths:
+                include:
+                  - "*.properties"
+                  - "*.env"
+                  - "*.ini"
+                exclude:
+                  - "**/src/test/**"
+                  - "**/*example*"
+                  - "**/*sample*"
+              pattern-regex: >-
+                (?i)^[ \t]*[A-Za-z0-9._-]*(?:password|passwd|pwd|secret|secret[-_]?key|api[-._]?key|access[-._]?key|private[-._]?key|auth[-._]?token|credentials?)[ \t]*=[ \t]*(?!\$\{)(?!ENC\()(?!\{cipher\})(?![ \t]*(?:#|$))[^\s#]+
+            - id: heavy-rental.rest-api.hardcoded-credential-in-yaml
+              languages: [regex]
+              severity: ERROR
+              message: >
+                Hard-coded credential in YAML config (CWE-798). Use ${ENV_VAR}
+                or a secrets manager instead of a plaintext password or secret.
+              metadata:
+                category: security
+                cwe: ["CWE-798: Use of Hard-coded Credentials"]
+                owasp: ["A07:2021 - Identification and Authentication Failures"]
+                technology: [spring, secrets]
+                confidence: HIGH
+                subcategory: [vuln]
+                likelihood: HIGH
+                impact: HIGH
+              paths:
+                include:
+                  - "*.yml"
+                  - "*.yaml"
+                exclude:
+                  - "**/src/test/**"
+                  - "**/*example*"
+                  - "**/*sample*"
+                  - "**/.github/**"
+              pattern-regex: >-
+                (?i)^[ \t-]*["']?(?:[A-Za-z0-9._-]*[\._-])?(password|passwd|pwd|secret|secret[-_]?key|api[-._]?key|access[-._]?key|private[-._]?key|auth[-._]?token|credentials?)["']?[ \t]*:[ \t]*(?!\$\{)(?!~)(?!null\b)(?!ENC\()(?!\{cipher\})(?!["']?[ \t]*(?:#|$))["']?[^\s#"']+
+            - id: heavy-rental.rest-api.env-placeholder-plaintext-default
+              languages: [regex]
+              severity: ERROR
+              message: >
+                Spring ${VAR:default} placeholder embeds a plaintext credential
+                default (CWE-798). Empty defaults (${VAR:} or ${VAR}) are OK;
+                a literal fallback password is not.
+              metadata:
+                category: security
+                cwe: ["CWE-798: Use of Hard-coded Credentials"]
+                owasp: ["A07:2021 - Identification and Authentication Failures"]
+                technology: [spring, secrets]
+                confidence: HIGH
+                subcategory: [vuln]
+                likelihood: MEDIUM
+                impact: HIGH
+              paths:
+                include:
+                  - "*.properties"
+                  - "*.yml"
+                  - "*.yaml"
+                  - "*.env"
+                exclude:
+                  - "**/src/test/**"
+                  - "**/*example*"
+                  - "**/*sample*"
+              pattern-regex: >-
+                (?i)^[ \t]*[A-Za-z0-9._-]*(?:password|passwd|pwd|secret|secret[-_]?key|api[-._]?key|access[-._]?key|private[-._]?key|auth[-._]?token|credentials?)[ \t]*[=:][ \t]*\$\{[^}:]+:(?![ \t]*\})[^}]+\}
+            - id: heavy-rental.rest-api.jdbc-url-embedded-credentials
+              languages: [regex]
+              severity: ERROR
+              message: >
+                JDBC URL embeds user:password@host (CWE-798). Use a URL without
+                credentials and set username/password from environment variables.
+              metadata:
+                category: security
+                cwe: ["CWE-798: Use of Hard-coded Credentials"]
+                owasp: ["A07:2021 - Identification and Authentication Failures"]
+                technology: [java, jdbc, secrets]
+                confidence: HIGH
+                subcategory: [vuln]
+                likelihood: HIGH
+                impact: HIGH
+              paths:
+                include:
+                  - "*.properties"
+                  - "*.yml"
+                  - "*.yaml"
+                  - "*.xml"
+                  - "*.java"
+                  - "*.env"
+                exclude:
+                  - "**/src/test/**"
+              pattern-regex: >-
+                (?i)jdbc:[a-z0-9]+://[^/\s:]+:[^@/\s]+@
+            - id: heavy-rental.rest-api.java-hardcoded-secret-assignment
+              languages: [java]
+              severity: ERROR
+              message: >
+                Hard-coded credential assigned in Java source (CWE-798). Inject
+                the value from the environment or a secrets manager.
+              metadata:
+                category: security
+                cwe: ["CWE-798: Use of Hard-coded Credentials"]
+                owasp: ["A07:2021 - Identification and Authentication Failures"]
+                technology: [java, secrets]
+                confidence: MEDIUM
+                subcategory: [vuln]
+                likelihood: HIGH
+                impact: HIGH
+              paths:
+                exclude:
+                  - "**/src/test/**"
+                  - "**/*Test.java"
+                  - "**/*Tests.java"
+              patterns:
+                - pattern-either:
+                    - pattern: $TYPE $VAR = "$VAL";
+                    - pattern: $VAR = "$VAL";
+                - metavariable-regex:
+                    metavariable: $VAR
+                    regex: (?i).*(password|passwd|secret|api[_]?key|token|credential).*
+                - metavariable-regex:
+                    metavariable: $VAL
+                    regex: (?!\$\{).{3,}
+            - id: heavy-rental.rest-api.java-setpassword-hardcoded
+              languages: [java]
+              severity: ERROR
+              message: >
+                Hard-coded password passed to a setter (CWE-798). Load it from
+                the environment or a secrets manager.
+              metadata:
+                category: security
+                cwe: ["CWE-798: Use of Hard-coded Credentials"]
+                owasp: ["A07:2021 - Identification and Authentication Failures"]
+                technology: [java, secrets]
+                confidence: HIGH
+                subcategory: [vuln]
+                likelihood: HIGH
+                impact: HIGH
+              paths:
+                exclude:
+                  - "**/src/test/**"
+                  - "**/*Test.java"
+                  - "**/*Tests.java"
+              patterns:
+                - pattern-either:
+                    - pattern: $OBJ.setPassword("$VAL");
+                    - pattern: $OBJ.password("$VAL");
+                    - pattern: DriverManager.getConnection($URL, $USER, "$VAL");
+                - metavariable-regex:
+                    metavariable: $VAL
+                    regex: (?!\$\{).{1,}
+            - id: heavy-rental.rest-api.spring-actuator-fully-exposed
+              languages: [regex]
+              severity: ERROR
+              message: >
+                Spring Boot Actuator exposes all endpoints (include=*). Restrict
+                to health/info; /actuator/env and /heapdump leak secrets.
+              metadata:
+                category: security
+                cwe: ["CWE-200: Exposure of Sensitive Information to an Unauthorized Actor"]
+                owasp: ["A05:2021 - Security Misconfiguration"]
+                technology: [java, spring]
+                confidence: HIGH
+                subcategory: [vuln]
+                likelihood: MEDIUM
+                impact: HIGH
+              paths:
+                include:
+                  - "*.properties"
+                  - "*.yml"
+                  - "*.yaml"
+                exclude:
+                  - "**/src/test/**"
+              pattern-regex: >-
+                (?i)management\.endpoints\.web\.exposure\.include\s*[=:]\s*["']?\*
+            - id: heavy-rental.rest-api.spring-security-disabled
+              languages: [regex]
+              severity: ERROR
+              message: >
+                Spring Security is disabled (spring.security.enabled=false).
+                That opens every endpoint. Remove the flag from non-test config.
+              metadata:
+                category: security
+                cwe: ["CWE-284: Improper Access Control"]
+                owasp: ["A01:2021 - Broken Access Control"]
+                technology: [java, spring]
+                confidence: HIGH
+                subcategory: [vuln]
+                likelihood: MEDIUM
+                impact: HIGH
+              paths:
+                include:
+                  - "*.properties"
+                  - "*.yml"
+                  - "*.yaml"
+                exclude:
+                  - "**/src/test/**"
+              pattern-regex: >-
+                (?i)spring\.security\.enabled\s*[=:]\s*["']?false
+          SEMGREP_CUSTOM_RULES
+          sed -i 's/^          //' "${RULES_FILE}"
+          echo "==> Validating custom Semgrep rules"
+          semgrep --validate --config="${RULES_FILE}" --metrics=off
           SEMGREP_COMMON=(
             --config=p/java
             --config=p/owasp-top-ten
             --config=p/security-audit
             --config=p/secrets
+            --config=p/cwe-top-25
+            --config=p/findsecbugs
+            --config=p/gitleaks
+            --config=p/sql-injection
+            --config=p/jwt
+            --config=p/insecure-transport
+            --config="${RULES_FILE}"
             --metrics=off
           )
 

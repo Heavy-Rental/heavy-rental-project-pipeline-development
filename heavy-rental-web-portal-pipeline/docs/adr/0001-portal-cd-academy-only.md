@@ -1,6 +1,6 @@
 # ADR 0001: Portal app CD is Academy / Vocareum first
 
-- **Status:** Accepted
+- **Status:** Restored for the academy caller by [0009](0009-two-cd-actions-academy-paid.md). Paid is `portal-cd-paid-caller.yml`.
 - **Date:** 2026-08-17
 - **Branch:** `HR-165-implement-cd-pipeline-for-react-web-portal`
 

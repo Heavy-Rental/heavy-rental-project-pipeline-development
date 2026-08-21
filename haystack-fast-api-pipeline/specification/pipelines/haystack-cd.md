@@ -11,7 +11,8 @@ App-repo readiness and env/sidecar gaps: [`../../docs/PREPARE-HAYSTACK-REPO.md`]
 ## Actions
 
 ```
-workflow_dispatch (Environment academy + Vocareum keys)
+workflow_dispatch (Academy: Environment academy + Vocareum keys.
+Paid: Environment AWS_ACTUAL + OIDC, no Vocareum keys)
       │
       ▼
  assert-lab          refuse non-academy; resolve keys (masked); sts

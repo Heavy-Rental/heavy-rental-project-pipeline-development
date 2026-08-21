@@ -10,7 +10,7 @@ Static and supply-chain scanning of the Java / Spring application. Standard repo
 Security Testing SHALL run only after Integration succeeds, in parallel with Quality Control, and SHALL scan the same application source.
 
 ### Requirement: Semgrep Java SAST
-Security Testing SHALL run Semgrep with Java, OWASP Top Ten, security-audit, and secrets rulesets. It SHALL always attempt to write `semgrep.sarif`. It SHALL fail the job only when ERROR-severity findings exist (or Semgrep cannot complete the gate scan). It SHALL NOT use the removed `p/spring` ruleset as a required config.
+Security Testing SHALL run Semgrep with Java, OWASP Top Ten, security-audit, secrets, CWE Top 25, FindSecBugs, Gitleaks, SQL injection, JWT, and insecure-transport rulesets, plus custom ERROR-severity rules that flag hard-coded credentials in Spring properties/YAML, `${VAR:plaintext}` credential defaults, JDBC URLs with embedded user:password, hard-coded Java password/secret assignments, fully exposed Actuator endpoints, and globally disabled Spring Security. It SHALL always attempt to write `semgrep.sarif`. It SHALL fail the job only when ERROR-severity findings exist (or Semgrep cannot complete the gate scan). It SHALL NOT use the removed `p/spring` ruleset as a required config.
 
 #### Scenario: SARIF written on clean scan
 - GIVEN Semgrep finds no ERROR-severity issues
@@ -23,6 +23,12 @@ Security Testing SHALL run Semgrep with Java, OWASP Top Ten, security-audit, and
 - WHEN the Semgrep gate runs
 - THEN the job fails
 - AND the SARIF file is still uploaded when present
+
+#### Scenario: plaintext password in application properties
+- GIVEN `src/main/resources/application.properties` contains `spring.datasource.password=` with a literal value (not `${ENV}` and not Jasypt `ENC(...)` / `{cipher}`)
+- WHEN Semgrep SAST runs
+- THEN the finding is ERROR severity
+- AND the Semgrep gate fails
 
 ### Requirement: Trivy filesystem scan
 Security Testing SHALL run Trivy filesystem scanning, write `trivy-fs.sarif`, and fail only on unfixed CRITICAL vulnerabilities.

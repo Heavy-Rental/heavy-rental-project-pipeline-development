@@ -9,8 +9,10 @@ Specification index: [`../specification/README.md`](../specification/README.md).
 Install from **`deploy-pipeline/`** into the Haystack app repo (same paths as PREPARE §4):
 
 - `haystack-cd-academy-caller.yml` → `.github/workflows/`
-- `haystack-cd-academy.yml` → `.github/workflows/`
+- `haystack-cd-paid-caller.yml` → `.github/workflows/` (billed AWS)
+- `haystack-cd-academy.yml` → `.github/workflows/` (shared jobs)
 - `resolve-vocareum-aws/action.yml` → `.github/actions/resolve-vocareum-aws/`
+- `resolve-aws-profile/action.yml` → `.github/actions/resolve-aws-profile/`
 - **`ansible/`** → `deploy-pipeline/ansible/` (keep this path)
 
 Do **not** copy `specification/`. Copy [`samples/.env.prod`](samples/.env.prod) to the **app** repo as `.env.prod` so Release sanitizes it to `/app/.env`. pydantic `Settings` loads `.env` only; it does not auto-select `.env.prod`.
@@ -28,6 +30,10 @@ Compose `env_file` on the guest is the SM map (plus aliases and overlay). Proces
 ## GitHub Environment `academy`
 
 This Environment is the Haystack **project** production-style config store (Vocareum). Infra still owns RDS hosts and Bolt NLB. Do **not** point CD at CI Environments `integration` or `production`.
+
+## GitHub Environment `AWS_ACTUAL` (paid)
+
+Create Environment **`AWS_ACTUAL`**. Variable `AWS_ROLE_TO_ASSUME` (OIDC). Same `HAYSTACK_IMAGE` and Profile overlay names. Optional secret `LLM_API_KEY`. **No** `AWS_ACCESS_KEY_ID`. Run **Haystack CD (paid)** after infra paid `apply`. Ansible SSM uses `heavy-rental-ssm-<account>-actual`. No neo4j container.
 
 ### Secrets (runner only — optional fallback)
 

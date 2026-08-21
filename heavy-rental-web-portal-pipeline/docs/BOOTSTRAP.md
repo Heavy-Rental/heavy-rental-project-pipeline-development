@@ -7,8 +7,10 @@ Specification index: [`../specification/README.md`](../specification/README.md).
 Install from **`deploy-pipeline/`** into the React repo (same paths as PREPARE §4):
 
 - `portal-cd-academy-caller.yml` → `.github/workflows/`
-- `web-portal-cd-academy.yml` → `.github/workflows/`
+- `portal-cd-paid-caller.yml` → `.github/workflows/` (billed AWS)
+- `web-portal-cd-academy.yml` → `.github/workflows/` (shared jobs)
 - `resolve-vocareum-aws/action.yml` → `.github/actions/resolve-vocareum-aws/`
+- `resolve-aws-profile/action.yml` → `.github/actions/resolve-aws-profile/`
 - **`ansible/`** → `deploy-pipeline/ansible/` (keep this path)
 
 Do **not** copy `specification/`. Copy [`samples/.env.production`](samples/.env.production) to the **React** repo as `.env.production` (scanned at Release). GHCR is built with **`vite build --mode api`** so Spring login works. Vite inlines `VITE_*` at build time; CD does not read the file.
@@ -50,6 +52,10 @@ Do **not** point CD at CI Environments `integration` or `production`.
 | `VITE_STRIPE_PUBLISHABLE_KEY` | Optional (`pk_` only) | Release Packaging (`environment: academy`) bakes it into the JS bundle. CD overlays guest `.env`. Empty leaves `.env.api` / SM. **Never** `sk_` |
 
 Do **not** set `REST_BASE_URL`, `HAYSTACK_BASE_URL`, other `VITE_*`, `VITE_API_TARGET`, Stripe `sk_` / `whsec_`, or `APP_CORS_*` here. Infra SM + CD `/api` own the REST host. Changing Stripe `pk_` in the **browser** still needs a new Release image; CD overlay does not rewrite `dist/`.
+
+## GitHub Environment `AWS_ACTUAL` (paid)
+
+Create Environment **`AWS_ACTUAL`**. Variable `AWS_ROLE_TO_ASSUME` (OIDC). Same `AWS_REGION` / `PORTAL_IMAGE` / `IMAGE_HTTP_URL` / `VITE_STRIPE_PUBLISHABLE_KEY` on **this** Environment. **No** `AWS_ACCESS_KEY_ID`. Trust the role for this app repo. Run **Web Portal CD (paid)** after infra **AWS infrastructure (paid)** `apply`. Ansible SSM uses `heavy-rental-ssm-<account>-actual`.
 
 ## configure-only (same as [`../specification/pipelines/portal-cd.md`](../specification/pipelines/portal-cd.md))
 

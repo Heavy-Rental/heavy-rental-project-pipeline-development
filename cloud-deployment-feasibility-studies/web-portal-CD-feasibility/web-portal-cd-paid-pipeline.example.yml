@@ -1,5 +1,6 @@
-# Portal app CD (paid). Not CI. Not terraform apply.
-# Copy to: .github/workflows/web-portal-cd-paid.yml
+# Stub example only. Live paid caller:
+#   heavy-rental-web-portal-pipeline/deploy-pipeline/portal-cd-paid-caller.yml
+# Environment is AWS_ACTUAL (not "paid"). Do not copy this stub.
 # Order: infra Terraform creates EC2 → infra Ansible first compose
 #        → THIS workflow re-runs compose on asg-portal with a new CI nginx image.
 # nginx /api → REST_BASE_URL (internal REST ALB). No Vite server. No sk_ on portal.

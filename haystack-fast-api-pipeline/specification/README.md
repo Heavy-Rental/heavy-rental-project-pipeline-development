@@ -58,3 +58,4 @@ Conflict order: **OpenSpec scenarios → OpenSPDD Safeguards → ADR → YAML**.
 | Integration CI | [`../integration-pipeline/integration-pipeline.yml`](../integration-pipeline/integration-pipeline.yml) | [`haystack-ci-caller.yml`](../integration-pipeline/haystack-ci-caller.yml) |
 | Release | [`../release-pipeline/release-pipeline.yml`](../release-pipeline/release-pipeline.yml) | [`haystack-release-caller.yml`](../release-pipeline/haystack-release-caller.yml) |
 | Academy CD | [`../deploy-pipeline/haystack-cd-academy.yml`](../deploy-pipeline/haystack-cd-academy.yml) | [`haystack-cd-academy-caller.yml`](../deploy-pipeline/haystack-cd-academy-caller.yml) |
+| Paid CD | same reusable | [`haystack-cd-paid-caller.yml`](../deploy-pipeline/haystack-cd-paid-caller.yml) |
