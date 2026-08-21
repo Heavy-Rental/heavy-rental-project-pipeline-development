@@ -51,6 +51,27 @@ Security Testing SHALL run Trivy filesystem scanning, write `trivy-fs.sarif`, an
 - WHEN the Trivy CRITICAL gate runs
 - THEN the job fails
 
+### Requirement: Combined security report PDF
+Security Testing SHALL combine present scanner outputs under `security-reports/` (all `*.sarif` files) into `security-reports/combined-security-report.pdf` after the scanners finish, including when a scanner gate has failed. The PDF SHALL be uploaded as workflow artifact `security-combined-report-pdf` and included in the existing SARIF artifact when present. SARIF 2.1.0 remains the machine-readable standard. The PDF SHALL omit SARIF region snippets so secret-scanner matches are not echoed. On `pull_request`, Security Testing SHALL publish a Checks-tab download link (Security Testing job summary and a completed check named `Security combined report (PDF)`). A Checks API failure SHALL NOT fail the job.
+
+#### Scenario: PDF on clean scan
+- GIVEN scanners write at least one SARIF file and no gate fails
+- WHEN Security Testing finishes
+- THEN `security-reports/combined-security-report.pdf` exists
+- AND artifact `security-combined-report-pdf` is uploaded
+
+#### Scenario: PDF when a gate fails
+- GIVEN a Semgrep ERROR or Trivy CRITICAL gate fails
+- WHEN Security Testing finishes
+- THEN `combined-security-report.pdf` is still uploaded when the file was produced
+
+#### Scenario: downloadable from pull request Checks
+- GIVEN the workflow ran on `pull_request`
+- AND the combined PDF artifact was uploaded
+- WHEN Checks are shown for the pull request
+- THEN the Security Testing job summary includes a download link
+- AND a check named `Security combined report (PDF)` is created when the Checks API accepts the request
+
 ### Requirement: Publish SARIF
 Security Testing SHALL upload Semgrep SARIF/JSON/text and Trivy SARIF files as a workflow artifact and SHALL attempt to publish SARIF to GitHub Code Scanning. A Code Scanning upload failure SHALL NOT fail the job.
 

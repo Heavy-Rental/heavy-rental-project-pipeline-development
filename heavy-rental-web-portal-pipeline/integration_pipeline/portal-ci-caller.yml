@@ -68,6 +68,7 @@ permissions:
   # Forwarded to reusable workflow for CodeQL / Code Scanning
   security-events: write
   actions: read
+  checks: write
 
 jobs:
   # Integration is the first / highest-priority job inside the reusable workflow

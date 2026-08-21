@@ -45,6 +45,7 @@ Release adds **Packaging** (`uv build` wheel + sdist, then always-generated uvic
 | Python SAST | Semgrep `p/python` `p/fastapi` + OWASP / audit / secrets / CWE Top 25 / Gitleaks / SQL injection / JWT / insecure-transport, plus custom ERROR rules for plaintext credentials in `.env`/YAML and Python assignments. Reports: `semgrep.sarif` + `semgrep.json` + `semgrep.txt` (all severities); gate is ERROR-only |
 | Python SCA report | `uvx pip-audit` on `uv export` |
 | FS / CRITICAL SCA | Trivy |
+| Human security report | Combined PDF artifact `security-combined-report-pdf` (SARIF + pip-audit); download from the PR Checks tab (workflow Summary → Artifacts, or Security Testing job summary) |
 | Code scanning | CodeQL `python` |
 | Package | `uv build` (Hatchling wheel + sdist) |
 | Image | Always-generated `python:3.12-slim-bookworm` + uv + `uvicorn app.main:app :8000` (app Dockerfile ignored). GHCR `haystack_recommender:<semver>` + `:latest` off PR (semver is previous GHCR `x.y.z` + patch, or `1.0.0`). No baked infra `ENV`/`ARG`. Sanitized `.env.prod` → `/app/.env` for pydantic product knobs (`APP_ENV=prod`, …). Estate keys stay out of that file. Packaging proves dummy `docker run -e` env (overrides the file) and `GET /docs` or `GET /health` on `:8000`. Sidecar dirs copied only if present. |
