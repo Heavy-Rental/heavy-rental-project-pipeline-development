@@ -49,6 +49,7 @@ QC “Package WAR” on Integration CI is **build verification**, not a deploy.
 | SAST | Semgrep `p/java` + OWASP / security-audit / secrets / CWE Top 25 / FindSecBugs / Gitleaks / SQL injection / JWT / insecure-transport, plus custom ERROR rules for plaintext credentials in Spring properties/YAML (`p/spring` is gone). Reports: `semgrep.sarif` + `semgrep.json` + `semgrep.txt` (all severities); gate is ERROR-only |
 | SCA / FS | Trivy FS SARIF; CRITICAL unfixed fails |
 | Human security report | Combined PDF artifact `security-combined-report-pdf` (`security-reports/combined-security-report.pdf`); download from the PR Checks tab (workflow Summary → Artifacts, or Security Testing job summary) |
+| Human DAST report | Combined PDF artifact `dast-combined-report-pdf` (`dast-reports/combined-dast-report.pdf`); download from the Release run Summary → Artifacts, the DAST job summary link, or the GitHub Release |
 | Code scanning | CodeQL `java-kotlin` |
 | Image | Always-generated `tomcat:10.1-jdk21-temurin` + `ROOT.war` + `SPRING_PROFILES_ACTIVE=prod`. WAR must include `application-prod.properties` (hyphen). No baked `POSTGRES_*` / Stripe / JWT. Packaging proves dummy `-e`, `WEB-INF`, profile env, and Tomcat TCP `:8080`. |
 
