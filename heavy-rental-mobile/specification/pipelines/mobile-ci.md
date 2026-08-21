@@ -45,7 +45,7 @@ Release adds **Packaging** (`assembleRelease` unsigned APK) after Integration + 
 | Build | Gradle wrapper (`./gradlew --no-daemon`) |
 | QC | `:app:lintDebug` + `:app:testDebugUnitTest` + `:app:assembleDebug` |
 | Mocks | Node scripts `mock:prepare` / `mock:prism` / `mock:verify` on `:8081` |
-| SAST / SCA | Semgrep `p/kotlin` `p/java` + OWASP / audit / secrets / CWE Top 25 / FindSecBugs / Gitleaks / SQL injection / JWT / insecure-transport, plus custom ERROR rules for plaintext credentials; Trivy FS SARIF |
+| SAST / SCA | Semgrep `p/kotlin` `p/java` + OWASP / audit / secrets / CWE Top 25 / FindSecBugs / Gitleaks / SQL injection / JWT / insecure-transport, plus custom ERROR rules for plaintext credentials (reports: `semgrep.sarif` + `semgrep.json` + `semgrep.txt`, ERROR-only gate); Trivy FS SARIF |
 | Code scanning | CodeQL `java-kotlin` |
 | Package | `:app:assembleRelease` unsigned APK |
 
