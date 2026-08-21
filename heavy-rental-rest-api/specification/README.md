@@ -57,3 +57,4 @@ As-implemented spec of the existing Fast Feedback / Integration / Release YAML.
 | Integration CI | [`../integration-pipeline/integration-pipeline.yml`](../integration-pipeline/integration-pipeline.yml) | [`rest-api-ci-caller.yml`](../integration-pipeline/rest-api-ci-caller.yml) |
 | Release | [`../release-pipeline/release-pipeline.yml`](../release-pipeline/release-pipeline.yml) | [`rest-api-release-caller.yml`](../release-pipeline/rest-api-release-caller.yml) |
 | Academy CD | [`../deploy-pipeline/rest-api-cd-academy.yml`](../deploy-pipeline/rest-api-cd-academy.yml) | [`rest-api-cd-academy-caller.yml`](../deploy-pipeline/rest-api-cd-academy-caller.yml) |
+| Paid CD | same reusable | [`rest-api-cd-paid-caller.yml`](../deploy-pipeline/rest-api-cd-paid-caller.yml) |

@@ -43,7 +43,7 @@ Release adds **Packaging** (`uv build` wheel + sdist, then always-generated uvic
 | Integration smoke | `haystack.Pipeline`, `create_app`, `build_indexing_pipeline`, `build_intake_front_pipeline` |
 | Lint | Ruff (`uv run ruff check app tests`) |
 | Tests | pytest + pytest-html (`uv run pytest tests/`) |
-| Python SAST | Semgrep `p/python` |
+| Python SAST | Semgrep `p/python` `p/fastapi` + OWASP / audit / secrets / CWE Top 25 / Gitleaks / SQL injection / JWT / insecure-transport, plus custom ERROR rules for plaintext credentials in `.env`/YAML and Python assignments |
 | Python SCA report | `uvx pip-audit` on `uv export` |
 | FS / CRITICAL SCA | Trivy |
 | Code scanning | CodeQL `python` |

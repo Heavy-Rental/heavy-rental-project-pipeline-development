@@ -46,6 +46,7 @@ As-implemented spec of the existing Fast Feedback / Integration / Release YAML.
 
 - [`../openspec/changes/add-portal-cd-academy-skeleton/`](../openspec/changes/add-portal-cd-academy-skeleton/)
 - [`../openspec/changes/add-portal-cd-academy-deploy/`](../openspec/changes/add-portal-cd-academy-deploy/)
+- [`../openspec/changes/add-portal-cd-paid-deploy/`](../openspec/changes/add-portal-cd-paid-deploy/)
 - SPDD: [`../spdd/analysis/add-portal-cd-academy-skeleton.md`](../spdd/analysis/add-portal-cd-academy-skeleton.md), [`../spdd/analysis/add-portal-cd-academy-deploy.md`](../spdd/analysis/add-portal-cd-academy-deploy.md)
 - Walkthrough: [`pipelines/portal-cd.md`](pipelines/portal-cd.md) (`configure-only` three stores)
 - Operator: [`../docs/BOOTSTRAP.md`](../docs/BOOTSTRAP.md), [`../docs/PREPARE-PORTAL-REPO.md`](../docs/PREPARE-PORTAL-REPO.md)
@@ -58,3 +59,4 @@ As-implemented spec of the existing Fast Feedback / Integration / Release YAML.
 | Integration CI | [`../integration_pipeline/integration-pipeline.yml`](../integration_pipeline/integration-pipeline.yml) | [`portal-ci-caller.yml`](../integration_pipeline/portal-ci-caller.yml) |
 | Release | [`../release-pipeline/release-pipeline.yml`](../release-pipeline/release-pipeline.yml) | [`portal-release-caller.yml`](../release-pipeline/portal-release-caller.yml) |
 | Academy CD | [`../deploy-pipeline/web-portal-cd-academy.yml`](../deploy-pipeline/web-portal-cd-academy.yml) | [`portal-cd-academy-caller.yml`](../deploy-pipeline/portal-cd-academy-caller.yml) |
+| Paid CD | same reusable | [`portal-cd-paid-caller.yml`](../deploy-pipeline/portal-cd-paid-caller.yml) |

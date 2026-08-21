@@ -1,7 +1,7 @@
-# Paid CD workflow (not CI). CI Release pipelines create the Docker image.
-# Copy to the CD repo: .github/workflows/aws-infra-paid.yml
-# Maintainer copies GitHub Environment "paid" onto this CD repo (same secret names).
-# Academy CD uses a different file: aws-infra-pipeline.example.yml
+# Stub example only. Live paid Action:
+#   heavy-rental-project-instructure-and-cloud-deploy/.github/workflows/aws-infra-paid.yml
+# Environment name is AWS_ACTUAL (not "paid"); S3 suffix is -actual.
+# Do not copy this stub into .github/workflows.
 #
 # Operator:
 #   1. Admin has created GitHub OIDC + IAM role github-actions-infra

@@ -2,11 +2,15 @@ server {
     listen 80 default_server;
     server_name _;
 
+    # Keep /api on the upstream URI. Spring maps /api/auth/**, /api/assets, …
+    # proxy_pass with a trailing path (/) would strip /api and Spring would
+    # 401 /auth/login (no matcher; default deny).
     location /api/ {
-        proxy_pass {{ rest_base_url.stdout }}/;
+        proxy_pass {{ rest_base_url.stdout.rstrip('/') }};
         proxy_http_version 1.1;
         # REST ALB host from proxy_pass — not the client Host header.
         proxy_set_header Host $proxy_host;
+        proxy_set_header Authorization $http_authorization;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
     }

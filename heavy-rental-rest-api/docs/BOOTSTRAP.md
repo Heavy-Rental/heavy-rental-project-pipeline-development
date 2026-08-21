@@ -9,8 +9,10 @@ Installing Release + CD into [heavy-rental-spring-rest-api](https://github.com/H
 Install from **`deploy-pipeline/`** into the Spring repo (same pattern as Release):
 
 - `rest-api-cd-academy-caller.yml` → `.github/workflows/`
-- `rest-api-cd-academy.yml` → `.github/workflows/`
+- `rest-api-cd-paid-caller.yml` → `.github/workflows/` (billed AWS)
+- `rest-api-cd-academy.yml` → `.github/workflows/` (shared jobs)
 - `resolve-vocareum-aws/action.yml` → `.github/actions/resolve-vocareum-aws/`
+- `resolve-aws-profile/action.yml` → `.github/actions/resolve-aws-profile/`
 - **`ansible/`** → `deploy-pipeline/ansible/` (keep this path; the reusable workflow uses `working-directory: deploy-pipeline/ansible`)
 
 ## GitHub Environment `academy`
@@ -24,6 +26,10 @@ Same **names** as infra CD (copy onto this repo):
 - Optional pricing variables (empty = SM / Spring defaults): `DYNAMIC_PRICING_ENABLED`, `PRICING_DEFAULT_DISTANCE_KM`, `PRICING_ORIGIN_POSTAL_CODE`, `PRICING_DISTANCE_LOOKUP_ENABLED`
 
 Do **not** point this workflow at CI Environment `integration`. Infra must already have applied the estate and `sync-secrets` (`heavy-rental/rest`).
+
+## GitHub Environment `AWS_ACTUAL` (paid)
+
+Create Environment **`AWS_ACTUAL`**. Variable `AWS_ROLE_TO_ASSUME` (OIDC). Same `REST_IMAGE` / pricing vars. **No** `AWS_ACCESS_KEY_ID`. Run **REST API CD (paid)** after infra **AWS infrastructure (paid)** `apply`. Guests use `hr-paid-rest`. Ansible SSM uses `heavy-rental-ssm-<account>-actual`. REST ALB is internet-facing `:8080`.
 
 ## Every run
 
