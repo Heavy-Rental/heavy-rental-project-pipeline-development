@@ -10,9 +10,10 @@ REST CD has two destinations. Academy cannot create OIDC. Paid must not receive 
 
 ## Decision
 
-The first REST CD workflow is **Academy only** (`rest-api-cd-academy.yml`). Environment must be `academy`. Paid/OIDC is a later workflow.
+The **academy caller** (`rest-api-cd-academy-caller.yml`) is Vocareum-only. Environment must be `academy`. The reusable file `rest-api-cd-academy.yml` is **shared** by academy and paid callers (ADR 0008). Paid/OIDC is `rest-api-cd-paid-caller.yml` with Environment `AWS_ACTUAL`.
 
 ## Consequences
 
-- Same Environment secret names as infra CD.
-- Pointing this workflow at `paid` fails closed.
+- Same Environment secret names as infra CD on the academy caller.
+- Pointing the academy caller at a non-`academy` Environment fails closed.
+- Pointing the paid caller at `academy` fails closed.

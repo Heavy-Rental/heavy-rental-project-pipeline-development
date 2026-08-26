@@ -7,13 +7,18 @@ Highest-priority gate: fetch the Spring REST API, install Java 21, resolve Maven
 ## ADDED Requirements
 
 ### Requirement: Integration is first
-The Integration job SHALL run only after the caller gate succeeds. Quality Control, Security Testing, CodeQL, and Packaging SHALL declare a dependency on Integration.
+The Integration job SHALL run only after the caller gate succeeds. On Integration CI, Quality Control, Security Testing, and CodeQL SHALL declare a dependency on Integration. On Release, Quality Control and Packaging SHALL declare a dependency on Integration.
 
 #### Scenario: Failed Integration blocks later jobs
-- GIVEN Integration fails
+- GIVEN Integration fails on Integration CI
 - WHEN the workflow continues
-- THEN Quality Control, Security Testing, CodeQL, and Packaging do not start
-- AND the GitHub Flow CI Gate (when present) still runs and fails
+- THEN Quality Control, Security Testing, and CodeQL do not start
+- AND the GitHub Flow CI Gate still runs and fails
+
+#### Scenario: Failed Integration blocks Release packaging
+- GIVEN Integration fails on Release
+- WHEN the workflow continues
+- THEN Quality Control, Packaging, DAST, and Publish do not start
 
 ### Requirement: Java 21
 Integration SHALL install Temurin JDK 21 and SHALL use that JDK for Maven.

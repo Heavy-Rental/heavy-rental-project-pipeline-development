@@ -3,7 +3,7 @@
 ## ADDED Requirements
 
 ### Requirement: Discover asg-rest without instance inputs
-After a live Vocareum session, the workflow SHALL list InService instances on `asg-rest` that are SSM Online. It SHALL `describe-secret` `heavy-rental/rest` without echoing SecretString. The Run form SHALL NOT ask for instance IDs, private IPs, or SSH hosts.
+After a live AWS session (Vocareum on academy, OIDC on paid), the workflow SHALL list InService instances on `asg-rest` that are SSM Online. It SHALL `describe-secret` `heavy-rental/rest` without echoing SecretString. The Run form SHALL NOT ask for instance IDs, private IPs, or SSH hosts.
 
 #### Scenario: No healthy guest
 - GIVEN the ASG is missing, desired=0, or no instance is SSM Online

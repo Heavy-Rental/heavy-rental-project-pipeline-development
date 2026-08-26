@@ -32,7 +32,7 @@
 #        - "GitHub Flow CI Gate"       ← optional single aggregate check
 #   4. Merge when green → develop is integration-tested, not production-deployed
 #   5. Deploy packaging / GHCR lives only in release-pipeline.yml
-#      (GitHub Release publish, or PR develop → master via rest-api-release-caller)
+#      (workflow_dispatch via rest-api-release-caller.yml; creates the GitHub Release)
 #
 # QC "Package WAR" + artifact upload = build verification only (not a deploy).
 # environment: integration on QC = secrets isolation for local Docker Postgres tests.
@@ -50,13 +50,12 @@
 # The caller invokes this workflow with:
 #   uses: ./.github/workflows/integration-pipeline.yml
 #
-# Also mirrored in the pipeline-development repo for discovery/testing:
-#   .github/workflows/rest-api-ci.yml
-# Keep this file and that mirror in sync when developing here.
+# Authoring copy lives in this tree. Install into the Spring repo as
+#   .github/workflows/integration-pipeline.yml
+# There is no .github/workflows/rest-api-ci.yml mirror in this repo.
 #
 # Local validation (pipeline-development repo root, in the devcontainer):
 #   actionlint heavy-rental-rest-api/integration-pipeline/integration-pipeline.yml
-#   actionlint .github/workflows/rest-api-ci.yml
 #
 # Required GitHub Actions secrets (no credentials in this YAML)
 # -------------------------------------------------------------
@@ -107,8 +106,8 @@ on:
         default: ""
       github_environment:
         description: >
-          GitHub Environment name for the Quality Control job (default integration).
-          Used for protection rules and Environment secrets.
+          Unused. Quality Control hardcodes environment: integration. Callers still
+          pass integration so the contract stays visible.
         required: false
         type: string
         default: integration

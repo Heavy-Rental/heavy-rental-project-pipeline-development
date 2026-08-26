@@ -24,12 +24,15 @@ The system SHALL provide three pipeline pairs (caller + reusable workflow): Fast
 - AND it ends with a GitHub Flow CI Gate that requires all of those jobs to succeed
 - AND it does not run Packaging
 
-#### Scenario: Release adds packaging
-- GIVEN a published GitHub Release, or a pull request whose head is `develop` and base is `master`
+#### Scenario: Release adds packaging, DAST, and publish
+- GIVEN an operator runs Actions → Release → Run workflow (`workflow_dispatch`)
 - WHEN the Release caller runs
 - THEN it invokes the reusable release workflow
-- AND that workflow runs Integration, Quality Control, Security Testing, CodeQL, and Packaging
-- AND Packaging needs Integration, Quality Control, Security Testing, and CodeQL
+- AND that workflow runs Integration, Quality Control, Packaging, DAST, and Publish
+- AND Packaging needs Integration and Quality Control only
+- AND it does not run Security Testing or CodeQL (those stay on Integration CI)
+- AND DAST needs Packaging
+- AND Publish needs Integration, Packaging, and DAST
 
 ### Requirement: Reusable workflows accept only their caller
 Each reusable workflow SHALL expose only `workflow_call` and SHALL fail unless invoked by its matching caller file under `.github/workflows/`.
@@ -58,25 +61,33 @@ Each caller SHALL use the GitHub Flow triggers defined for its pipeline and SHAL
 - WHEN Integration CI is evaluated
 - THEN the Integration CI caller starts
 
-#### Scenario: Release ignores feature PRs
-- GIVEN a pull request into `master` whose head branch is not `develop`
-- WHEN the Release caller job is evaluated
-- THEN the reusable release workflow is not invoked
+#### Scenario: Release is dispatch only
+- GIVEN a pull request, a push, or a published GitHub Release event
+- WHEN the Release caller is evaluated
+- THEN the Release caller does not start from that event
+- AND Release starts only from `workflow_dispatch` (it creates the GitHub Release; it must not subscribe to `on: release`)
 
 ### Requirement: Source resolution
-Each reusable workflow SHALL check out the calling repository at the calling commit unless `app_repository` names a different repository, in which case it SHALL check out that repository at `app_ref` or the pipeline default ref.
+Fast Feedback and Integration CI SHALL check out the calling repository at the calling commit unless `app_repository` names a different repository, in which case they SHALL check out that repository at `app_ref` or the pipeline default ref (`develop`). Release SHALL check out **`master`** in both same-repo and remote modes and SHALL ignore the calling SHA and `app_ref`.
 
-#### Scenario: Same-repo caller
+#### Scenario: Same-repo caller (Fast Feedback / Integration CI)
 - GIVEN the caller is the Spring REST API repository and `app_repository` is empty
-- WHEN Integration resolves the source
+- WHEN Fast Feedback or Integration CI Integration resolves the source
 - THEN checkout mode is `caller`
 - AND the application is checked out at the calling `github.sha`
 
+#### Scenario: Release always checks out master
+- GIVEN the Release caller runs in the Spring REST API repository
+- WHEN Integration resolves the source
+- THEN checkout mode is `caller`
+- AND the application is checked out at `master` (not the calling SHA)
+
 #### Scenario: Remote override
 - GIVEN `app_repository` is a different owner/name than the calling repository
-- WHEN Integration resolves the source
+- WHEN Fast Feedback or Integration CI Integration resolves the source
 - THEN checkout mode is `remote`
-- AND the named repository is checked out at `app_ref` or the default ref (`develop` for fast feedback and CI, `master` for release)
+- AND the named repository is checked out at `app_ref` or `develop`
+- AND Release still checks out `master`
 
 ### Requirement: Concurrency
 Fast Feedback and Integration CI SHALL cancel superseded runs for the same PR or branch. Release SHALL NOT cancel an in-flight packaging run.
@@ -92,12 +103,13 @@ Fast Feedback and Integration CI SHALL cancel superseded runs for the same PR or
 - THEN the in-flight run is not cancelled
 
 ### Requirement: Least-privilege permissions
-Callers and reusable workflows SHALL request `contents: read`, `pull-requests: read`, and `actions: read`. Integration CI and Release SHALL also request `security-events: write`. Only the Release caller and reusable release workflow SHALL request `packages: write`.
+Fast Feedback and Integration CI SHALL request `contents: read`, `pull-requests: read`, and `actions: read`. Integration CI and Release SHALL also request `security-events: write`. Only the Release caller and reusable release workflow SHALL request `packages: write` and `contents: write` (GitHub Release). Fast Feedback SHALL NOT request `packages: write` or `contents: write`.
 
-#### Scenario: Release may write packages
+#### Scenario: Release may write packages and create a GitHub Release
 - GIVEN the Release caller or reusable release workflow
 - WHEN permissions are declared
 - THEN `packages: write` is present
+- AND `contents: write` is present
 
 #### Scenario: CI and fast feedback cannot write packages
 - GIVEN Fast Feedback or Integration CI

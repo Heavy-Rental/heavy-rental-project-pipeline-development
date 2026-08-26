@@ -11,5 +11,7 @@ context: |
        add-rest-cd-academy-deploy, add-rest-cd-paid-deploy).
   Product behaviour for the Spring service is NOT specified here.
   Infrastructure setup and operate (stop / destroy) belong to the infra project.
-  Authoring-tree DEFAULT_APP_REPOSITORY may still be SA62-team1/... for local act;
-  when installed in Heavy-Rental/heavy-rental-spring-rest-api, checkout is the caller.
+  Fast Feedback / Integration CI DEFAULT_APP_REPOSITORY is SA62-team1/... (local act).
+  Release DEFAULT_APP_REPOSITORY is Heavy-Rental/heavy-rental-spring-rest-api and
+  checkout is always master. When Fast Feedback / Integration CI run in the
+  Heavy-Rental Spring repo, checkout is the calling commit.

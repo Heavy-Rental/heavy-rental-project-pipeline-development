@@ -16,15 +16,18 @@ Two callers (same reusable jobs):
   rest-api-cd-paid-caller.yml      Environment AWS_ACTUAL + OIDC, no Vocareum keys
       │
       ▼
- assert               academy: refuse non-academy, resolve keys (masked), sts
-                      paid: refuse non-AWS_ACTUAL, OIDC, no AWS_ACCESS_KEY_ID
+ Assert Environment academy | Assert Environment AWS_ACTUAL
       │
       ▼
- discover-targets    SSM inventory asg-rest
+ Assert AWS profile          academy: Vocareum keys (masked) + sts
+                             paid: OIDC, no AWS_ACCESS_KEY_ID
       │
-      ├── action=verify           skip compose; SSM GET :8080
-      ├── action=configure-only   refresh .env from SM; needs REST_IMAGE or image_ref
-      └── action=deploy           resolve-image → ansible rest → verify
+      ▼
+ Discover asg-rest
+      │
+      ├── action=verify           skip compose; Health GET :8080
+      ├── action=configure-only   ansible-rest (no resolve-image); needs REST_IMAGE or image_ref
+      └── action=deploy           Resolve CI image → ansible-rest → Health GET :8080
 ```
 
 | Action | Compose? | Image required? |
@@ -38,15 +41,21 @@ Two callers (same reusable jobs):
 ## Job graph
 
 ```
-assert (academy Vocareum | paid OIDC)
+Assert Environment academy | Assert Environment AWS_ACTUAL
       │
       ▼
- discover-targets
+ Assert AWS profile
       │
-      ├── resolve-image   (deploy / configure-only)
-      ├── ansible-rest    guest_base + rest only; --limit rest
-      └── verify          SSM GET :8080
+      ▼
+ Discover asg-rest
+      │
+      ├── Resolve CI image     (deploy only)
+      ├── Compose playbook     guest_base + rest; --limit rest
+      │                        (deploy and configure-only)
+      └── Health GET :8080
 ```
+
+Job `name:` values: `Assert Environment academy` / `Assert Environment AWS_ACTUAL` (callers), then `Assert AWS profile`, `Discover asg-rest`, `Resolve CI image`, `Compose playbook on asg-rest`, `Health GET :8080`. Paid caller uses `secrets: inherit` (OIDC / Environment); academy caller does not. That inherit rule is CI-only.
 
 Paid Ansible SSM uses `heavy-rental-ssm-<account>-actual` (not the tfstate bucket). Academy keeps the tfstate bucket for SSM transfer. REST ALB is internet-facing :8080 (infra ADR 0018); guests stay private.
 

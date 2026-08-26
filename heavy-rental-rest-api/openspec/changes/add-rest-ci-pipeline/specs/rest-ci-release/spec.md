@@ -2,17 +2,23 @@
 
 ## Purpose
 
-Release packaging produces a versioned WAR and a Tomcat Docker image after the quality and security gates pass. Deploying those artifacts is the Academy CD family, not this capability.
+Release packaging produces a versioned WAR and a Tomcat Docker image after Integration and Quality Control. DAST scans the image. Publish pushes public GHCR and creates the GitHub Release. Deploying those artifacts is the Academy / paid CD family, not this capability. SAST and CodeQL stay on Integration CI.
 
 ## ADDED Requirements
 
-### Requirement: Packaging waits for gates
-Packaging SHALL run only after Integration, Quality Control, Security Testing, and CodeQL have succeeded.
+### Requirement: Packaging waits for Integration and Quality Control
+Packaging SHALL run only after Integration and Quality Control have succeeded. It SHALL NOT need Security Testing or CodeQL (those jobs are not on the Release workflow).
 
-#### Scenario: Security red blocks packaging
-- GIVEN Security Testing failed
+#### Scenario: QC red blocks packaging
+- GIVEN Quality Control failed
 - WHEN Packaging is evaluated
 - THEN Packaging does not start
+
+#### Scenario: SAST is not a Release job
+- GIVEN the Release workflow job list
+- WHEN Packaging is evaluated
+- THEN no Security Testing or CodeQL job is present
+- AND Packaging `needs` only Integration and Quality Control
 
 ### Requirement: Versioned WAR
 Packaging SHALL run `./mvnw -DskipTests package` and SHALL stage a `.war` that contains `WEB-INF/` as versioned and stable filenames. The job SHALL fail if no `.war` exists, if `packaging` is not `war`, or if the file is an executable JAR.
@@ -51,20 +57,25 @@ Packaging SHALL always generate and build an image from `tomcat:10.1-jdk21-temur
 - WHEN Packaging saves the image
 - THEN a gzipped tar artifact exists and is non-empty
 
-### Requirement: GHCR push only off pull requests
-Packaging SHALL push the image to `ghcr.io/<owner>/heavy_rental_rest_api` tagged with a new `x.y.z` semver and `:latest` when the event is not a pull request. The semver SHALL be the highest existing `x.y.z` tag on that GHCR package with the patch incremented; if no such tag exists, it SHALL be `1.0.0`. Packaging SHALL NOT overwrite an existing `x.y.z` tag. On a `develop` → `master` pull request, Packaging SHALL skip the push and still upload the image tar.
+### Requirement: DAST scans the packaged image
+DAST SHALL run only after Packaging succeeds. It SHALL load the image tar, start the container, run OWASP ZAP baseline and Dastardly as gates, run Nuclei as report-only, and upload `dast-reports/` plus artifact `dast-combined-report-pdf` (`dast-reports/combined-dast-report.pdf`). ZAP exit ≥ 2 or a non-zero Dastardly exit SHALL fail the job. Nuclei SHALL NOT fail the job.
 
-#### Scenario: Published release pushes
-- GIVEN a published GitHub Release triggered the release pipeline
+#### Scenario: Combined DAST PDF
+- GIVEN Packaging produced an image tar and DAST scanners wrote reports
+- WHEN DAST finishes
+- THEN artifact `dast-combined-report-pdf` is uploaded
+- AND `dast-reports/combined-dast-report.pdf` exists
+
+### Requirement: Publish pushes GHCR and creates the GitHub Release
+Publish SHALL run only after Integration, Packaging, and DAST have succeeded. It SHALL push `ghcr.io/<owner>/heavy_rental_rest_api` tagged with a new `x.y.z` semver and `:latest`. The semver SHALL be the highest existing `x.y.z` tag on that GHCR package with the patch incremented; if no such tag exists, it SHALL be `1.0.0`. Publish SHALL NOT overwrite an existing `x.y.z` tag. It SHALL create a GitHub Release on `master` (`v<x.y.z>`). The Release caller is `workflow_dispatch` only, so this job always runs GHCR on a successful dispatch. Packaging SHALL NOT `docker push`.
+
+#### Scenario: Dispatch publishes
+- GIVEN `workflow_dispatch` triggered the release pipeline
+- AND DAST succeeded
 - AND the highest GHCR `heavy_rental_rest_api` semver tag is `1.0.1` or none exist
-- WHEN Packaging finishes the Docker build
+- WHEN Publish runs
 - THEN `docker push` runs for `ghcr.io/<owner>/heavy_rental_rest_api:1.0.2` (or `1.0.0` when none exist) and `:latest`
-
-#### Scenario: PR skips registry push
-- GIVEN a pull request from `develop` to `master` triggered the release pipeline
-- WHEN Packaging finishes the Docker build
-- THEN no `docker push` runs
-- AND the gzipped image tar is still uploaded
+- AND `gh release create` runs for `v1.0.2` (or `v1.0.0`) targeting `master`
 
 ### Requirement: Datasource env artifact has no password and no live RDS host
 Packaging SHALL upload a datasource env file whose `SPRING_DATASOURCE_URL` is the local QC JDBC URL (`jdbc:postgresql://localhost:<REST_API_DB_PORT>/<REST_API_DB_NAME>`). It SHALL NOT write `SPRING_DATASOURCE_PASSWORD` or an Academy / AWS RDS hostname into that artifact. That file SHALL NOT be copied into the Docker image. Academy CD SHALL NOT consume this file; the guest reads `heavy-rental/rest`.
