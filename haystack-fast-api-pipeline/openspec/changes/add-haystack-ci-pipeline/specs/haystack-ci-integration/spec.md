@@ -4,6 +4,8 @@
 
 Highest-priority gate: fetch the FastAPI + Haystack application, install CPython 3.12 and uv, sync the locked environment, and prove the project layout plus Haystack pipeline imports.
 
+On Integration CI the job id is `integration` and the check name is **Integration** (Haystack has no `environment: integration`). Fast Feedback and Release keep the same job id and name. On `pull_request`, uv/layout SHALL be skipped when Fast Feedback already succeeded for the PR head SHA.
+
 ## ADDED Requirements
 
 ### Requirement: Integration is first
@@ -24,10 +26,11 @@ Integration SHALL install CPython 3.12 and SHALL use that interpreter for uv and
 - THEN the runner Python version is 3.12
 
 ### Requirement: uv is mandatory
-Integration SHALL install uv, fail if `uv.lock` is missing, and SHALL run `uv lock --check` then `uv sync --frozen --all-groups`. It SHALL NOT invoke pip, poetry, or pdm to install the application. It SHALL NOT pass `--extra neo4j`.
+When uv/layout run, Integration SHALL install uv, fail if `uv.lock` is missing, and SHALL run `uv lock --check` then `uv sync --frozen --all-groups`. It SHALL NOT invoke pip, poetry, or pdm to install the application. It SHALL NOT pass `--extra neo4j`. On Integration CI `pull_request`, those uv/layout steps SHALL be skipped when Fast Feedback already succeeded for the PR head SHA.
 
 #### Scenario: Lock present and frozen sync
 - GIVEN the application contains `uv.lock` and `pyproject.toml`
+- AND uv/layout are not skipped
 - WHEN Integration prepares the environment
 - THEN `uv lock --check` succeeds
 - AND `uv sync --frozen --all-groups` succeeds
@@ -35,20 +38,30 @@ Integration SHALL install uv, fail if `uv.lock` is missing, and SHALL run `uv lo
 
 #### Scenario: Lock missing
 - GIVEN the application does not contain `uv.lock`
+- AND uv/layout are not skipped
 - WHEN Integration prepares the environment
 - THEN the job fails with an error that `uv.lock` is required
+
+#### Scenario: PR skips uv when Fast Feedback succeeded
+- GIVEN Integration on a pull_request
+- AND Fast Feedback succeeded for the PR head SHA
+- WHEN Integration continues
+- THEN uv lock/sync and Haystack/layout smoke are skipped
+- AND the job still succeeds
 
 ### Requirement: Project layout
 Integration SHALL verify the application root contains `pyproject.toml`, `uv.lock`, `.python-version`, `app/main.py`, and `tests/conftest.py`.
 
 #### Scenario: Required files present
 - GIVEN a checkout of Heavy Rental haystack-fast-api
+- AND uv/layout are not skipped
 - WHEN layout checks run
 - THEN each required path exists
 - AND the job succeeds
 
 #### Scenario: Required file missing
 - GIVEN any required path is absent
+- AND uv/layout are not skipped
 - WHEN layout checks run
 - THEN the job fails
 

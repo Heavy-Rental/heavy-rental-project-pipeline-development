@@ -16,15 +16,18 @@ Two callers (same reusable jobs):
   haystack-cd-paid-caller.yml      Environment AWS_ACTUAL + OIDC, no Vocareum keys
       │
       ▼
- assert               academy: refuse non-academy, resolve keys (masked), sts
-                      paid: refuse non-AWS_ACTUAL, OIDC, no AWS_ACCESS_KEY_ID
+ Assert Environment academy | Assert Environment AWS_ACTUAL
       │
       ▼
- discover-targets    SSM inventory asg-haystack (InService + Online)
+ Assert AWS profile          academy: Vocareum keys (masked) + sts
+                             paid: OIDC, no AWS_ACCESS_KEY_ID
       │
-      ├── action=verify           skip compose; SSM GET :8000/docs or /health
-      ├── action=configure-only   refresh .env from SM + aliases + Profile overlay; needs image
-      └── action=deploy           resolve-image → ansible haystack → verify
+      ▼
+ Discover asg-haystack
+      │
+      ├── action=verify           skip compose; Health GET :8000
+      ├── action=configure-only   ansible-haystack (no resolve-image); needs HAYSTACK_IMAGE or image_ref
+      └── action=deploy           Resolve CI image → ansible-haystack → Health GET :8000
 ```
 
 | Action | Compose? | Image required? |
@@ -54,17 +57,25 @@ Haystack CD SHALL map SM → `.env` and MAY add FastAPI aliases (`POSTGRES_HOSTN
 ## Job graph
 
 ```
-assert (academy Vocareum | paid OIDC)
+Assert Environment academy | Assert Environment AWS_ACTUAL
       │
       ▼
- discover-targets
+ Assert AWS profile
       │
-      ├── resolve-image     (deploy / configure-only)
-      ├── ansible-haystack  guest_base + haystack only; --limit haystack
-      └── verify            SSM GET :8000/docs or /health (200–302)
+      ▼
+ Discover asg-haystack
+      │
+      ├── Resolve CI image     (deploy only)
+      ├── Compose playbook     guest_base + haystack; --limit haystack
+      │                        (deploy and configure-only)
+      └── Health GET :8000
 ```
 
+Job `name:` values: `Assert Environment academy` / `Assert Environment AWS_ACTUAL` (callers), then `Assert AWS profile`, `Discover asg-haystack`, `Resolve CI image`, `Compose playbook on asg-haystack`, `Health GET :8000`. Paid caller uses `secrets: inherit` (OIDC / Environment); academy caller does not. That inherit rule is CI-only. The academy caller still sets `id-token: write` so it can `uses:` the shared reusable; Academy authenticates with Vocareum keys, not GitHub OIDC.
+
 Paid Ansible SSM uses `heavy-rental-ssm-<account>-actual` (not the tfstate bucket). Academy keeps the tfstate bucket for SSM transfer.
+
+`deploy-pipeline/resolve-vocareum-aws/action.yml` exists as the academy-only key helper. Haystack CD does **not** `uses:` it — `resolve-aws-profile` already masks Vocareum keys. Do not copy it into the app repo.
 
 ## Environment `academy`
 
@@ -104,7 +115,7 @@ Copy from `deploy-pipeline/`:
 | `resolve-aws-profile/action.yml` | `.github/actions/resolve-aws-profile/` |
 | `ansible/` | **`deploy-pipeline/ansible/`** (keep this path) |
 
-Do **not** copy `specification/`.
+Do **not** copy `specification/`. Do **not** copy `resolve-vocareum-aws/` (unused; masking lives in `resolve-aws-profile`).
 
 ## Local validation (this repo)
 

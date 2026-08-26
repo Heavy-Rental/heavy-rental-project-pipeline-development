@@ -18,9 +18,9 @@ Infrastructure setup, project deployment, and operate are another project's prob
 | --- | --- |
 | Caller | Workflow with `on: push/pull_request/workflow_dispatch` that only `uses:` a sibling reusable file |
 | Reusable pipeline | `on: workflow_call` only; `assert-caller` rejects any other file |
-| Integration | Highest-priority job: checkout + CPython 3.12 + uv + Haystack pipeline smoke. Not “run pytest” |
+| Integration | Highest-priority job: checkout + CPython 3.12 + uv + Haystack pipeline smoke. On PR, reuse Fast Feedback for the head SHA instead of repeating uv/layout. Not “run pytest” |
 | Quality Control | Ruff + pytest (Haystack + FastAPI TestClient). Not live pgvector, not LLM eval |
-| Security | Semgrep `p/python` + pip-audit report + Trivy CRITICAL gate |
+| Security | Semgrep app + GHA (two passes) + pip-audit report + Trivy CRITICAL gate |
 | Packaging | `uv build` wheel/sdist plus env-driven Docker image tar (sanitized `.env.prod` → `/app/.env`). Publish (after DAST) pushes GHCR and creates the GitHub Release |
 | Infrastructure | Create or change the platform (IaC). Infra project. Not this CI family |
 | Deploy | Put Release artifacts onto existing infrastructure. Academy CD in `deploy-pipeline/` |

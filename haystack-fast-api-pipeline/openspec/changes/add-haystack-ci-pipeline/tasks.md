@@ -9,7 +9,9 @@
 ## 2. Integration CI
 
 - [x] 2.1 Author `integration-pipeline/integration-pipeline.yml` (reusable, caller gate, Python/Haystack jobs)
-- [x] 2.2 Author `integration-pipeline/haystack-ci-caller.yml` (PR/push `develop`, `workflow_dispatch`)
+- [x] 2.2 Author `integration-pipeline/haystack-ci-caller.yml` (PR/push `develop`, `workflow_dispatch`; does not `uses:` Fast Feedback)
+- [x] 2.3 PR Integration reuses Fast Feedback for the head SHA; skip uv/layout when that run succeeded
+- [x] 2.4 Split Semgrep into app + GitHub Actions passes (`semgrep.sarif` + `semgrep-gha.sarif`)
 
 ## 3. Fast feedback
 

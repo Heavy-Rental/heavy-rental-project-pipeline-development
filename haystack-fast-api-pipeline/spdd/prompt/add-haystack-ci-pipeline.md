@@ -10,8 +10,8 @@ When reality diverges, fix this prompt first — then update the YAML.
 ## R — Requirements
 
 - Provide the same three-pipeline GitHub Flow family used by REST API, portal, and mobile, adapted for Heavy Rental haystack-fast-api (`Heavy-Rental/haystack-fast-api`).
-- Fast Feedback: Integration only, feature-branch pushes (ignore `master`/`develop`).
-- Integration CI: PR/push `develop` + `workflow_dispatch`. Jobs: Assert caller → Integration → (QC ∥ Security ∥ CodeQL) → GitHub Flow CI Gate.
+- Fast Feedback: Integration only, feature-branch pushes (ignore `master`/`develop`). Sole Integration-stage run for that SHA.
+- Integration CI: PR/push `develop` + `workflow_dispatch`. Jobs: Assert caller → Integration → (QC ∥ Security ∥ CodeQL) → GitHub Flow CI Gate. CI caller does not `uses:` Fast Feedback. On `pull_request`, Integration reuses a successful Fast Feedback run for the head SHA and skips uv/layout.
 - Release: `workflow_dispatch` only (Actions → Haystack Release Pipeline Invoke). Jobs: Assert caller → Integration → QC → Packaging → DAST → Publish (public GHCR + GitHub Release). Do **not** use `on: release` — Publish creates the GitHub Release. SAST/CodeQL stay on Integration CI.
 - Use **Python/Haystack tools only**: CPython 3.12, uv, Ruff, pytest, Haystack `Pipeline` constructors, Semgrep `p/python`, pip-audit report, CodeQL `python`.
 - Specs (OpenSpec + this canvas) and YAML all live under `haystack-fast-api-pipeline/`.
@@ -63,7 +63,7 @@ Artifacts:
 | --- | --- |
 | uv fingerprint | `uv.lock`, `pyproject.toml` |
 | Pytest HTML | `reports/pytest-report.html` |
-| SARIF | `security-reports/semgrep.sarif`, `security-reports/trivy-fs.sarif` |
+| SARIF | `security-reports/semgrep.sarif`, `security-reports/semgrep-gha.sarif`, `security-reports/trivy-fs.sarif` |
 | pip-audit | `security-reports/pip-audit.json` |
 | Release wheel | `haystack-fast-api-v{version}-build{run}-{sha}.whl`, `haystack-fast-api.whl` |
 | Release sdist | matching `.tar.gz` names |
@@ -72,11 +72,11 @@ Artifacts:
 
 ## A — Approach
 
-- Clone REST/mobile **orchestration** (header comments, `assert-caller` case on `github.workflow_ref`, Semgrep-safe source resolver, `APP_PATH: app`, artifact names).
-- Replace toolchain: `actions/setup-python` **v7.0.0** (SHA-pinned) **3.12** + `astral-sh/setup-uv` **v10.0.1** (SHA-pinned, cache on `uv.lock`).
-- Integration resolve: `uv lock --check` then `uv sync --frozen --all-groups`, then a Haystack/FastAPI smoke (`create_app`, `build_indexing_pipeline`, `build_intake_front_pipeline`).
+- Clone REST/mobile **orchestration** (header comments, `assert-caller` case on `github.workflow_ref`, Semgrep-safe source resolver, `APP_PATH: app`, artifact names, Fast Feedback reuse on PR).
+- Replace toolchain: `actions/setup-python` **v7.0.0** (SHA-pinned) **3.12** + `astral-sh/setup-uv` **v10.0.1** (SHA-pinned, cache on `uv.lock`). Pin third-party actions to latest stable SHAs (`github/codeql-action` v4.37.8, `actions/github-script` v9.0.0, `actions/download-artifact` v8.0.1, `docker/login-action` v4.6.0, `actions/upload-artifact` v7.0.1).
+- Integration resolve: `uv lock --check` then `uv sync --frozen --all-groups`, then a Haystack/FastAPI smoke (`create_app`, `build_indexing_pipeline`, `build_intake_front_pipeline`). Skip those steps on PR when Fast Feedback already succeeded for the head SHA.
 - QC: `uv run ruff check app tests` then `uv run pytest tests/` with CI-safe Haystack env.
-- Security: Semgrep `p/python` `p/owasp-top-ten` `p/security-audit` `p/secrets`; `uvx pip-audit` report-only; Trivy FS two-pass + CRITICAL gate; CodeQL `python`.
+- Security: two Semgrep passes (app packs exclude `.github/**`; GHA pass `p/github-actions`; inherit ERROR except paid CD caller); `uvx pip-audit` report-only; Trivy FS two-pass + CRITICAL gate; CodeQL `python`.
 - Release: `uv build`, then always-generated Python 3.12 + uv + uvicorn `app.main:app :8000` + `--extra neo4j` (app Dockerfile moved aside). Sanitize `.env.prod` → `/app/.env` (product knobs only). Refuse `ENV`/`ARG`, raw `COPY .env`, estate secrets (ADR 0008 / 0009). Do not read Environment `academy`. Prove dummy `-e` (process env wins) and `GET /docs` or `/health`. `COPY` sidecar dirs only if present. `docker save` tar for DAST; Publish pushes GHCR `haystack_recommender` and creates the GitHub Release. No Security Testing or CodeQL on Release.
 
 ## S — Structure

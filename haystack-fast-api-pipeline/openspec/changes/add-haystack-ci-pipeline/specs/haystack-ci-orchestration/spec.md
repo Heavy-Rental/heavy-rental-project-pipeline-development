@@ -23,6 +23,7 @@ The system SHALL provide three pipeline pairs (caller + reusable workflow): Fast
 - AND that workflow runs Integration, then Quality Control, Security Testing, and CodeQL (each needing Integration)
 - AND it ends with a GitHub Flow CI Gate that requires all of those jobs to succeed
 - AND it does not run Packaging
+- AND the Integration CI caller does not `uses:` `fast-feedback-pipeline.yml`
 
 #### Scenario: Release adds packaging, DAST, and Publish
 - GIVEN a `workflow_dispatch` of the Release caller
@@ -120,6 +121,39 @@ Callers and reusable workflows SHALL request `contents: read`, `pull-requests: r
 - GIVEN Fast Feedback or Integration CI
 - WHEN permissions are declared
 - THEN `packages: write` is absent
+
+### Requirement: Fast Feedback is not invoked from Integration CI
+The Integration CI caller SHALL NOT `uses:` `fast-feedback-pipeline.yml`. Fast Feedback SHALL remain the sole Integration-stage run on a feature-branch push. On `pull_request`, Integration SHALL reuse a successful Fast Feedback run for the PR head SHA instead of repeating uv/layout.
+
+#### Scenario: CI caller does not call Fast Feedback
+- GIVEN `haystack-ci-caller.yml` is evaluated
+- WHEN it starts jobs
+- THEN it does not `uses:` `fast-feedback-pipeline.yml`
+
+#### Scenario: PR reuses a successful Fast Feedback run
+- GIVEN Integration on a `pull_request`
+- AND Fast Feedback succeeded for the PR head SHA
+- WHEN Integration continues
+- THEN uv lock/sync and Haystack/layout smoke are skipped
+- AND the Integration job still succeeds
+
+#### Scenario: PR waits for in-flight Fast Feedback
+- GIVEN Integration on a `pull_request`
+- AND Fast Feedback for the PR head SHA is queued or in progress
+- WHEN Integration looks up that run
+- THEN it waits for the run to finish
+- AND if Fast Feedback succeeds, uv/layout are skipped
+
+#### Scenario: Missing or failed Fast Feedback runs locally
+- GIVEN Integration on a `pull_request`
+- AND Fast Feedback for the PR head SHA is missing or did not succeed
+- WHEN Integration continues
+- THEN uv/layout run locally
+
+#### Scenario: Non-PR events do not reuse Fast Feedback
+- GIVEN Integration on `push` to `develop` or `workflow_dispatch`
+- WHEN Integration continues
+- THEN it does not reuse Fast Feedback
 
 ### Requirement: No mock-contract job
 The family SHALL NOT include a Mock Contract Tests / Prism job. HTTP coverage is pytest + FastAPI `TestClient` in Quality Control.

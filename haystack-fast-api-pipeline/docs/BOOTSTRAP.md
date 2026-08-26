@@ -14,7 +14,7 @@ Install from **`deploy-pipeline/`** into the Haystack app repo (same paths as PR
 - `resolve-aws-profile/action.yml` → `.github/actions/resolve-aws-profile/`
 - **`ansible/`** → `deploy-pipeline/ansible/` (keep this path)
 
-Do **not** copy `specification/`. Copy [`samples/.env.prod`](samples/.env.prod) to the **app** repo as `.env.prod` so Release sanitizes it to `/app/.env`. pydantic `Settings` loads `.env` only; it does not auto-select `.env.prod`.
+Do **not** copy `specification/`. Do **not** copy `resolve-vocareum-aws/` (Haystack CD does not `uses:` it; `resolve-aws-profile` already masks Vocareum keys). Copy [`samples/.env.prod`](samples/.env.prod) to the **app** repo as `.env.prod` so Release sanitizes it to `/app/.env`. pydantic `Settings` loads `.env` only; it does not auto-select `.env.prod`.
 
 ## Env ownership (same as PREPARE §7)
 
