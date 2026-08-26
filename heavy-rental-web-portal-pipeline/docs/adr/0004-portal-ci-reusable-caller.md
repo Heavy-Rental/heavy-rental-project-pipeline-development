@@ -2,6 +2,7 @@
 
 - **Status:** Accepted
 - **Date:** 2026-08-17
+- **Updated:** 2026-08-26
 - **Change:** `add-portal-ci-pipeline`
 
 ## Context
@@ -14,5 +15,6 @@ Each reusable file exposes only `on: workflow_call`. `assert-caller` fails unles
 
 ## Consequences
 
-- Operators copy six YAML files into the React repo `.github/workflows/`.
+- Operators copy six YAML files into the React repo `.github/workflows/`. Callers `uses:` the sibling reusable (`./.github/workflows/integration-pipeline.yml` and peers).
 - The authoring folder `integration_pipeline/` does not change the install filename `integration-pipeline.yml`.
+- Integration CI caller must not `uses:` `fast-feedback-pipeline.yml`. On pull_request, Integration Check reuses a successful Fast Feedback run for the PR head SHA.

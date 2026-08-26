@@ -1,14 +1,18 @@
 # =============================================================================
 # Heavy Rental Web Portal — Fast Feedback CI Pipeline (reusable)
 # =============================================================================
-# Purpose: quick Integration-only check (same steps as the Integration stage of
-# integration-pipeline.yml). No Quality Control, Security, REST endpoint tests,
-# or packaging.
+# Purpose: quick Integration-only check (same steps as Integration Check in
+# integration-pipeline.yml when Fast Feedback is not reused). No Quality Control,
+# Security, REST endpoint tests, or packaging.
 #
 # Stages:
 #   1. Integration only — checkout, Node 22, npm ci, install health
 #
-# Use this for early signal on feature-branch pushes. Full gates remain in:
+# Use this for early signal on feature-branch pushes (no pull_request trigger).
+# Sole Integration-stage run for a feature-branch SHA. Integration CI must not
+# call this workflow on PR; it reuses a successful run of this pipeline for the
+# PR head SHA and skips repeating npm ci / install health in Integration Check.
+# Full gates remain in:
 #   integration-pipeline.yml  (portal-ci-caller.yml)
 #   release-pipeline.yml      (portal-release-caller.yml)
 #
@@ -21,12 +25,14 @@
 #
 # This file exposes only workflow_call (no push / PR / workflow_dispatch).
 # A gate job rejects any caller other than portal-fast-feedback-caller.yml.
+# portal-ci-caller.yml must not become a second caller (that would re-run
+# Fast Feedback on every PR).
 #
 # The caller invokes this workflow with:
 #   uses: ./.github/workflows/fast-feedback-pipeline.yml
 #
-# Also mirrored in the pipeline-development repo for discovery/testing:
-#   .github/workflows/web-portal-fast-feedback.yml
+# Authoring copy lives in this tree. There is no
+# .github/workflows/web-portal-fast-feedback.yml mirror in this repo.
 # =============================================================================
 
 name: Web Portal Fast Feedback CI
@@ -102,7 +108,7 @@ jobs:
           esac
 
   # ---------------------------------------------------------------------------
-  # 1. Integration — exact same checks as integration-pipeline.yml Integration
+  # 1. Integration — exact same checks as integration-pipeline.yml Integration Check
   #    (checkout, Node, npm ci, install integrity)
   # ---------------------------------------------------------------------------
   integration:
@@ -162,20 +168,20 @@ jobs:
 
       - name: Checkout calling repository (PR / push head)
         if: steps.meta.outputs.checkout_mode == 'caller'
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           path: ${{ env.APP_PATH }}
 
       - name: Checkout remote application repository
         if: steps.meta.outputs.checkout_mode == 'remote'
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           repository: ${{ steps.meta.outputs.app_repository }}
           ref: ${{ steps.meta.outputs.app_ref }}
           path: ${{ env.APP_PATH }}
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
@@ -183,7 +189,7 @@ jobs:
 
       - name: Cache node_modules
         id: cache-node-modules
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ${{ env.APP_PATH }}/node_modules
           key: node-modules-${{ runner.os }}-node${{ env.NODE_VERSION }}-${{ hashFiles(format('{0}/package-lock.json', env.APP_PATH)) }}
@@ -230,7 +236,7 @@ jobs:
           echo "Fast feedback integration checks passed."
 
       - name: Upload lockfile fingerprint
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: fast-feedback-integration-metadata
           path: |

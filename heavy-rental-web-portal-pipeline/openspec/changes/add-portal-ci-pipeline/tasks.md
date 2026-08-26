@@ -1,6 +1,6 @@
 # Tasks: add-portal-ci-pipeline
 
-As-implemented documentation of existing YAML. Do not edit workflow job graphs.
+As-implemented documentation of the Fast Feedback / Integration / Release YAML.
 
 ## 1. OpenSpec + OpenSPDD + ADR
 
@@ -13,14 +13,16 @@ As-implemented documentation of existing YAML. Do not edit workflow job graphs.
 - [x] 1.7 Release `vite build --mode api` + empty `VITE_API_TARGET` so CD `/api` reaches Spring REST
 - [x] 1.8 Bake academy `VITE_STRIPE_PUBLISHABLE_KEY` at Packaging; CD overlays guest `.env`
 - [x] 1.9 Record Release as `workflow_dispatch` only (Packaging → DAST → Publish GHCR + GitHub Release)
+- [x] 1.10 Align specs with Integration Check and Fast Feedback reuse
 
 ## 2. YAML
 
 - [x] 2.1 Existing Fast Feedback / Integration / Release pairs remain the implementation
 - [x] 2.2 Authoring path stays `integration_pipeline/`
+- [x] 2.3 Integration CI job id is `integration-check`; CI caller does not `uses:` Fast Feedback
 
 ## 3. Verify
 
-- [x] 3.1 Job `name:` values in the walkthrough match YAML
+- [x] 3.1 Job `name:` values in the walkthrough match YAML (`Integration Check` on CI, `Integration` on Fast Feedback and Release)
 - [x] 3.2 Mock host/port match `MOCK_API_*`
 - [x] 3.3 Fast Feedback / Integration `DEFAULT_APP_REPOSITORY` documented as SA62-team1 act fallback; Release as Heavy-Rental

@@ -7,7 +7,7 @@ Compile-time quality for the React SPA: ESLint and TypeScript project build. No 
 ## ADDED Requirements
 
 ### Requirement: Quality Control needs Integration
-Quality Control SHALL run only after Integration succeeds and SHALL check out the same application source.
+Quality Control SHALL run only after Integration succeeds (Integration Check on Integration CI) and SHALL check out the same application source Integration resolved.
 
 ### Requirement: ESLint then tsc
 Quality Control SHALL run `npm run lint` and `npx tsc -b --pretty false`. It SHALL NOT start a mock server or run `npm run build`.

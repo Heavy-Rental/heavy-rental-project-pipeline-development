@@ -7,7 +7,7 @@ HTTP tests against a local mock API on Integration CI only. Skip cleanly until t
 ## ADDED Requirements
 
 ### Requirement: Job needs Integration
-REST Endpoint Tests SHALL run only after Integration succeeds, in parallel with QC / Security / CodeQL.
+REST Endpoint Tests SHALL run only after Integration Check succeeds, in parallel with QC / Security / CodeQL.
 
 ### Requirement: Detect scripts in package.json
 The job SHALL look for a mock script in this order: `mock:server`, `api:mock`, `start:mock`. It SHALL look for a test script in this order: `test:api`, `test:endpoints`, `test:rest`. It SHALL set ready only when both are present.

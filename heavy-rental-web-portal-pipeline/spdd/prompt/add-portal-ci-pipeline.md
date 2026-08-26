@@ -10,8 +10,8 @@ When reality diverges, fix this prompt first — then update the YAML.
 ## R — Requirements
 
 - Three-pipeline GitHub Flow family for the React portal.
-- Fast Feedback: Integration only.
-- Integration CI: Assert caller → Integration → (QC ∥ Security ∥ CodeQL ∥ REST Endpoint Tests) → GitHub Flow CI Gate.
+- Fast Feedback: Integration only, feature-branch pushes (ignore `master`/`develop`). No `pull_request` trigger. Sole Integration-stage run for a feature-branch SHA.
+- Integration CI: PR/push `develop` + `workflow_dispatch`. Jobs: Assert caller → Integration Check → (QC ∥ Security ∥ CodeQL ∥ REST Endpoint Tests) → GitHub Flow CI Gate. On `pull_request`, Integration Check reuses a successful Fast Feedback run for the head SHA (skip cache / `npm ci` / install health). The CI caller must not `uses:` `fast-feedback-pipeline.yml`.
 - Release: `workflow_dispatch` only (Actions → Release → Run workflow). Jobs: Assert caller → Integration (checkout `master`) → QC → Packaging → DAST → Publish (public GHCR `heavy_rental_web_portal:<semver>` + `:latest` + GitHub Release). Do **not** use `on: release` — Publish creates the GitHub Release. SAST/CodeQL/REST tests stay on Integration CI.
 - Packaging: Node 22, `npm ci`, seed/scan `.env.production`, `tsc -b` + `vite build --mode api` (not `npm run build`), empty `VITE_API_TARGET`, `dist/` zip, nginx try_files, image tar only (no `docker push`). Scan for `sk_`, localhost, `heavy-rental-rest-api`. CD mounts `/api` from SM `REST_BASE_URL`.
 - Node 22 + `npm ci`. Fast Feedback / Integration CI need no GitHub Environment. Release Packaging uses Environment `academy` only to bake `vars.VITE_STRIPE_PUBLISHABLE_KEY` (`pk_`).
@@ -32,7 +32,7 @@ Artifacts:
 
 ## A — Approach
 
-- Keep existing YAML. New work is OpenSpec + SPDD + ADR + `specification/` + PREPARE.
+- Keep the six CI YAML files as the implementation. Specs track Integration Check and Fast Feedback reuse.
 - Fast Feedback / Integration `DEFAULT_APP_REPOSITORY`: `SA62-team1/heavy-rental-react-web-portal` (act).
 - Release `DEFAULT_APP_REPOSITORY`: `Heavy-Rental/heavy-rental-react-web-portal`. Same-repo callers still check out the calling repo.
 
@@ -53,7 +53,7 @@ heavy-rental-web-portal-pipeline/
 Job `name:` values:
 
 - `Assert caller`
-- `Integration`
+- `Integration Check` (Integration CI) / `Integration` (Fast Feedback and Release)
 - `Quality Control`
 - `Security Testing` (Integration CI only)
 - `CodeQL Analysis` (Integration CI only)
@@ -86,7 +86,9 @@ Job `name:` values:
 - **DO NOT** fail REST Endpoint Tests solely because mock scripts are missing.
 - **DO NOT** `docker push` from Packaging. Publish pushes after DAST.
 - **DO NOT** subscribe the Release caller to `release` or `pull_request`.
+- **DO NOT** `uses:` `fast-feedback-pipeline.yml` from `portal-ci-caller.yml`.
+- **DO NOT** skip the Integration Check job with `if:` (reuse only skips cache / `npm ci` / install health).
 - **DO NOT** put `on: push` on reusable files.
 - **DO NOT** use Java, Maven, uv, yarn, pnpm, or Android SDK as the portal toolchain (`npm ci` only).
 - **DO NOT** cancel in-progress Release runs.
-- **DO NOT** rename `integration_pipeline/` as part of this documentation change.
+- **DO NOT** rename `integration_pipeline/` as part of this change.
