@@ -16,6 +16,10 @@ PR / push → develop  →  Integration CI (full gates, no packaging)
 workflow_dispatch     →  Release (master + QC + APK + MobSF + GitHub Release)
 ```
 
+Do **not** `uses:` `fast-feedback-pipeline.yml` from `mobile-ci-caller.yml`. Copy both Integration files into the mobile repo and call `./.github/workflows/integration-pipeline.yml`.
+
+On `pull_request`, Integration looks up `mobile-fast-feedback-caller.yml` for the head SHA (`gh run list`). A successful run skips Android SDK / Gradle wrapper / `:app:preBuild` / layout. An in-flight run is waited on with `gh run watch`. The pending-run `jq` filter is inlined in the `PENDING_ID` / `PENDING_URL` `jq_field` calls (same quoting as `SUCCESS_ID`). Do not assign `PENDING_FILTER` and interpolate it — that construction breaks the wait. Push to `develop` and `workflow_dispatch` always run Integration locally. Fast Feedback does not subscribe to `pull_request`.
+
 ## Job graph (Integration CI)
 
 ```
@@ -49,6 +53,24 @@ Release adds **Packaging** (`assembleRelease` unsigned APK) after Integration + 
 | Human DAST report | Combined PDF artifact `dast-combined-report-pdf` (`dast-reports/combined-dast-report.pdf`); download from the Release run Summary → Artifacts, the DAST job summary link, or the GitHub Release |
 | Code scanning | CodeQL `java-kotlin` |
 | Package | `:app:assembleRelease` unsigned APK |
+
+## GitHub Actions
+
+Floating major tags (ADR 0005; same style as REST/portal CI). Pins must match the YAML `uses:` lines.
+
+| Action | Pin |
+| --- | --- |
+| `actions/checkout` | v7 |
+| `actions/setup-java` | v6 |
+| `actions/setup-node` | v7 |
+| `actions/setup-python` | v7 |
+| `actions/cache` | v6 |
+| `actions/upload-artifact` | v7 |
+| `actions/download-artifact` | v8 |
+| `actions/github-script` | v9 |
+| `android-actions/setup-android` | v4 |
+| `aquasecurity/trivy-action` | v0.36.0 |
+| `github/codeql-action` (`init`, `analyze`, `upload-sarif`) | v4 |
 
 No repository secrets are required for v1.
 

@@ -181,21 +181,21 @@ jobs:
 
       - name: Checkout calling repository (release / push head)
         if: steps.meta.outputs.checkout_mode == 'caller'
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           ref: master
           path: ${{ env.APP_PATH }}
 
       - name: Checkout remote application repository
         if: steps.meta.outputs.checkout_mode == 'remote'
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           repository: ${{ steps.meta.outputs.app_repository }}
           ref: ${{ steps.meta.outputs.app_ref }}
           path: ${{ env.APP_PATH }}
 
       - name: Setup Java ${{ env.JAVA_VERSION }}
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v6
         with:
           distribution: ${{ env.JAVA_DISTRIBUTION }}
           java-version: ${{ env.JAVA_VERSION }}
@@ -208,7 +208,7 @@ jobs:
             ${{ env.APP_PATH }}/gradle/wrapper/gradle-wrapper.properties
 
       - name: Setup Android SDK
-        uses: android-actions/setup-android@v3
+        uses: android-actions/setup-android@v4
         with:
           packages: >
             tools
@@ -261,7 +261,7 @@ jobs:
           echo "Integration checks passed."
 
       - name: Upload Gradle project fingerprint
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: release-integration-metadata
           path: |
@@ -278,21 +278,21 @@ jobs:
     steps:
       - name: Checkout calling repository (release / push head)
         if: needs.integration.outputs.checkout_mode == 'caller'
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           ref: master
           path: ${{ env.APP_PATH }}
 
       - name: Checkout remote application repository
         if: needs.integration.outputs.checkout_mode == 'remote'
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           repository: ${{ needs.integration.outputs.app_repository }}
           ref: ${{ needs.integration.outputs.app_ref }}
           path: ${{ env.APP_PATH }}
 
       - name: Setup Java ${{ env.JAVA_VERSION }}
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v6
         with:
           distribution: ${{ env.JAVA_DISTRIBUTION }}
           java-version: ${{ env.JAVA_VERSION }}
@@ -305,7 +305,7 @@ jobs:
             ${{ env.APP_PATH }}/gradle/wrapper/gradle-wrapper.properties
 
       - name: Setup Android SDK
-        uses: android-actions/setup-android@v3
+        uses: android-actions/setup-android@v4
         with:
           packages: >
             tools
@@ -330,7 +330,7 @@ jobs:
 
       - name: Upload lint and unit-test reports
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: release-quality-test-reports
           path: |
@@ -340,7 +340,7 @@ jobs:
           if-no-files-found: warn
 
       - name: Upload debug APK
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: mobile-release-debug-apk
           path: ${{ env.APP_PATH }}/app/build/outputs/apk/debug/*.apk
@@ -360,21 +360,21 @@ jobs:
     steps:
       - name: Checkout calling repository (release / push head)
         if: needs.integration.outputs.checkout_mode == 'caller'
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           ref: master
           path: ${{ env.APP_PATH }}
 
       - name: Checkout remote application repository
         if: needs.integration.outputs.checkout_mode == 'remote'
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           repository: ${{ needs.integration.outputs.app_repository }}
           ref: ${{ needs.integration.outputs.app_ref }}
           path: ${{ env.APP_PATH }}
 
       - name: Setup Java ${{ env.JAVA_VERSION }}
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v6
         with:
           distribution: ${{ env.JAVA_DISTRIBUTION }}
           java-version: ${{ env.JAVA_VERSION }}
@@ -387,7 +387,7 @@ jobs:
             ${{ env.APP_PATH }}/gradle/wrapper/gradle-wrapper.properties
 
       - name: Setup Android SDK
-        uses: android-actions/setup-android@v3
+        uses: android-actions/setup-android@v4
         with:
           packages: >
             tools
@@ -460,7 +460,7 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload release APKs
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: mobile-release-apk
           path: |
@@ -476,7 +476,7 @@ jobs:
     timeout-minutes: 40
     steps:
       - name: Download release APKs
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: mobile-release-apk
           path: ${{ github.workspace }}/apk
@@ -1121,7 +1121,7 @@ jobs:
       - name: Upload combined DAST report (PDF)
         if: always() && hashFiles('dast-reports/combined-dast-report.pdf') != ''
         id: upload-dast-pdf
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: dast-combined-report-pdf
           path: dast-reports/combined-dast-report.pdf
@@ -1165,7 +1165,7 @@ jobs:
 
       - name: Upload MobSF reports
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: mobile-release-dast
           path: ${{ github.workspace }}/dast-reports/
@@ -1179,7 +1179,7 @@ jobs:
     timeout-minutes: 15
     steps:
       - name: Download release APKs
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: mobile-release-apk
           path: ${{ github.workspace }}/release-package
@@ -1187,7 +1187,7 @@ jobs:
       - name: Download DAST reports
         if: always()
         continue-on-error: true
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: mobile-release-dast
           path: ${{ github.workspace }}/release-dast

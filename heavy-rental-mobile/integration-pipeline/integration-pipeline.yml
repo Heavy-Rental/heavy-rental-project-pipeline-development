@@ -3,6 +3,11 @@
 # =============================================================================
 # Stages (priority order — Integration is highest priority):
 #   1. Integration           (HIGHEST) checkout, JDK 17, Android SDK, Gradle, layout
+#      On pull_request: reuse a successful Fast Feedback CI run for the PR head
+#      SHA instead of repeating those steps (wait if in-flight; inlined pending-run
+#      jq, no PENDING_FILTER). Fast Feedback owns the Integration stage on
+#      feature-branch pushes; this job must not invoke that workflow.
+#      Push to develop / workflow_dispatch / missing Fast Feedback → run fully.
 #   2. Quality Control       needs Integration — lintDebug, testDebugUnitTest, assembleDebug
 #   3. Security Testing      needs Integration — SAST (Semgrep) + SCA/FS (Trivy)
 #   4. CodeQL Analysis       needs Integration — GitHub CodeQL (Java/Kotlin)
@@ -25,16 +30,19 @@
 # assembleRelease, sign, or upload store artifacts.
 #
 #   1. Branch from develop
-#   2. Open PR → develop (or push to develop) → mobile-ci-caller → this workflow
-#   3. Branch protection on develop should require:
+#   2. Push feature branch → mobile-fast-feedback-caller (Integration stage once)
+#   3. Open PR → develop (or push to develop) → mobile-ci-caller → this workflow
+#      PR Integration reuses Fast Feedback for the head SHA; do not call
+#      fast-feedback-pipeline.yml from mobile-ci-caller.yml (that would run it twice).
+#   4. Branch protection on develop should require:
 #        - "Integration"              ← highest priority / must pass first
 #        - "Quality Control"
 #        - "Security Testing"
 #        - "CodeQL Analysis"
 #        - "Mock Contract Tests"
 #        - "GitHub Flow CI Gate"       ← optional single aggregate check
-#   4. Merge when green → develop is integration-tested, not store-published
-#   5. Unsigned APK packaging lives only in release-pipeline.yml
+#   5. Merge when green → develop is integration-tested, not store-published
+#   6. Unsigned APK packaging lives only in release-pipeline.yml
 #
 # Application:
 #   https://github.com/Heavy-Rental/heavy-rental-mobile
@@ -152,7 +160,13 @@ jobs:
           esac
 
   # ---------------------------------------------------------------------------
-  # 1. Integration — HIGHEST PRIORITY
+  # 1. Integration — HIGHEST PRIORITY (GitHub Flow PR gate starts here)
+  #    Always run this job (never if: skip it) so QC / Security / CodeQL / mocks
+  #    keep their needs: and branch protection still sees the check.
+  #    On pull_request, skip Android SDK / Gradle / layout when Fast Feedback
+  #    already passed for the PR head SHA. In-flight Fast Feedback is waited on;
+  #    pending-run jq is inlined (do not assign PENDING_FILTER). Do not uses:
+  #    fast-feedback-pipeline.yml from the CI caller.
   # ---------------------------------------------------------------------------
   integration:
     name: Integration
@@ -204,22 +218,136 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
           echo "Integrating application: $APP_REPO @ $APP_REF (mode=$MODE)"
 
+      - name: Reuse Fast Feedback Integration when it already passed
+        id: reuse
+        env:
+          # Bind contexts here — never interpolate github/inputs directly in run: scripts
+          # (avoids Semgrep run-shell-injection).
+          GH_TOKEN: ${{ github.token }}
+          EVENT_NAME: ${{ github.event_name }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          GH_REPOSITORY: ${{ github.repository }}
+          FF_WORKFLOW_FILE: mobile-fast-feedback-caller.yml
+        run: |
+          set -euo pipefail
+          REUSE=false
+
+          finish() {
+            echo "reuse=${REUSE}" >> "$GITHUB_OUTPUT"
+            {
+              echo "### Fast Feedback reuse"
+              echo ""
+              echo "$1"
+            } >> "$GITHUB_STEP_SUMMARY"
+          }
+
+          if [ "${EVENT_NAME}" != "pull_request" ]; then
+            echo "Event is ${EVENT_NAME} (not pull_request) — run Integration."
+            finish "Event \`${EVENT_NAME}\` — ran Integration locally (Fast Feedback is feature-branch push only)."
+            exit 0
+          fi
+
+          COMMIT="${HEAD_SHA}"
+          if [ -z "${COMMIT}" ]; then
+            echo "PR head SHA is empty — run Integration."
+            finish "PR head SHA empty — ran Integration locally."
+            exit 0
+          fi
+
+          echo "Looking up Fast Feedback (${FF_WORKFLOW_FILE}) for commit ${COMMIT}"
+
+          list_runs() {
+            gh run list \
+              --repo "${GH_REPOSITORY}" \
+              --workflow "${FF_WORKFLOW_FILE}" \
+              --commit "${COMMIT}" \
+              --json databaseId,status,conclusion,url \
+              --limit 20 \
+              2>/dev/null || echo "[]"
+          }
+
+          run_count() {
+            echo "${1}" | jq 'length' 2>/dev/null || echo 0
+          }
+
+          jq_field() {
+            echo "${1}" | jq -r "${2}" 2>/dev/null || true
+          }
+
+          # PR opened in the same moment as the push: the Fast Feedback run may
+          # not exist yet. Retry briefly before falling back to local checks.
+          ATTEMPT=1
+          MAX_APPEAR=12
+          RUNS="[]"
+          while [ "${ATTEMPT}" -le "${MAX_APPEAR}" ]; do
+            RUNS="$(list_runs)"
+            [ -n "${RUNS}" ] || RUNS="[]"
+            if [ "$(run_count "${RUNS}")" -gt 0 ]; then
+              break
+            fi
+            echo "No Fast Feedback run for ${COMMIT} yet (attempt ${ATTEMPT}/${MAX_APPEAR})"
+            sleep 5
+            ATTEMPT=$((ATTEMPT + 1))
+          done
+
+          [ -n "${RUNS}" ] || RUNS="[]"
+          if [ "$(run_count "${RUNS}")" -eq 0 ]; then
+            echo "No Fast Feedback run for ${COMMIT} — run Integration."
+            finish "No Fast Feedback run for \`${COMMIT}\` — ran Integration locally."
+            exit 0
+          fi
+
+          jq_field "${RUNS}" '.[] | "id=\(.databaseId) status=\(.status) conclusion=\(.conclusion // "null") url=\(.url)"'
+
+          SUCCESS_ID="$(jq_field "${RUNS}" '[.[] | select(.conclusion == "success")] | .[0].databaseId // empty')"
+          SUCCESS_URL="$(jq_field "${RUNS}" '[.[] | select(.conclusion == "success")] | .[0].url // empty')"
+          if [ -n "${SUCCESS_ID}" ]; then
+            REUSE=true
+            echo "Reusing successful Fast Feedback run ${SUCCESS_ID}: ${SUCCESS_URL}"
+            finish "Reused Fast Feedback run [${SUCCESS_ID}](${SUCCESS_URL}) for \`${COMMIT}\`. Android SDK / Gradle / layout steps skipped."
+            exit 0
+          fi
+
+          # Inline the jq filter (same form as SUCCESS_ID). Do not assign PENDING_FILTER.
+          PENDING_ID="$(jq_field "${RUNS}" '[.[] | select(.status == "queued" or .status == "in_progress" or .status == "waiting" or .status == "pending" or .status == "requested")] | .[0].databaseId // empty')"
+          PENDING_URL="$(jq_field "${RUNS}" '[.[] | select(.status == "queued" or .status == "in_progress" or .status == "waiting" or .status == "pending" or .status == "requested")] | .[0].url // empty')"
+          if [ -z "${PENDING_ID}" ]; then
+            echo "Fast Feedback finished without success for ${COMMIT} — run Integration."
+            finish "Fast Feedback did not succeed for \`${COMMIT}\` — ran Integration locally."
+            exit 0
+          fi
+
+          echo "Waiting for in-flight Fast Feedback run ${PENDING_ID}: ${PENDING_URL}"
+          set +e
+          timeout 600 gh run watch "${PENDING_ID}" --repo "${GH_REPOSITORY}" --exit-status --interval 10
+          WATCH_RC=$?
+          set -e
+          if [ "${WATCH_RC}" -eq 0 ]; then
+            REUSE=true
+            echo "Fast Feedback run ${PENDING_ID} succeeded — skip Android SDK / Gradle / layout."
+            finish "Waited for Fast Feedback run [${PENDING_ID}](${PENDING_URL}) (success). Android SDK / Gradle / layout steps skipped."
+            exit 0
+          fi
+
+          echo "Fast Feedback run ${PENDING_ID} did not succeed (watch exit=${WATCH_RC}) — run Integration."
+          finish "Fast Feedback run [${PENDING_ID}](${PENDING_URL}) did not succeed (watch exit=${WATCH_RC}) — ran Integration locally."
+
       - name: Checkout calling repository (PR / push head)
         if: steps.meta.outputs.checkout_mode == 'caller'
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           path: ${{ env.APP_PATH }}
 
       - name: Checkout remote application repository
         if: steps.meta.outputs.checkout_mode == 'remote'
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           repository: ${{ steps.meta.outputs.app_repository }}
           ref: ${{ steps.meta.outputs.app_ref }}
           path: ${{ env.APP_PATH }}
 
       - name: Setup Java ${{ env.JAVA_VERSION }}
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v6
         with:
           distribution: ${{ env.JAVA_DISTRIBUTION }}
           java-version: ${{ env.JAVA_VERSION }}
@@ -232,7 +360,8 @@ jobs:
             ${{ env.APP_PATH }}/gradle/wrapper/gradle-wrapper.properties
 
       - name: Setup Android SDK
-        uses: android-actions/setup-android@v3
+        if: steps.reuse.outputs.reuse != 'true'
+        uses: android-actions/setup-android@v4
         with:
           packages: >
             tools
@@ -241,6 +370,7 @@ jobs:
             build-tools;${{ env.ANDROID_BUILD_TOOLS }}
 
       - name: Ensure Gradle Wrapper is executable
+        if: steps.reuse.outputs.reuse != 'true'
         working-directory: ${{ env.APP_PATH }}
         run: |
           set -euo pipefail
@@ -253,6 +383,7 @@ jobs:
           fi
 
       - name: Resolve Gradle project (preBuild)
+        if: steps.reuse.outputs.reuse != 'true'
         working-directory: ${{ env.APP_PATH }}
         run: |
           set -euo pipefail
@@ -260,6 +391,7 @@ jobs:
           ./gradlew --no-daemon :app:preBuild
 
       - name: Verify project layout and toolchain
+        if: steps.reuse.outputs.reuse != 'true'
         working-directory: ${{ env.APP_PATH }}
         run: |
           set -euo pipefail
@@ -285,7 +417,7 @@ jobs:
           echo "Integration checks passed."
 
       - name: Upload Gradle project fingerprint
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: integration-metadata
           path: |
@@ -305,20 +437,20 @@ jobs:
     steps:
       - name: Checkout calling repository (PR / push head)
         if: needs.integration.outputs.checkout_mode == 'caller'
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           path: ${{ env.APP_PATH }}
 
       - name: Checkout remote application repository
         if: needs.integration.outputs.checkout_mode == 'remote'
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           repository: ${{ needs.integration.outputs.app_repository }}
           ref: ${{ needs.integration.outputs.app_ref }}
           path: ${{ env.APP_PATH }}
 
       - name: Setup Java ${{ env.JAVA_VERSION }}
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v6
         with:
           distribution: ${{ env.JAVA_DISTRIBUTION }}
           java-version: ${{ env.JAVA_VERSION }}
@@ -331,7 +463,7 @@ jobs:
             ${{ env.APP_PATH }}/gradle/wrapper/gradle-wrapper.properties
 
       - name: Setup Android SDK
-        uses: android-actions/setup-android@v3
+        uses: android-actions/setup-android@v4
         with:
           packages: >
             tools
@@ -356,7 +488,7 @@ jobs:
 
       - name: Upload lint and unit-test reports
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: quality-test-reports
           path: |
@@ -366,7 +498,7 @@ jobs:
           if-no-files-found: warn
 
       - name: Upload debug APK
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: mobile-debug-apk
           path: ${{ env.APP_PATH }}/app/build/outputs/apk/debug/*.apk
@@ -384,13 +516,13 @@ jobs:
     steps:
       - name: Checkout calling repository (PR / push head)
         if: needs.integration.outputs.checkout_mode == 'caller'
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           path: ${{ env.APP_PATH }}
 
       - name: Checkout remote application repository
         if: needs.integration.outputs.checkout_mode == 'remote'
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           repository: ${{ needs.integration.outputs.app_repository }}
           ref: ${{ needs.integration.outputs.app_ref }}
@@ -400,7 +532,7 @@ jobs:
         run: mkdir -p "${GITHUB_WORKSPACE}/security-reports"
 
       - name: Setup Python (Semgrep)
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7
         with:
           python-version: "3.12"
 
@@ -681,7 +813,7 @@ jobs:
         run: echo "week=$(date -u +%Y-W%V)" >> "$GITHUB_OUTPUT"
 
       - name: Cache Trivy DBs
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ${{ github.workspace }}/.cache/trivy
           key: trivy-db-${{ runner.os }}-${{ steps.trivy-cache-meta.outputs.week }}
@@ -731,7 +863,7 @@ jobs:
 
       - name: Upload Semgrep SARIF to Code Scanning
         if: always() && hashFiles('security-reports/semgrep.sarif') != ''
-        uses: github/codeql-action/upload-sarif@v3
+        uses: github/codeql-action/upload-sarif@v4
         with:
           sarif_file: security-reports/semgrep.sarif
           checkout_path: ${{ env.APP_PATH }}
@@ -740,7 +872,7 @@ jobs:
 
       - name: Upload Trivy SARIF to Code Scanning
         if: always() && hashFiles('security-reports/trivy-fs.sarif') != ''
-        uses: github/codeql-action/upload-sarif@v3
+        uses: github/codeql-action/upload-sarif@v4
         with:
           sarif_file: security-reports/trivy-fs.sarif
           checkout_path: ${{ env.APP_PATH }}
@@ -1170,7 +1302,7 @@ jobs:
       - name: Upload combined security report (PDF)
         if: always() && hashFiles('security-reports/combined-security-report.pdf') != ''
         id: upload-security-pdf
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: security-combined-report-pdf
           path: security-reports/combined-security-report.pdf
@@ -1196,7 +1328,7 @@ jobs:
         continue-on-error: true
         env:
           PDF_URL: ${{ steps.upload-security-pdf.outputs.artifact-url }}
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         with:
           script: |
             const url = process.env.PDF_URL;
@@ -1223,7 +1355,7 @@ jobs:
 
       - name: Upload security reports (SARIF)
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: security-reports-sarif
           path: |
@@ -1247,27 +1379,27 @@ jobs:
     steps:
       - name: Checkout calling repository (PR / push head)
         if: needs.integration.outputs.checkout_mode == 'caller'
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           path: ${{ env.APP_PATH }}
 
       - name: Checkout remote application repository
         if: needs.integration.outputs.checkout_mode == 'remote'
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           repository: ${{ needs.integration.outputs.app_repository }}
           ref: ${{ needs.integration.outputs.app_ref }}
           path: ${{ env.APP_PATH }}
 
       - name: Initialize CodeQL (Java / Kotlin)
-        uses: github/codeql-action/init@v3
+        uses: github/codeql-action/init@v4
         with:
           languages: java-kotlin
           source-root: ${{ env.APP_PATH }}
           queries: security-and-quality
 
       - name: Setup Java ${{ env.JAVA_VERSION }}
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v6
         with:
           distribution: ${{ env.JAVA_DISTRIBUTION }}
           java-version: ${{ env.JAVA_VERSION }}
@@ -1280,7 +1412,7 @@ jobs:
             ${{ env.APP_PATH }}/gradle/wrapper/gradle-wrapper.properties
 
       - name: Setup Android SDK
-        uses: android-actions/setup-android@v3
+        uses: android-actions/setup-android@v4
         with:
           packages: >
             tools
@@ -1296,7 +1428,7 @@ jobs:
           ./gradlew --no-daemon :app:assembleDebug
 
       - name: Perform CodeQL Analysis
-        uses: github/codeql-action/analyze@v3
+        uses: github/codeql-action/analyze@v4
         with:
           category: "mobile-ci-codeql-java"
 
@@ -1324,20 +1456,20 @@ jobs:
     steps:
       - name: Checkout calling repository (PR / push head)
         if: needs.integration.outputs.checkout_mode == 'caller'
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           path: ${{ env.APP_PATH }}
 
       - name: Checkout remote application repository
         if: needs.integration.outputs.checkout_mode == 'remote'
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           repository: ${{ needs.integration.outputs.app_repository }}
           ref: ${{ needs.integration.outputs.app_ref }}
           path: ${{ env.APP_PATH }}
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
@@ -1345,7 +1477,7 @@ jobs:
 
       - name: Cache node_modules
         id: cache-node-modules
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ${{ env.APP_PATH }}/node_modules
           key: node-modules-${{ runner.os }}-node${{ env.NODE_VERSION }}-${{ hashFiles(format('{0}/package-lock.json', env.APP_PATH)) }}
@@ -1503,7 +1635,7 @@ jobs:
 
       - name: Upload mock verify logs
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: mock-contract-reports
           path: test-reports/
