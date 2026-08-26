@@ -11,7 +11,7 @@ Infrastructure setup, project deployment, and operate are owned by another proje
 **Goals:**
 
 - Same GitHub Flow family as REST/portal/mobile (fast feedback / CI / release).
-- Integration is the highest-priority job; later jobs `needs: [integration]`.
+- Integration is the highest-priority job; later jobs `needs: [integration]`. PR Integration reuses Fast Feedback for the head SHA (CI caller does not `uses:` Fast Feedback).
 - Python/Haystack-appropriate toolchain: CPython 3.12 + uv + Ruff + pytest + Haystack `Pipeline` smoke.
 - Semgrep-safe scripts (bind `github.*` / `inputs.*` through `env:`).
 - Release artifacts are consumable by a later deploy project (wheel/sdist + image tar; Publish pushes public GHCR and creates the GitHub Release).
@@ -29,15 +29,15 @@ Infrastructure setup, project deployment, and operate are owned by another proje
 
 ## Decisions
 
-1. **Reusable + caller gate.** Copy the REST/portal/mobile model. Each reusable file rejects any `github.workflow_ref` that is not its matching caller.
+1. **Reusable + caller gate.** Copy the REST/portal/mobile model. Each reusable file rejects any `github.workflow_ref` that is not its matching caller. Integration CI does not `uses:` Fast Feedback; on `pull_request` it looks up a successful Fast Feedback run for the head SHA and skips uv/layout.
 2. **Python 3.12, not 3.11 or 3.13.** Matches `.python-version` and `requires-python = ">=3.12"`.
 3. **uv is the package manager.** `astral-sh/setup-uv` v10.0.1 (SHA-pinned) with cache on `uv.lock`. Integration runs `uv lock --check` then `uv sync --frozen --all-groups`. Do not use pip/poetry/pdm. Do not `--extra neo4j` on Fast Feedback / Integration / QC. The **Release image** install uses `--extra neo4j`.
 4. **Haystack smoke is the Integration resolve step.** After sync, import `haystack.Pipeline`, `create_app`, `build_indexing_pipeline`, and `build_intake_front_pipeline` with mock/memory/stub env. Analog of Gradle `:app:preBuild`.
 5. **QC uses the project’s own tools.** `uv run ruff check app tests` and `uv run pytest tests/` (pytest-html already in `addopts`). No GitHub Environment / secrets — tests do not need Postgres or an LLM key.
-6. **Security is Python-first.** Semgrep `p/python` (not Kotlin/Java). `uvx pip-audit` reports lockfile CVEs (does not fail the job). Trivy FS remains the CRITICAL gate. CodeQL language `python`.
+6. **Security is Python-first.** Two Semgrep passes: app (`p/python` / `p/fastapi`, exclude `.github/**`) and GHA (`p/github-actions`; `secrets: inherit` ERROR except paid CD caller; `persist-credentials` allowed). `uvx pip-audit` reports lockfile CVEs (does not fail the job). Trivy FS remains the CRITICAL gate. CodeQL language `python`. Reports: `semgrep.sarif` + `semgrep-gha.sarif`.
 7. **Release artifacts are wheel/sdist plus a Docker image, then DAST and Publish.** `uv build` stages versioned + stable packages. Packaging always generates `python:3.12-slim-bookworm` + uv + `uvicorn app.main:app :8000` (`--extra neo4j`). An app `Dockerfile` is moved aside. The image is env-driven (ADR 0008 / 0009): **no** `ENV`/`ARG` for estate or Profile knobs; Packaging sanitizes `.env.prod` (or generated production defaults) into `/app/.env` so pydantic loads product knobs; estate keys and `LLM_API_KEY` are stripped. Dummy `docker run -e` proves process env still wins. Packaging does **not** read Haystack Environment `academy` variables. It starts uvicorn and requires `GET /docs` or `GET /health` on `:8000`. Packaging does **not** `docker push`. DAST scans the image; Publish pushes public GHCR and creates the GitHub Release. SAST/CodeQL stay on Integration CI. Fast Feedback and Integration CI do not request `packages: write`. The Release caller is `workflow_dispatch` only (do not use `on: release`).
 8. **Specs and YAML live under `haystack-fast-api-pipeline/`.** OpenSpec, OpenSPDD, and workflow files stay with the pipeline they describe. The application repository remains `Heavy-Rental/haystack-fast-api`.
-9. **This family stops at packaging.** It does not apply IaC, create cloud resources, compose onto `asg-haystack`, or monitor production. Academy app CD lives in `deploy-pipeline/` in this tree. Operate is after deploy (infra project).
+9. **This family stops at packaging.** It does not apply IaC, create cloud resources, compose onto `asg-haystack`, or monitor production. Academy + paid app CD lives in `deploy-pipeline/` in this tree. Operate is after deploy (infra project).
 
 ## Risks / Trade-offs
 

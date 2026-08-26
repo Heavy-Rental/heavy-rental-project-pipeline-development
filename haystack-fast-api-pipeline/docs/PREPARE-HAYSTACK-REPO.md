@@ -1,7 +1,7 @@
 # Prepare haystack-fast-api for Academy CD
 
 **App repo:** [Heavy-Rental/haystack-fast-api](https://github.com/Heavy-Rental/haystack-fast-api)  
-**Checked:** `develop` @ `a25128cb` (2026-08-17), open [PR #99](https://github.com/Heavy-Rental/haystack-fast-api/pull/99) (`HR-155`)  
+**Checked (point-in-time snapshot, not live inventory):** `develop` @ `a25128cb` (2026-08-17), open [PR #99](https://github.com/Heavy-Rental/haystack-fast-api/pull/99) (`HR-155`)  
 **Release CI:** `release-pipeline/` in this tree — **not** on app `develop` / `master`. Packaging sanitizes `.env.prod` → `/app/.env`.  
 **App CD:** `deploy-pipeline/` (this tree — **not** in the app repo yet)  
 **Estate:** infra `apply` + `sync-secrets` must have created `asg-haystack` and `heavy-rental/haystack`
@@ -99,7 +99,7 @@ Copy from this tree’s `deploy-pipeline/`:
 | `ansible/` | **`deploy-pipeline/ansible/`** (keep this path) |
 | [`docs/samples/.env.prod`](samples/.env.prod) | **`.env.prod`** at the app repo root (Release sanitizes this to `/app/.env`) |
 
-Do **not** copy `specification/`. Everyday operate after this copy: [`BOOTSTRAP.md`](BOOTSTRAP.md) (same CD files and the same academy inventory).
+Do **not** copy `specification/`. Do **not** copy `resolve-vocareum-aws/` (unused; academy masking is inside `resolve-aws-profile`). Everyday operate after this copy: [`BOOTSTRAP.md`](BOOTSTRAP.md) (same CD files and the same academy inventory).
 
 ---
 

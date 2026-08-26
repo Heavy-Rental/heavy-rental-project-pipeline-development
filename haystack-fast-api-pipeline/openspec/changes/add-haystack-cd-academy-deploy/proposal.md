@@ -9,7 +9,7 @@ Branch 1 can see `asg-haystack` but cannot load a CI uvicorn image. Infra `confi
 - OpenSpec for resolve-image, haystack-only Ansible, Profile overlay (ADR 0009), and `:8000` verify. Academy Environment variables overlay the **guest** `.env` at `deploy` / `configure-only`; they are not written into the GHCR image.
 - Amend `haystack-cd-scope`: compose allowed; no Terraform; no neo4j service.
 - Copy infra `guest_base` + `haystack` into `deploy-pipeline/ansible/`.
-- `haystack-cd-academy.yml`: resolve-image → ansible-haystack → real verify.
+- `haystack-cd-academy.yml`: on `deploy`, resolve-image → ansible-haystack → verify. `configure-only` skips resolve-image. `verify` skips compose.
 
 ## Capabilities
 

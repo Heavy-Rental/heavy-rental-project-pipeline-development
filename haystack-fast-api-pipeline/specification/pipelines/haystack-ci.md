@@ -4,13 +4,13 @@
 **Authoring tree:** `haystack-fast-api-pipeline/` in this pipeline-development repo  
 **Stack:** Python 3.12 / uv / FastAPI / Haystack 2.x / Ruff / pytest
 
-This family validates and packages the service. It does not create infrastructure or operate production. Academy **app CD** (compose onto `asg-haystack`) is a separate family: [`haystack-cd.md`](haystack-cd.md).
+This family validates and packages the service. It does not create infrastructure or operate production. Academy and paid **app CD** (compose onto `asg-haystack`) is a separate family: [`haystack-cd.md`](haystack-cd.md).
 
 ## GitHub Flow
 
 ```
-feature branch push  →  Fast Feedback (Integration only)
-PR / push → develop  →  Integration CI (full gates, no packaging; SAST here)
+feature branch push  →  Fast Feedback (Integration only; sole Integration-stage run for that SHA)
+PR / push → develop  →  Integration CI (Integration reuses Fast Feedback on PR; full gates; SAST here)
 workflow_dispatch     →  Release (master + QC + image + DAST + public GHCR + GitHub Release)
 ```
 
@@ -20,16 +20,20 @@ workflow_dispatch     →  Release (master + QC + image + DAST + public GHCR + G
 assert-caller
       │
       ▼
- Integration          CPython 3.12 + uv lock --check + uv sync --frozen
+ Integration          PR: reuse Fast Feedback for the head SHA (skip uv/layout)
+                      else: CPython 3.12 + uv lock --check + uv sync --frozen
                       + Haystack Pipeline / FastAPI create_app smoke
+                      job id integration (Haystack has no environment: integration)
       │
       ├── Quality Control     ruff check + pytest tests/ (CI-safe backends)
-      ├── Security Testing    Semgrep p/python + pip-audit report + Trivy
+      ├── Security Testing    Semgrep app + GHA + pip-audit report + Trivy
       └── CodeQL Analysis     python / security-and-quality
       │
       ▼
  GitHub Flow CI Gate
 ```
+
+Do **not** `uses:` `fast-feedback-pipeline.yml` from `haystack-ci-caller.yml`. Copy both Integration files into the Haystack app repo and call `./.github/workflows/integration-pipeline.yml`.
 
 Release (`workflow_dispatch` of **Haystack Release Pipeline Invoke**) does **not** re-run Security Testing or CodeQL. Those stay on Integration CI. Release job graph:
 
@@ -64,7 +68,7 @@ Academy CD consumes a public GHCR/ECR tag or the tar. The image must accept infr
 | Integration smoke | `haystack.Pipeline`, `create_app`, `build_indexing_pipeline`, `build_intake_front_pipeline` |
 | Lint | Ruff (`uv run ruff check app tests`) |
 | Tests | pytest + pytest-html (`uv run pytest tests/`) |
-| Python SAST | Semgrep `p/python` `p/fastapi` + OWASP / audit / secrets / CWE Top 25 / Gitleaks / SQL injection / JWT / insecure-transport, plus custom ERROR rules for plaintext credentials in `.env`/YAML and Python assignments. Reports: `semgrep.sarif` + `semgrep.json` + `semgrep.txt` (all severities); gate is ERROR-only |
+| Python SAST | Two Semgrep passes. App: `p/python` `p/fastapi` + OWASP / audit / secrets / CWE Top 25 / Gitleaks / SQL injection / JWT / insecure-transport, plus custom ERROR rules for plaintext credentials in `.env`/YAML and Python assignments; excludes `.github/**`. GHA: `p/github-actions` plus custom inherit / hardcoded-secret rules (`secrets: inherit` ERROR except paid CD caller; explicit secrets-context maps allowed; `persist-credentials` is not a finding). Reports: `semgrep.sarif` + `semgrep-gha.sarif` (all severities); gate is ERROR-only |
 | Python SCA report | `uvx pip-audit` on `uv export` |
 | FS / CRITICAL SCA | Trivy |
 | Human security report | Combined PDF artifact `security-combined-report-pdf` (SARIF + pip-audit); download from the PR Checks tab (workflow Summary → Artifacts, or Security Testing job summary) |
