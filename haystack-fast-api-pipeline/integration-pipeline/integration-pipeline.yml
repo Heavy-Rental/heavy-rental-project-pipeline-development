@@ -33,7 +33,8 @@
 #        - "CodeQL Analysis"
 #        - "GitHub Flow CI Gate"       ← optional single aggregate check
 #   4. Merge when green → develop is integration-tested, not production-deployed
-#   5. Wheel packaging lives only in release-pipeline.yml
+#   5. Wheel packaging, DAST, GHCR, and GitHub Release live only in
+#      release-pipeline.yml (workflow_dispatch; SAST/CodeQL stay here)
 #   6. This family does not provision infrastructure, deploy, or operate.
 #      Those concerns belong to another project.
 #

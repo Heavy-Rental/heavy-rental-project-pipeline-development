@@ -12,7 +12,7 @@ When reality diverges, fix this prompt first — then update the YAML.
 - Provide the same three-pipeline GitHub Flow family used by REST API, portal, and mobile, adapted for Heavy Rental haystack-fast-api (`Heavy-Rental/haystack-fast-api`).
 - Fast Feedback: Integration only, feature-branch pushes (ignore `master`/`develop`).
 - Integration CI: PR/push `develop` + `workflow_dispatch`. Jobs: Assert caller → Integration → (QC ∥ Security ∥ CodeQL) → GitHub Flow CI Gate.
-- Release: published GitHub Release **or** PR `develop` → `master`. Same gates + `uv build` Packaging + Docker image (tar always; GHCR push off PR).
+- Release: `workflow_dispatch` only (Actions → Haystack Release Pipeline Invoke). Jobs: Assert caller → Integration → QC → Packaging → DAST → Publish (public GHCR + GitHub Release). Do **not** use `on: release` — Publish creates the GitHub Release. SAST/CodeQL stay on Integration CI.
 - Use **Python/Haystack tools only**: CPython 3.12, uv, Ruff, pytest, Haystack `Pipeline` constructors, Semgrep `p/python`, pip-audit report, CodeQL `python`.
 - Specs (OpenSpec + this canvas) and YAML all live under `haystack-fast-api-pipeline/`.
 - Install story: copy each caller + reusable pair into the application repo `.github/workflows/`.
@@ -23,7 +23,7 @@ When reality diverges, fix this prompt first — then update the YAML.
 ```mermaid
 classDiagram
     class CallerWorkflow {
-      +on push|pull_request|release|workflow_dispatch
+      +on push|pull_request|workflow_dispatch
       +uses reusable
     }
     class ReusableWorkflow {
@@ -40,6 +40,8 @@ classDiagram
     class SecurityTestingJob
     class CodeQLJob
     class PackagingJob
+    class DASTJob
+    class PublishJob
     class GitHubFlowGateJob
     CallerWorkflow --> ReusableWorkflow : uses
     ReusableWorkflow --> IntegrationJob : needs assert-caller
@@ -48,11 +50,11 @@ classDiagram
     IntegrationJob --> CodeQLJob
     IntegrationJob --> PackagingJob
     QualityControlJob --> PackagingJob
-    SecurityTestingJob --> PackagingJob
-    CodeQLJob --> PackagingJob
     QualityControlJob --> GitHubFlowGateJob
     SecurityTestingJob --> GitHubFlowGateJob
     CodeQLJob --> GitHubFlowGateJob
+    PackagingJob --> DASTJob
+    DASTJob --> PublishJob
 ```
 
 Artifacts:
@@ -66,7 +68,7 @@ Artifacts:
 | Release wheel | `haystack-fast-api-v{version}-build{run}-{sha}.whl`, `haystack-fast-api.whl` |
 | Release sdist | matching `.tar.gz` names |
 | Release image tar | `haystack_recommender-{semver}.tar.gz` (local + GHCR tags) |
-| GHCR | `ghcr.io/{owner}/haystack_recommender:{x.y.z}` and `:latest` (not on pull_request) |
+| GHCR | `ghcr.io/{owner}/haystack_recommender:{x.y.z}` and `:latest` (Publish after DAST) |
 
 ## A — Approach
 
@@ -75,7 +77,7 @@ Artifacts:
 - Integration resolve: `uv lock --check` then `uv sync --frozen --all-groups`, then a Haystack/FastAPI smoke (`create_app`, `build_indexing_pipeline`, `build_intake_front_pipeline`).
 - QC: `uv run ruff check app tests` then `uv run pytest tests/` with CI-safe Haystack env.
 - Security: Semgrep `p/python` `p/owasp-top-ten` `p/security-audit` `p/secrets`; `uvx pip-audit` report-only; Trivy FS two-pass + CRITICAL gate; CodeQL `python`.
-- Release: `uv build`, then always-generated Python 3.12 + uv + uvicorn `app.main:app :8000` + `--extra neo4j` (app Dockerfile moved aside). Sanitize `.env.prod` → `/app/.env` (product knobs only). Refuse `ENV`/`ARG`, raw `COPY .env`, estate secrets (ADR 0008 / 0009). Do not read Environment `academy`. Prove dummy `-e` (process env wins) and `GET /docs` or `/health`. `COPY` sidecar dirs only if present. `docker save` all four tags; GHCR `haystack_recommender` when not a pull request.
+- Release: `uv build`, then always-generated Python 3.12 + uv + uvicorn `app.main:app :8000` + `--extra neo4j` (app Dockerfile moved aside). Sanitize `.env.prod` → `/app/.env` (product knobs only). Refuse `ENV`/`ARG`, raw `COPY .env`, estate secrets (ADR 0008 / 0009). Do not read Environment `academy`. Prove dummy `-e` (process env wins) and `GET /docs` or `/health`. `COPY` sidecar dirs only if present. `docker save` tar for DAST; Publish pushes GHCR `haystack_recommender` and creates the GitHub Release. No Security Testing or CodeQL on Release.
 
 ## S — Structure
 
@@ -114,6 +116,8 @@ Job `name:` values (branch protection):
 - `CodeQL Analysis`
 - `GitHub Flow CI Gate`
 - `Packaging` (release only)
+- `DAST` (release only)
+- `Publish` (release only)
 
 ## O — Operations
 
@@ -121,7 +125,7 @@ Job `name:` values (branch protection):
 2. Write `integration-pipeline.yml` with jobs in this order: `assert-caller`, `integration`, `quality-control`, `security-testing`, `codeql`, `github-flow-gate`.
 3. Write `haystack-ci-caller.yml` (`name: CI`, PR/push `develop`, `workflow_dispatch`, `security-events: write`).
 4. Write fast-feedback pair (Integration only, `branches-ignore: [master, develop]`).
-5. Write release pair (`release: published` or PR `develop`→`master`; `cancel-in-progress: false`; Packaging job).
+5. Write release pair (`workflow_dispatch` only; `cancel-in-progress: false`; Packaging + DAST + Publish). Do not use `on: release`.
 6. Header-comment each file with install path, triggers, and local `actionlint` command under `haystack-fast-api-pipeline/`.
 7. Bind every `github.*` / `inputs.*` / `needs.*.outputs.*` used in `run:` through `env:` (except GitHub-native `if:` expressions, which are not shell).
 8. `actionlint` all six files.
@@ -144,9 +148,10 @@ Job `name:` values (branch protection):
 - **DO NOT** `uv sync --extra neo4j` on Fast Feedback / Integration / QC (test install). Release **image** install SHALL use `--extra neo4j`.
 - **DO NOT** bake `SOURCE_*`, `TARGET_*`, `POSTGRES_*`, `DATABASE_URL`, `NEO4J_PASSWORD`, or `LLM_API_KEY` into the Release image (`ENV`/`ARG`/`COPY .env`/`--build-arg`). A sanitized `COPY haystack.prod.env .env` (product knobs only, estate keys stripped) is required.
 - **DO NOT** add Docker build or `packages: write` on Fast Feedback or Integration CI.
-- **DO NOT** commit a Dockerfile into this repo or the application product tree; generate one at Release packaging time only if the app checkout has none.
+- **DO NOT** treat an application Dockerfile as the deploy image. Release always generates uvicorn; an app Dockerfile is moved aside.
 - **DO NOT** start Postgres, Neo4j, or call an LLM during `docker build`.
-- **DO NOT** `docker push` on pull_request events.
+- **DO NOT** `docker push` from Packaging (Publish pushes after DAST).
+- **DO NOT** subscribe the Release caller to `release` or `pull_request` events.
 - **DO NOT** add a Mock Contract Tests / Prism / Node job.
 - **DO NOT** add a fourth pipeline (including scheduled model retrain — product OpenSpec, not this family).
 - **DO NOT** provision infrastructure, apply IaC, or create cloud resources in this family.

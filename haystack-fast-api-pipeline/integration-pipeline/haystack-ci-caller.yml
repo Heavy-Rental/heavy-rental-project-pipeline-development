@@ -14,8 +14,9 @@
 #   1. Branch from develop
 #   2. Open a pull request into develop → this workflow runs (Integration first)
 #   3. Review + green checks → merge into develop
-#   4. Release packaging → haystack-release-caller.yml on GitHub Release
-#                          publish, or on PR develop → master
+#   4. Release packaging → haystack-release-caller.yml on workflow_dispatch
+#                          (Actions → Haystack Release Pipeline Invoke).
+#                          That workflow creates the GitHub Release.
 #
 # Reusable workflow (same repository):
 #   ./.github/workflows/integration-pipeline.yml
@@ -24,7 +25,7 @@
 # -----------------------------------------
 #   1. Integration           ← HIGHEST PRIORITY (required status check)
 #   2. Quality Control       (needs Integration; Ruff + pytest)
-#   2. Security Testing      (needs Integration; Semgrep p/python + Trivy)
+#   2. Security Testing      (needs Integration; Semgrep p/python + pip-audit + Trivy)
 #   2. CodeQL Analysis       (needs Integration; Python Code Scanning)
 #   3. GitHub Flow CI Gate   (aggregate of the above — optional single check)
 #

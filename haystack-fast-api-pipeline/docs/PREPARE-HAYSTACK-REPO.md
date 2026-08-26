@@ -53,10 +53,9 @@ GHCR name: `ghcr.io/<owner>/haystack_recommender` (lowercase). On `Heavy-Rental`
 
 | Release trigger | What you get |
 | --- | --- |
-| PR `develop` → `master` | Versioned wheel/sdist + docker **tar artifact**. **No GHCR push.** |
-| **Published GitHub Release** | Tar **and** GHCR `<version>` + `:latest` |
+| **workflow_dispatch** (**Haystack Release Pipeline Invoke**) | Wheel/sdist + docker tar + DAST, then Publish pushes GHCR `<version>` + `:latest` and creates the GitHub Release |
 
-Academy guests pull **public** GHCR with no token. A PR build is not enough for `HAYSTACK_IMAGE=ghcr.io/…` unless you `docker load` the tar (`image_http_url` / `IMAGE_HTTP_URL`) or copy the image to ECR.
+Academy guests pull **public** GHCR with no token. A `develop` → `master` PR does **not** run Release. You need this dispatch (or `docker load` the tar via `image_http_url` / `IMAGE_HTTP_URL`, or copy the image to ECR).
 
 `DEFAULT_APP_REPOSITORY: Heavy-Rental/haystack-fast-api` in the reusable YAML is correct. When Release runs **in** the app repo, checkout is the calling repo (into `app/`). That is correct.
 
@@ -79,7 +78,7 @@ Zero GitHub Releases. Zero GHCR packages for this repo (checked 2026-08-17).
 ## 3. Produce a pullable image
 
 1. Merge HR-155 (or copy Fast Feedback + Integration + Release onto `develop`).
-2. Merge to `master`, then run **Actions → Release → Run workflow**. That checks out `master`, runs DAST, pushes public GHCR, and creates the GitHub Release.
+2. Merge to `master`, then run **Actions → Haystack Release Pipeline Invoke → Run workflow**. That checks out `master`, runs QC + Packaging + DAST, then Publish pushes public GHCR and creates the GitHub Release.
 3. Org Packages → `haystack_recommender` → visibility **Public**. Private GHCR fails CD on purpose (no PAT on the guest).
 4. Record the tag, for example `ghcr.io/heavy-rental/haystack_recommender:1.0.0` (or `:latest`). Prefer a **new** version tag each deploy (`compose up` is not `--pull always`).
 
@@ -96,12 +95,11 @@ Copy from this tree’s `deploy-pipeline/`:
 | `haystack-cd-academy-caller.yml` | `.github/workflows/` |
 | `haystack-cd-paid-caller.yml` | `.github/workflows/` (billed AWS / OIDC) |
 | `haystack-cd-academy.yml` | `.github/workflows/` (shared jobs) |
-| `resolve-vocareum-aws/action.yml` | `.github/actions/resolve-vocareum-aws/` |
 | `resolve-aws-profile/action.yml` | `.github/actions/resolve-aws-profile/` |
 | `ansible/` | **`deploy-pipeline/ansible/`** (keep this path) |
 | [`docs/samples/.env.prod`](samples/.env.prod) | **`.env.prod`** at the app repo root (Release sanitizes this to `/app/.env`) |
 
-Do **not** copy `specification/`. Everyday operate after this copy: [`BOOTSTRAP.md`](BOOTSTRAP.md) (same four CD files and the same academy inventory).
+Do **not** copy `specification/`. Everyday operate after this copy: [`BOOTSTRAP.md`](BOOTSTRAP.md) (same CD files and the same academy inventory).
 
 ---
 
@@ -256,7 +254,7 @@ Sidecar crash-loops do not fail `verify` if uvicorn answers. A green verify is n
 ## 11. Do not
 
 - Use CI Environments `integration` / `production` as CD
-- Expect GHCR from HR-155 or a `develop` → `master` PR alone (publish a GitHub Release)
+- Expect GHCR from HR-155 or a `develop` → `master` PR alone (run **Haystack Release Pipeline Invoke**; that workflow creates the GitHub Release)
 - Put Vocareum keys or `LLM_API_KEY` in the image, in `.env.prod`, or on the Run form
 - Type instance IDs on the Run form
 - Run `terraform apply` from this workflow

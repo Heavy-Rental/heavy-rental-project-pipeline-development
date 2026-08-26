@@ -10,7 +10,7 @@ This family validates and packages the service. It does not create infrastructur
 
 ```
 feature branch push  →  Fast Feedback (Integration only)
-PR / push → develop  →  Integration CI (full gates, no packaging)
+PR / push → develop  →  Integration CI (full gates, no packaging; SAST here)
 workflow_dispatch     →  Release (master + QC + image + DAST + public GHCR + GitHub Release)
 ```
 
@@ -31,7 +31,29 @@ assert-caller
  GitHub Flow CI Gate
 ```
 
-Release adds **Packaging** (`uv build` wheel + sdist, then always-generated uvicorn image + GHCR `haystack_recommender` off PR) after Integration + QC + Security + CodeQL. Packaging is the last job in this family. Academy CD consumes a public GHCR/ECR tag or the tar. The image must accept infra `heavy-rental/haystack` keys and Profile knobs at runtime (ADR 0008 / 0009). Packaging sanitizes `.env.prod` into `/app/.env` (product knobs only), proves dummy `-e` injection (process env wins), and `GET /docs` or `/health` on `:8000`. Packaging does **not** read Environment `academy`; those vars overlay guest `.env` at CD time only.
+Release (`workflow_dispatch` of **Haystack Release Pipeline Invoke**) does **not** re-run Security Testing or CodeQL. Those stay on Integration CI. Release job graph:
+
+```
+assert-caller
+      │
+      ▼
+ Integration          CPython 3.12 + uv; checkout master
+      │
+      ▼
+ Quality Control      ruff check + pytest tests/
+      │
+      ▼
+ Packaging            uv build + generated uvicorn image tar (no docker push)
+      │
+      ▼
+ DAST                 ZAP + Dastardly + Nuclei against the image
+      │
+      ▼
+ Publish              public GHCR haystack_recommender:<semver> + :latest
+                      + GitHub Release on master
+```
+
+Academy CD consumes a public GHCR/ECR tag or the tar. The image must accept infra `heavy-rental/haystack` keys and Profile knobs at runtime (ADR 0008 / 0009). Packaging sanitizes `.env.prod` into `/app/.env` (product knobs only), proves dummy `-e` injection (process env wins), and `GET /docs` or `/health` on `:8000`. Packaging does **not** read Environment `academy`; those vars overlay guest `.env` at CD time only. Packaging does **not** `docker push`; Publish does that after DAST.
 
 ## Python / Haystack tools (not Java / Android / Node)
 
@@ -49,7 +71,7 @@ Release adds **Packaging** (`uv build` wheel + sdist, then always-generated uvic
 | Human DAST report | Combined PDF artifact `dast-combined-report-pdf` (`dast-reports/combined-dast-report.pdf`); download from the Release run Summary → Artifacts, the DAST job summary link, or the GitHub Release |
 | Code scanning | CodeQL `python` |
 | Package | `uv build` (Hatchling wheel + sdist) |
-| Image | Always-generated `python:3.12-slim-bookworm` + uv + `uvicorn app.main:app :8000` (app Dockerfile ignored). GHCR `haystack_recommender:<semver>` + `:latest` off PR (semver is previous GHCR `x.y.z` + patch, or `1.0.0`). No baked infra `ENV`/`ARG`. Sanitized `.env.prod` → `/app/.env` for pydantic product knobs (`APP_ENV=prod`, …). Estate keys stay out of that file. Packaging proves dummy `docker run -e` env (overrides the file) and `GET /docs` or `GET /health` on `:8000`. Sidecar dirs copied only if present. |
+| Image | Always-generated `python:3.12-slim-bookworm` + uv + `uvicorn app.main:app :8000` (app Dockerfile ignored). Publish pushes GHCR `haystack_recommender:<semver>` + `:latest` (semver is previous GHCR `x.y.z` + patch, or `1.0.0`) and creates the GitHub Release. No baked infra `ENV`/`ARG`. Sanitized `.env.prod` → `/app/.env` for pydantic product knobs (`APP_ENV=prod`, …). Estate keys stay out of that file. Packaging proves dummy `docker run -e` env (overrides the file) and `GET /docs` or `GET /health` on `:8000`. Sidecar dirs copied only if present. |
 
 CI-safe Haystack profile (matches `tests/conftest.py` and `QUICKSTART.md` Profile A):
 

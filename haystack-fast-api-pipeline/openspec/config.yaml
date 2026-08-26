@@ -6,9 +6,9 @@ context: |
   Two families live here:
     1. CI — Fast Feedback, Integration CI, and Release packaging
        (openspec/changes/add-haystack-ci-pipeline/).
-    2. Academy app CD — discover asg-haystack and compose
-       (openspec/changes/add-haystack-cd-academy-skeleton/ and
-       add-haystack-cd-academy-deploy/, add-haystack-cd-paid-deploy/).
+    2. App CD — discover asg-haystack and compose (academy Vocareum +
+       paid OIDC callers: add-haystack-cd-academy-skeleton,
+       add-haystack-cd-academy-deploy, add-haystack-cd-paid-deploy).
   Product behaviour for the FastAPI / Haystack service is NOT specified here —
   that lives in the application repository under openspec/.
   Infrastructure setup (VPC, ASGs, RDS, Neo4j) and operate (stop / destroy)
