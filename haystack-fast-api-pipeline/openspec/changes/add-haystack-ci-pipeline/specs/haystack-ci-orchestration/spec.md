@@ -24,12 +24,15 @@ The system SHALL provide three pipeline pairs (caller + reusable workflow): Fast
 - AND it ends with a GitHub Flow CI Gate that requires all of those jobs to succeed
 - AND it does not run Packaging
 
-#### Scenario: Release adds packaging
-- GIVEN a published GitHub Release, or a pull request whose head is `develop` and base is `master`
+#### Scenario: Release adds packaging, DAST, and Publish
+- GIVEN a `workflow_dispatch` of the Release caller
 - WHEN the Release caller runs
 - THEN it invokes the reusable release workflow
-- AND that workflow runs Integration, Quality Control, Security Testing, CodeQL, and Packaging
-- AND Packaging needs Integration, Quality Control, Security Testing, and CodeQL
+- AND that workflow runs Integration, Quality Control, Packaging, DAST, and Publish
+- AND Packaging needs Integration and Quality Control
+- AND DAST needs Packaging
+- AND Publish needs Integration, Packaging, and DAST
+- AND it does not run Security Testing or CodeQL (those stay on Integration CI)
 
 ### Requirement: Reusable workflows accept only their caller
 Each reusable workflow SHALL expose only `workflow_call` and SHALL fail unless invoked by its matching caller file under `.github/workflows/`.
@@ -66,10 +69,16 @@ Each caller SHALL use the GitHub Flow triggers defined for its pipeline and SHAL
 - WHEN Integration CI is evaluated
 - THEN the Integration CI caller starts
 
-#### Scenario: Release ignores feature PRs
-- GIVEN a pull request into `master` whose head branch is not `develop`
-- WHEN the Release caller job is evaluated
-- THEN the reusable release workflow is not invoked
+#### Scenario: Release is manual dispatch only
+- GIVEN `workflow_dispatch` on the Release caller
+- WHEN the caller is evaluated
+- THEN it invokes the reusable release workflow
+
+#### Scenario: Release ignores GitHub Release publish and PRs
+- GIVEN a published GitHub Release, or a pull request whose head is `develop` and base is `master`
+- WHEN Release is evaluated
+- THEN the Release caller does not start
+- AND Publish in a `workflow_dispatch` run is what creates the GitHub Release
 
 ### Requirement: Source resolution
 Each reusable workflow SHALL check out the calling repository at the calling commit unless `app_repository` names a different repository, in which case it SHALL check out that repository at `app_ref` or the pipeline default ref.

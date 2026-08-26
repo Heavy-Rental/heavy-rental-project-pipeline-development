@@ -7,12 +7,12 @@ Highest-priority gate: fetch the FastAPI + Haystack application, install CPython
 ## ADDED Requirements
 
 ### Requirement: Integration is first
-The Integration job SHALL run only after the caller gate succeeds. Quality Control, Security Testing, CodeQL, and Packaging SHALL declare a dependency on Integration.
+The Integration job SHALL run only after the caller gate succeeds. Quality Control, Security Testing, CodeQL, and Packaging SHALL declare a dependency on Integration when those jobs exist in the workflow.
 
 #### Scenario: Failed Integration blocks later jobs
 - GIVEN Integration fails
 - WHEN the workflow continues
-- THEN Quality Control, Security Testing, CodeQL, and Packaging do not start
+- THEN Quality Control, Security Testing, CodeQL, and Packaging (when present) do not start
 - AND the GitHub Flow CI Gate (when present) still runs and fails
 
 ### Requirement: CPython 3.12

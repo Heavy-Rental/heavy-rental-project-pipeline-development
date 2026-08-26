@@ -14,7 +14,7 @@ Infrastructure setup, project deployment, and operate are owned by another proje
 - Integration is the highest-priority job; later jobs `needs: [integration]`.
 - Python/Haystack-appropriate toolchain: CPython 3.12 + uv + Ruff + pytest + Haystack `Pipeline` smoke.
 - Semgrep-safe scripts (bind `github.*` / `inputs.*` through `env:`).
-- Release artifacts are consumable by a later deploy project (wheel/sdist + image tar; GHCR off PR).
+- Release artifacts are consumable by a later deploy project (wheel/sdist + image tar; Publish pushes public GHCR and creates the GitHub Release).
 
 **Non-Goals:**
 
@@ -35,7 +35,7 @@ Infrastructure setup, project deployment, and operate are owned by another proje
 4. **Haystack smoke is the Integration resolve step.** After sync, import `haystack.Pipeline`, `create_app`, `build_indexing_pipeline`, and `build_intake_front_pipeline` with mock/memory/stub env. Analog of Gradle `:app:preBuild`.
 5. **QC uses the project’s own tools.** `uv run ruff check app tests` and `uv run pytest tests/` (pytest-html already in `addopts`). No GitHub Environment / secrets — tests do not need Postgres or an LLM key.
 6. **Security is Python-first.** Semgrep `p/python` (not Kotlin/Java). `uvx pip-audit` reports lockfile CVEs (does not fail the job). Trivy FS remains the CRITICAL gate. CodeQL language `python`.
-7. **Release artifacts are wheel/sdist plus a Docker image.** `uv build` stages versioned + stable packages. Packaging always generates `python:3.12-slim-bookworm` + uv + `uvicorn app.main:app :8000` (`--extra neo4j`). An app `Dockerfile` is moved aside. The image is env-driven (ADR 0008 / 0009): **no** `ENV`/`ARG` for estate or Profile knobs; Packaging sanitizes `.env.prod` (or generated production defaults) into `/app/.env` so pydantic loads product knobs; estate keys and `LLM_API_KEY` are stripped. Dummy `docker run -e` proves process env still wins. Packaging does **not** read Haystack Environment `academy` variables. It starts uvicorn and requires `GET /docs` or `GET /health` on `:8000`. Fast Feedback and Integration CI do not request `packages: write`.
+7. **Release artifacts are wheel/sdist plus a Docker image, then DAST and Publish.** `uv build` stages versioned + stable packages. Packaging always generates `python:3.12-slim-bookworm` + uv + `uvicorn app.main:app :8000` (`--extra neo4j`). An app `Dockerfile` is moved aside. The image is env-driven (ADR 0008 / 0009): **no** `ENV`/`ARG` for estate or Profile knobs; Packaging sanitizes `.env.prod` (or generated production defaults) into `/app/.env` so pydantic loads product knobs; estate keys and `LLM_API_KEY` are stripped. Dummy `docker run -e` proves process env still wins. Packaging does **not** read Haystack Environment `academy` variables. It starts uvicorn and requires `GET /docs` or `GET /health` on `:8000`. Packaging does **not** `docker push`. DAST scans the image; Publish pushes public GHCR and creates the GitHub Release. SAST/CodeQL stay on Integration CI. Fast Feedback and Integration CI do not request `packages: write`. The Release caller is `workflow_dispatch` only (do not use `on: release`).
 8. **Specs and YAML live under `haystack-fast-api-pipeline/`.** OpenSpec, OpenSPDD, and workflow files stay with the pipeline they describe. The application repository remains `Heavy-Rental/haystack-fast-api`.
 9. **This family stops at packaging.** It does not apply IaC, create cloud resources, compose onto `asg-haystack`, or monitor production. Academy app CD lives in `deploy-pipeline/` in this tree. Operate is after deploy (infra project).
 
@@ -50,7 +50,7 @@ Infrastructure setup, project deployment, and operate are owned by another proje
 | Accidental LLM spend | Never set `LLM_API_KEY`; export stub/mock env on Integration and QC |
 | App Dockerfile is Node/java -jar / wrong CMD | Always generate uvicorn `app.main:app :8000`; move the app file aside (ADR 0008) |
 | Haystack/ML image is large | Packaging timeout 30 min; cache is the runner Docker layer cache only |
-| GHCR write from a PR | Push only when `github.event_name != 'pull_request'`; always upload the tar |
+| GHCR write from a PR | Release caller is `workflow_dispatch` only; Publish pushes GHCR after DAST |
 | Scope creep into infra / deploy / operate | OpenSpec `haystack-ci-scope` + SPDD safeguards; no Terraform/Bicep/deploy jobs in this tree |
 
 ## Migration Plan

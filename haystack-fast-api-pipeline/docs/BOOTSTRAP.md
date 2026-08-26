@@ -11,7 +11,6 @@ Install from **`deploy-pipeline/`** into the Haystack app repo (same paths as PR
 - `haystack-cd-academy-caller.yml` → `.github/workflows/`
 - `haystack-cd-paid-caller.yml` → `.github/workflows/` (billed AWS)
 - `haystack-cd-academy.yml` → `.github/workflows/` (shared jobs)
-- `resolve-vocareum-aws/action.yml` → `.github/actions/resolve-vocareum-aws/`
 - `resolve-aws-profile/action.yml` → `.github/actions/resolve-aws-profile/`
 - **`ansible/`** → `deploy-pipeline/ansible/` (keep this path)
 
@@ -86,7 +85,7 @@ The **runner** uses Vocareum keys. The **EC2** uses `LabRole`.
 ## Do not (same as PREPARE §11)
 
 - Use CI Environments `integration` / `production` as CD
-- Expect GHCR from a `develop` → `master` PR alone (run **Actions → Release** after merge; the pipeline creates the GitHub Release)
+- Expect GHCR from a `develop` → `master` PR alone (run **Actions → Haystack Release Pipeline Invoke** after merge to `master`; that workflow creates the GitHub Release)
 - Put Vocareum keys or `LLM_API_KEY` in the image, in `.env.prod`, or on the Run form
 - Type instance IDs on the Run form
 - Run `terraform apply` from this workflow

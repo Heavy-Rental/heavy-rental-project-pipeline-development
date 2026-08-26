@@ -7,10 +7,10 @@ This pipeline-development repo already installs [nektos/act](https://github.com/
 | Command | What it proves |
 | --- | --- |
 | `./haystack-fast-api-pipeline/act/run-act.sh list` | Callers resolve the reusable files |
-| `./haystack-fast-api-pipeline/act/run-act.sh smoke` | Assert caller runs under act (`ACT=true`) |
+| `./haystack-fast-api-pipeline/act/run-act.sh smoke` | Fast Feedback Assert caller runs under act (`ACT=true`) |
 | `./haystack-fast-api-pipeline/act/run-act.sh ci-smoke` | Same for the Integration CI reusable file |
-| `./haystack-fast-api-pipeline/act/run-act.sh dryrun` | Integration job graph (no containers) |
-| `./haystack-fast-api-pipeline/act/run-act.sh integration` | Same, with remote `Heavy-Rental/haystack-fast-api@develop` inputs |
+| `./haystack-fast-api-pipeline/act/run-act.sh dryrun` | Fast Feedback Integration job graph (no containers) |
+| `./haystack-fast-api-pipeline/act/run-act.sh integration` | Same Fast Feedback Integration dry-run, with remote `Heavy-Rental/haystack-fast-api@develop` inputs |
 
 `run-act.sh` stages the install filenames, runs act, then deletes the staged copies.
 
@@ -21,7 +21,7 @@ This pipeline-development repo already installs [nektos/act](https://github.com/
 - **Integration from this repo without remote inputs** — checkout mode is `caller`, and this repo is not the Haystack app (`uv.lock` is missing).
 - **Full `uv sync` / Ruff / pytest** — the Haystack/ML lock is large. Prefer running act **inside a clone of** `Heavy-Rental/haystack-fast-api` after copying the six YAML files.
 - **CodeQL** — not supported by act.
-- **Release caller** — no `workflow_dispatch`; it only fires on a published release or a `develop` → `master` PR.
+- **Release caller** — `workflow_dispatch` only (it does **not** fire on a published GitHub Release or a `develop` → `master` PR; Publish *creates* the GitHub Release). The run checks out `master` and is heavy (uv, Docker, DAST). Prefer running it **inside a clone of** `Heavy-Rental/haystack-fast-api`.
 
 ## Run from the application repo (full Integration)
 

@@ -19,10 +19,11 @@ The haystack CI family SHALL NOT apply infrastructure-as-code, create cloud reso
 The haystack CI family SHALL NOT deploy a packaged artifact onto a runtime. Deployment belongs to another project that may consume Release artifacts.
 
 #### Scenario: Release stops at artifacts
-- GIVEN Packaging succeeds
-- WHEN the Release workflow finishes
+- GIVEN Packaging and DAST succeed
+- WHEN Publish finishes
 - THEN a wheel, sdist, and gzipped image tar have been uploaded
-- AND GHCR push has run only when the event is not a pull request
+- AND GHCR push has run for `<semver>` and `:latest`
+- AND a GitHub Release has been created on `master`
 - AND no job SSHs, applies a rollout, or updates a live service
 
 ### Requirement: Family does not operate production
@@ -37,7 +38,7 @@ The haystack CI family SHALL NOT monitor, alert on, scale, or remediate a live e
 Release packaging SHALL produce artifacts a later deploy project can consume and SHALL NOT require this family to have created the destination platform.
 
 #### Scenario: Artifacts for a later deploy
-- GIVEN Quality Control, Security Testing, and CodeQL already passed
+- GIVEN Quality Control already passed
 - WHEN Packaging finishes
 - THEN versioned and stable wheel/sdist files are uploaded
 - AND a non-empty image tar is uploaded

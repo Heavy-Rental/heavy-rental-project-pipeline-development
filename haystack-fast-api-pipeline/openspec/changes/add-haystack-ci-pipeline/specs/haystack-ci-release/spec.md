@@ -2,15 +2,15 @@
 
 ## Purpose
 
-Release packaging produces versioned Python wheel and sdist artifacts with `uv build` after the quality and security gates pass, plus a Docker image tar (GHCR push off pull request). Packaging is the last job in this **CI** family. Deploying those artifacts is the Academy **CD** family in `deploy-pipeline/` (not this capability).
+Release packaging produces versioned Python wheel and sdist artifacts with `uv build` after Integration and Quality Control pass, plus a Docker image tar. DAST scans that image. Publish then pushes public GHCR and creates the GitHub Release. Security Testing and CodeQL stay on Integration CI. Deploying those artifacts is the Academy **CD** family in `deploy-pipeline/` (not this capability).
 
 ## ADDED Requirements
 
 ### Requirement: Packaging waits for gates
-Packaging SHALL run only after Integration, Quality Control, Security Testing, and CodeQL have succeeded.
+Packaging SHALL run only after Integration and Quality Control have succeeded. It SHALL NOT wait for Security Testing or CodeQL (those jobs are Integration CI only).
 
-#### Scenario: Security red blocks packaging
-- GIVEN Security Testing failed
+#### Scenario: Quality Control red blocks packaging
+- GIVEN Quality Control failed
 - WHEN Packaging is evaluated
 - THEN Packaging does not start
 
@@ -110,17 +110,27 @@ When Packaging generates a Dockerfile, it SHALL `COPY postgres_haystack_sync` an
 - THEN the Dockerfile copies `app/`
 - AND it does not `COPY postgres_haystack_sync`
 
-### Requirement: GHCR push only off pull requests
-Packaging SHALL push the image to `ghcr.io/<owner>/haystack_recommender` tagged with a new `x.y.z` semver and `:latest` when the event is not a pull request. The semver SHALL be the highest existing `x.y.z` tag on that GHCR package with the patch incremented; if no such tag exists, it SHALL be `1.0.0`. Packaging SHALL NOT overwrite an existing `x.y.z` tag. On a `develop` → `master` pull request, Packaging SHALL skip the push and still upload the image tar.
+### Requirement: DAST scans the packaged image
+DAST SHALL run after Packaging succeeds. It SHALL start the packaged image and run OWASP ZAP, Dastardly, and Nuclei. It SHALL upload `dast-reports/` including `combined-dast-report.pdf` (artifact `dast-combined-report-pdf`).
 
-#### Scenario: Published release pushes
-- GIVEN a published GitHub Release triggered the release pipeline
+#### Scenario: DAST needs Packaging
+- GIVEN Packaging failed
+- WHEN DAST is evaluated
+- THEN DAST does not start
+
+### Requirement: Publish pushes GHCR and creates the GitHub Release
+Publish SHALL run after Packaging and DAST succeed. It SHALL push the image to `ghcr.io/<owner>/haystack_recommender` tagged with a new `x.y.z` semver and `:latest`. The semver SHALL be the highest existing `x.y.z` tag on that GHCR package with the patch incremented; if no such tag exists, it SHALL be `1.0.0`. Publish SHALL NOT overwrite an existing `x.y.z` tag. Publish SHALL create a GitHub Release on `master` (`gh release create`). The Release caller SHALL NOT subscribe to `release` or `pull_request` events. Packaging SHALL upload the gzipped image tar and SHALL NOT `docker push`.
+
+#### Scenario: workflow_dispatch publishes
+- GIVEN a `workflow_dispatch` triggered the release pipeline
+- AND DAST succeeded
 - AND the highest GHCR `haystack_recommender` semver tag is `1.0.1` or none exist
-- WHEN Packaging finishes the Docker build
+- WHEN Publish runs
 - THEN `docker push` runs for `ghcr.io/<owner>/haystack_recommender:1.0.2` (or `1.0.0` when none exist) and `:latest`
+- AND `gh release create` runs targeting `master`
 
-#### Scenario: PR skips registry push
-- GIVEN a pull request from `develop` to `master` triggered the release pipeline
-- WHEN Packaging finishes the Docker build
-- THEN no `docker push` runs
-- AND the gzipped image tar is still uploaded
+#### Scenario: Packaging does not push
+- GIVEN Packaging finished the Docker build
+- WHEN Packaging completes
+- THEN no `docker push` runs in Packaging
+- AND the gzipped image tar is still uploaded for DAST and Publish

@@ -2,7 +2,7 @@
 
 ## Why
 
-[Heavy-Rental/haystack-fast-api](https://github.com/Heavy-Rental/haystack-fast-api) has no GitHub Actions workflows. The REST API, web portal, and mobile app already share a reusable-caller GitHub Flow family (fast feedback, integration CI, release). The FastAPI + Haystack service needs the same gates so feature branches, PRs into `develop`, and `develop` → `master` / published releases are validated consistently.
+[Heavy-Rental/haystack-fast-api](https://github.com/Heavy-Rental/haystack-fast-api) has no GitHub Actions workflows. The REST API, web portal, and mobile app already share a reusable-caller GitHub Flow family (fast feedback, integration CI, release). The FastAPI + Haystack service needs the same gates so feature branches, PRs into `develop`, and a manual Release on `master` (`workflow_dispatch`) are validated consistently.
 
 Copy-pasting those YAML files unchanged would install the **wrong toolchain** (Java 21 + Maven + Postgres, Android/Gradle, or Node 22 + Vite). This change uses **Python 3.12, uv, Ruff, pytest, and Haystack pipeline smoke** — the tools the application already declares in `pyproject.toml` / `QUICKSTART.md`.
 
@@ -11,7 +11,7 @@ Copy-pasting those YAML files unchanged would install the **wrong toolchain** (J
 - Add three reusable workflows plus three sole-allowed callers, authored in this pipeline-development repo under `haystack-fast-api-pipeline/`.
 - Integration CI is the merge gate: Integration first, then Quality Control, Security Testing, and CodeQL in parallel, then an aggregate GitHub Flow CI Gate.
 - Fast feedback runs Integration only on feature-branch pushes.
-- Release runs the same gates plus `uv build` wheel/sdist packaging and a Docker image (gzipped tar artifact; GHCR push outside pull requests). Packaging sanitizes `.env.prod` into `/app/.env` (product knobs only). Academy Environment variables are **not** read at Packaging (ADR 0009).
+- Release (`workflow_dispatch`) runs Integration + Quality Control, then Packaging (`uv build` + image tar), DAST, and Publish (public GHCR + GitHub Release). SAST and CodeQL stay on Integration CI. Packaging sanitizes `.env.prod` into `/app/.env` (product knobs only). Academy Environment variables are **not** read at Packaging (ADR 0009).
 - Specify the pipelines with OpenSpec (behavior) and OpenSPDD (REASONS Canvas implementation contract).
 - Bound the family to CI and packaging. Infrastructure, deploy, and operate are another project.
 
@@ -24,7 +24,7 @@ Copy-pasting those YAML files unchanged would install the **wrong toolchain** (J
 - `haystack-ci-quality`: Ruff, pytest (Haystack pipeline + FastAPI TestClient, CI-safe backends)
 - `haystack-ci-security`: Semgrep `p/python` + pip-audit report + Trivy + SARIF
 - `haystack-ci-codeql`: CodeQL python
-- `haystack-ci-release`: `uv build` versioned wheel/sdist plus Docker image tar and GHCR push (off PR)
+- `haystack-ci-release`: `uv build` versioned wheel/sdist plus Docker image tar, DAST, then Publish (public GHCR + GitHub Release)
 - `haystack-ci-scope`: this family stops at packaging; it does not provision infrastructure, deploy, or operate
 
 ### Modified Capabilities
