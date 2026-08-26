@@ -35,7 +35,7 @@ The Spring REST API already has reusable-caller Fast Feedback, Integration CI, a
 | Risk | Mitigation |
 | --- | --- |
 | Treating Release QC Postgres as guest SM | PREPARE + `rest-ci-scope` + ADR 0005 |
-| `environment:` on a `uses:` job | Invalid; secrets map on the caller only |
+| `environment:` on a `uses:` job | Invalid; QC reads Environment secrets on the reusable-workflow job (no caller map, no inherit) |
 | `p/spring` Semgrep 404 | YAML already uses `p/java` + OWASP |
 
 ## Open Questions

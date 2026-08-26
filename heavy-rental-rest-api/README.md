@@ -1,8 +1,8 @@
-# Heavy Rental REST API — GitHub Actions CI and Academy CD
+# Heavy Rental REST API — GitHub Actions CI and app CD
 
 Workflows and specifications for [Heavy-Rental/heavy-rental-spring-rest-api](https://github.com/Heavy-Rental/heavy-rental-spring-rest-api).
 
-This tree (`heavy-rental-rest-api/`) authors Fast Feedback, Integration CI, Release packaging, and Academy **app CD** (`deploy-pipeline/`). It does not provision the VPC or ASGs (infra project). Copy workflows into the Spring repo like Release.
+This tree (`heavy-rental-rest-api/`) authors Fast Feedback, Integration CI, Release packaging, and **Academy + paid app CD** (`deploy-pipeline/`). It does not provision the VPC or ASGs (infra project). Copy workflows into the Spring repo like Release.
 
 Start here: [`specification/README.md`](specification/README.md). App-repo CD checklist: [`docs/PREPARE-SPRING-REPO.md`](docs/PREPARE-SPRING-REPO.md).
 
@@ -11,12 +11,12 @@ Start here: [`specification/README.md`](specification/README.md). App-repo CD ch
 | `specification/` | Human index and CI + CD walkthroughs |
 | `openspec/` | OpenSpec behavior (requirements + scenarios) |
 | `spdd/` | OpenSPDD analysis + REASONS Canvas |
-| `docs/adr/` | ADRs for CI (0004–0007) and CD (0001–0003) |
-| `docs/` | Academy CD operate + [`PREPARE-SPRING-REPO.md`](docs/PREPARE-SPRING-REPO.md) |
+| `docs/adr/` | ADRs for CI (0004–0007) and CD (0001–0003, 0008 two Actions) |
+| `docs/` | App CD operate + [`PREPARE-SPRING-REPO.md`](docs/PREPARE-SPRING-REPO.md) |
 | `fast-feedback-ci-pipeline/` | Integration-only feature-branch pipeline |
 | `integration-pipeline/` | PR / `develop` merge gate |
 | `release-pipeline/` | `develop` → `master` / GitHub Release + WAR + Docker/GHCR |
-| `deploy-pipeline/` | Academy app CD (discover + compose; copy into the app repo) |
+| `deploy-pipeline/` | Academy + paid app CD (discover + compose; copy into the app repo) |
 
 ## GitHub Flow
 

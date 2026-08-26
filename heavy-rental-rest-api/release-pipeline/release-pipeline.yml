@@ -69,11 +69,13 @@
 #   actionlint heavy-rental-rest-api/release-pipeline/release-pipeline.yml
 #   actionlint .github/workflows/rest-api-release.yml
 #
-# Quality Control uses environment: production (hardcoded) and explicit secrets map.
+# Quality Control uses environment: production (hardcoded) and reads
+# REST_API_DB_* from that Environment. The caller must not pass them
+# (a uses: job cannot read Environment secrets; an empty map would shadow QC)
+# and must not use secrets: inherit (Semgrep).
 #
-# Recommended (either works):
-#   A) Settings → Environments → production → Environment secrets
-#   B) Settings → Secrets and variables → Actions → Repository secrets
+# Configure in the APPLICATION repo:
+#   Settings → Environments → production → Environment secrets
 #
 # Names (exact match, same as Integration CI):
 #   REST_API_DB_NAME
@@ -85,7 +87,7 @@
 #   jdbc:postgresql://localhost:<PORT>/<NAME>
 # These start a local Docker Postgres for tests. They are not Academy RDS.
 # Guest CD reads heavy-rental/rest (infra sync-secrets).
-# Caller must use explicit secrets map. Do not set environment: on the caller uses: job.
+# Do not set environment: on the caller uses: job.
 # Never commit real values.
 # =============================================================================
 
@@ -116,20 +118,9 @@ on:
         required: false
         type: string
         default: production
-    secrets:
-      REST_API_DB_NAME:
-        description: PostgreSQL database name (local Docker QC)
-        required: false
-      REST_API_DB_USER:
-        description: PostgreSQL username
-        required: false
-      REST_API_DB_PASSWORD:
-        description: PostgreSQL password
-        required: false
-      REST_API_DB_PORT:
-        description: Host port for CI Postgres container
-        required: false
-      # REST_API_DB_URL is derived after Docker Postgres starts (not a secret)
+    # No workflow_call secrets. QC reads REST_API_DB_* from Environment
+    # "production". Declaring them here would bind empty caller values and
+    # shadow those Environment secrets. REST_API_DB_URL is derived after Postgres starts.
 
 # One run per release tag or develop→master PR; do not cancel in-flight packaging
 concurrency:
@@ -342,7 +333,6 @@ jobs:
     runs-on: ubuntu-latest
     needs: [integration]
     # Hardcoded Environment name (reliable for Environment secrets).
-    # Also receives repository secrets via explicit secrets map from the caller.
     environment: production
     timeout-minutes: 30
     steps:
@@ -354,7 +344,7 @@ jobs:
           REST_API_DB_PORT: ${{ secrets.REST_API_DB_PORT }}
         run: |
           set -euo pipefail
-          echo "Quality Control secrets source: GitHub Environment 'production' and/or repository secrets (via explicit secrets map)."
+          echo "Quality Control secrets source: GitHub Environment 'production'."
           missing=()
           [ -n "${REST_API_DB_NAME}" ] || missing+=(REST_API_DB_NAME)
           [ -n "${REST_API_DB_USER}" ] || missing+=(REST_API_DB_USER)
@@ -364,15 +354,13 @@ jobs:
             echo "::error::Missing required secrets: ${missing[*]}"
             echo ""
             echo "Configure in the APPLICATION repository (where this workflow runs):"
-            echo "  1) Settings → Environments → production → Environment secrets"
-            echo "     OR"
-            echo "  2) Settings → Secrets and variables → Actions → Repository secrets"
+            echo "  Settings → Environments → production → Environment secrets"
             echo ""
             echo "Required names (exact, case-sensitive):"
             echo "  REST_API_DB_NAME, REST_API_DB_USER, REST_API_DB_PASSWORD, REST_API_DB_PORT"
             echo "  (REST_API_DB_URL is optional — built after Docker Postgres starts)"
             echo ""
-            echo "Caller must include: explicit secrets map"
+            echo "Do not put these on the caller uses: job (empty map would shadow this Environment)."
             echo "This job uses: environment: production"
             exit 1
           fi

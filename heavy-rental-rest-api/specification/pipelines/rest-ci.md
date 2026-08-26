@@ -55,7 +55,7 @@ QC “Package WAR” on Integration CI is **build verification**, not a deploy.
 
 ## Secrets
 
-Configure on the **application** repo, not this pipeline-development repo.
+Configure on the **application** repo, not this pipeline-development repo. Put them on the Environment (not repository secrets, and not on the caller `uses:` job).
 
 | Pipeline | Environment | Names |
 | --- | --- | --- |
@@ -64,7 +64,7 @@ Configure on the **application** repo, not this pipeline-development repo.
 
 `REST_API_DB_URL` is **not** a secret. QC builds `jdbc:postgresql://localhost:<PORT>/<NAME>` after Docker Postgres starts. Do not add `REST_API_CLOUD_DB_*`. Guest CD config is `heavy-rental/rest` on the instance.
 
-Caller jobs must use an explicit `secrets:` map. Do not set `environment:` on a `uses:` job.
+Callers must not pass `REST_API_DB_*` and must not use `secrets: inherit`. A `uses:` job cannot read Environment secrets; an explicit map is empty and would shadow QC. Do not set `environment:` on a `uses:` job.
 
 ## Branch protection (application repo `develop`)
 

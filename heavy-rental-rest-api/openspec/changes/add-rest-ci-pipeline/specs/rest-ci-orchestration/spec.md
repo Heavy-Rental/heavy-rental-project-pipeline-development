@@ -104,17 +104,17 @@ Callers and reusable workflows SHALL request `contents: read`, `pull-requests: r
 - WHEN permissions are declared
 - THEN `packages: write` is absent
 
-### Requirement: Explicit secrets map
-The Integration CI and Release callers SHALL pass `REST_API_DB_*` with an explicit `secrets:` map. They SHALL NOT set `environment:` on the `uses:` job and SHALL NOT use `secrets: inherit`. They SHALL NOT pass `REST_API_DB_URL`.
+### Requirement: Caller does not pass QC secrets
+The Integration CI and Release callers SHALL NOT pass `REST_API_DB_*`, SHALL NOT set `environment:` on the `uses:` job, and SHALL NOT use `secrets: inherit`. Quality Control SHALL read `REST_API_DB_*` from its job Environment (`integration` or `production`). They SHALL NOT pass `REST_API_DB_URL`.
 
-#### Scenario: Caller forwards named secrets
+#### Scenario: Integration caller has no secrets map
 - GIVEN `rest-api-ci-caller.yml` invokes the reusable integration workflow
 - WHEN the job is declared
-- THEN `REST_API_DB_NAME`, `REST_API_DB_USER`, `REST_API_DB_PASSWORD`, and `REST_API_DB_PORT` are mapped
+- THEN the `uses:` job has no `secrets:` key
 - AND the `uses:` job has no `environment:` key
 
-#### Scenario: Release caller forwards the same names
+#### Scenario: Release caller has no secrets map
 - GIVEN `rest-api-release-caller.yml` invokes the reusable release workflow
 - WHEN the job is declared
-- THEN `REST_API_DB_NAME`, `REST_API_DB_USER`, `REST_API_DB_PASSWORD`, and `REST_API_DB_PORT` are mapped
+- THEN the `uses:` job has no `secrets:` key
 - AND the `uses:` job has no `environment:` key
