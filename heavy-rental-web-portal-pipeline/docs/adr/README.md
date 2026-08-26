@@ -6,7 +6,7 @@ Conflict order: **OpenSpec → OpenSPDD → ADR → YAML**.
 
 | ID | Title |
 | --- | --- |
-| [0004](0004-portal-ci-reusable-caller.md) | Reusable workflows plus a sole-allowed caller; PR Integration Check reuses Fast Feedback |
+| [0004](0004-portal-ci-reusable-caller.md) | Reusable workflows plus a sole-allowed caller; PR Integration Check reuses Fast Feedback (inlined pending-run jq) |
 | [0005](0005-portal-ci-rest-tests-skip-clean.md) | REST endpoint tests skip cleanly until scripts exist |
 | [0006](0006-portal-ci-stops-at-packaging.md) | CI family stops at packaging |
 | [0007](0007-portal-ci-release-image-cloud-ready.md) | Release image is a static SPA; CD owns `/api` |

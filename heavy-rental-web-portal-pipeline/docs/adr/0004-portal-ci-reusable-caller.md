@@ -17,4 +17,4 @@ Each reusable file exposes only `on: workflow_call`. `assert-caller` fails unles
 
 - Operators copy six YAML files into the React repo `.github/workflows/`. Callers `uses:` the sibling reusable (`./.github/workflows/integration-pipeline.yml` and peers).
 - The authoring folder `integration_pipeline/` does not change the install filename `integration-pipeline.yml`.
-- Integration CI caller must not `uses:` `fast-feedback-pipeline.yml`. On pull_request, Integration Check reuses a successful Fast Feedback run for the PR head SHA.
+- Integration CI caller must not `uses:` `fast-feedback-pipeline.yml`. On pull_request, Integration Check reuses a successful Fast Feedback run for the PR head SHA. An in-flight run is waited on. The pending-run jq filter is inlined in `PENDING_ID` / `PENDING_URL` (same form as `SUCCESS_ID`); splitting it into a `PENDING_FILTER` variable breaks the lookup.

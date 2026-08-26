@@ -31,7 +31,7 @@ Conflict order: **OpenSpec scenarios → OpenSPDD Safeguards → ADR → YAML**.
 
 ### CI family — [`../openspec/changes/add-portal-ci-pipeline/`](../openspec/changes/add-portal-ci-pipeline/)
 
-As-implemented spec of Fast Feedback / Integration Check / Release YAML (PR reuses Fast Feedback). Release is `workflow_dispatch` only (Packaging → DAST → Publish GHCR + GitHub Release).
+As-implemented spec of Fast Feedback / Integration Check / Release YAML (PR reuses Fast Feedback; inlined pending-run jq). Release is `workflow_dispatch` only (Packaging → DAST → Publish GHCR + GitHub Release).
 
 - Proposal: [`proposal.md`](../openspec/changes/add-portal-ci-pipeline/proposal.md)
 - Design: [`design.md`](../openspec/changes/add-portal-ci-pipeline/design.md)

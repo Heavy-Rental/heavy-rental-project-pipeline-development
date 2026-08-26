@@ -35,4 +35,4 @@
 
 - **This repo:** specification + OpenSpec + SPDD + ADRs + CI YAML under `heavy-rental-web-portal-pipeline/`.
 - **Not in this change:** paid CD, Terraform, edits to `deploy-pipeline/` YAML.
-- **As-implemented note:** Release is `workflow_dispatch` only (creates the GitHub Release). Jobs are Integration → QC → Packaging → DAST → Publish. SAST/CodeQL/REST tests stay on Integration CI. Integration CI job is **Integration Check** (`needs: [integration-check]`) and reuses Fast Feedback on PR. Fast Feedback / Integration CI `DEFAULT_APP_REPOSITORY` is `SA62-team1/...`; Release is `Heavy-Rental/...`.
+- **As-implemented note:** Release is `workflow_dispatch` only (creates the GitHub Release). Jobs are Integration → QC → Packaging → DAST → Publish. SAST/CodeQL/REST tests stay on Integration CI. Integration CI job is **Integration Check** (`needs: [integration-check]`) and reuses Fast Feedback on PR (inlined pending-run jq; no `PENDING_FILTER`). Fast Feedback / Integration CI `DEFAULT_APP_REPOSITORY` is `SA62-team1/...`; Release is `Heavy-Rental/...`.

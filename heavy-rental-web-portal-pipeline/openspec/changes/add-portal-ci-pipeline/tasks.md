@@ -14,6 +14,7 @@ As-implemented documentation of the Fast Feedback / Integration / Release YAML.
 - [x] 1.8 Bake academy `VITE_STRIPE_PUBLISHABLE_KEY` at Packaging; CD overlays guest `.env`
 - [x] 1.9 Record Release as `workflow_dispatch` only (Packaging → DAST → Publish GHCR + GitHub Release)
 - [x] 1.10 Align specs with Integration Check and Fast Feedback reuse
+- [x] 1.11 Record inlined pending-run jq (`PENDING_ID` / `PENDING_URL`; no `PENDING_FILTER`)
 
 ## 2. YAML
 

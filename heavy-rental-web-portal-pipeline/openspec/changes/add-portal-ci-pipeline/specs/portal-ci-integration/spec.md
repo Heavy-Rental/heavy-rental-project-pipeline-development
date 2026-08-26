@@ -32,7 +32,7 @@ When install-health checks run, Integration SHALL install Node 22 and SHALL use 
 - THEN the runner Node version is 22
 
 ### Requirement: npm ci on cache miss
-When install-health checks run, Integration SHALL restore `node_modules` from cache keyed on `package-lock.json` when possible. On a cache miss it SHALL run `npm ci`. It SHALL fail if `package-lock.json` is missing after install checks. On Integration CI pull_request, Cache `node_modules`, `npm ci`, and install-health checks SHALL be skipped when Fast Feedback already succeeded for the PR head SHA.
+When install-health checks run, Integration SHALL restore `node_modules` from cache keyed on `package-lock.json` when possible. On a cache miss it SHALL run `npm ci`. It SHALL fail if `package-lock.json` is missing after install checks. On Integration CI pull_request, Cache `node_modules`, `npm ci`, and install-health checks SHALL be skipped when Fast Feedback already succeeded for the PR head SHA. When Fast Feedback for that SHA is still queued or in progress, Integration Check SHALL wait for it using inlined pending-run jq (`PENDING_ID` / `PENDING_URL`; no `PENDING_FILTER` variable).
 
 #### Scenario: Lock present
 - GIVEN the application contains `package-lock.json`
@@ -47,6 +47,14 @@ When install-health checks run, Integration SHALL restore `node_modules` from ca
 - WHEN Integration Check continues
 - THEN Cache `node_modules`, `npm ci`, and install-health steps are skipped
 - AND the job still succeeds
+
+#### Scenario: PR waits for in-flight Fast Feedback before skipping npm
+- GIVEN Integration Check on a pull_request
+- AND Fast Feedback for the PR head SHA is queued or in progress
+- WHEN Integration Check looks up that run
+- THEN the pending-status jq filter is inlined in `PENDING_ID` / `PENDING_URL` (no `PENDING_FILTER` variable)
+- AND it waits for that run to finish
+- AND if Fast Feedback succeeds, Cache `node_modules`, `npm ci`, and install-health steps are skipped
 
 ### Requirement: Install health
 When install-health checks run, Integration SHALL print Node/npm versions, list scripts, and run `npm ls --depth=0`.
