@@ -2,7 +2,7 @@
 
 ## Purpose
 
-This family is CI and Release packaging. Academy app CD is a separate family in `deploy-pipeline/`. Infrastructure setup and operate live in the infra project.
+This family is CI and Release packaging. Academy and paid app CD is a separate family in `deploy-pipeline/`. Infrastructure setup and operate live in the infra project.
 
 ## ADDED Requirements
 
@@ -16,13 +16,14 @@ The REST CI family SHALL NOT apply infrastructure-as-code, create cloud resource
 - AND no job creates `asg-rest`
 
 ### Requirement: Family does not deploy
-The REST CI family SHALL NOT compose onto `asg-rest` or SSH to a guest. Deployment belongs to the Academy CD family.
+The REST CI family SHALL NOT compose onto `asg-rest` or SSH to a guest. Deployment belongs to the Academy / paid CD family.
 
 #### Scenario: Release stops at artifacts
-- GIVEN Packaging succeeds
+- GIVEN Publish succeeds
 - WHEN the Release workflow finishes
 - THEN a WAR and a gzipped image tar have been uploaded
-- AND GHCR push has run only when the event is not a pull request
+- AND GHCR push has run (dispatch-only caller)
+- AND a GitHub Release exists on `master`
 - AND no job runs Ansible or SSM compose
 
 ### Requirement: Family does not operate production

@@ -15,7 +15,7 @@ Quality Control SHALL run only after Integration succeeds and SHALL check out th
 - THEN it checks out the application using those outputs
 
 ### Requirement: Integration CI uses Environment integration
-On the Integration CI reusable workflow, Quality Control SHALL set `environment: integration` and SHALL require secrets `REST_API_DB_NAME`, `REST_API_DB_USER`, `REST_API_DB_PASSWORD`, and `REST_API_DB_PORT`.
+On the Integration CI reusable workflow, Quality Control SHALL hardcode `environment: integration` (the `github_environment` workflow_call input is unused) and SHALL require secrets `REST_API_DB_NAME`, `REST_API_DB_USER`, `REST_API_DB_PASSWORD`, and `REST_API_DB_PORT`.
 
 #### Scenario: Missing integration secret fails
 - GIVEN any of `REST_API_DB_NAME`, `REST_API_DB_USER`, `REST_API_DB_PASSWORD`, `REST_API_DB_PORT` is empty
@@ -23,7 +23,7 @@ On the Integration CI reusable workflow, Quality Control SHALL set `environment:
 - THEN the job fails before starting Postgres
 
 ### Requirement: Release uses Environment production
-On the Release reusable workflow, Quality Control SHALL set `environment: production` and SHALL require `REST_API_DB_NAME`, `REST_API_DB_USER`, `REST_API_DB_PASSWORD`, and `REST_API_DB_PORT`. It SHALL NOT require `REST_API_DB_URL` or `REST_API_CLOUD_DB_*`.
+On the Release reusable workflow, Quality Control SHALL hardcode `environment: production` (the `github_environment` workflow_call input is unused) and SHALL require `REST_API_DB_NAME`, `REST_API_DB_USER`, `REST_API_DB_PASSWORD`, and `REST_API_DB_PORT`. It SHALL NOT require `REST_API_DB_URL` or `REST_API_CLOUD_DB_*`.
 
 #### Scenario: Missing production secret fails
 - GIVEN any of `REST_API_DB_NAME`, `REST_API_DB_USER`, `REST_API_DB_PASSWORD`, `REST_API_DB_PORT` is empty

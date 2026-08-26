@@ -15,19 +15,18 @@ Start here: [`specification/README.md`](specification/README.md). App-repo CD ch
 | `docs/` | App CD operate + [`PREPARE-SPRING-REPO.md`](docs/PREPARE-SPRING-REPO.md) |
 | `fast-feedback-ci-pipeline/` | Integration-only feature-branch pipeline |
 | `integration-pipeline/` | PR / `develop` merge gate |
-| `release-pipeline/` | `develop` → `master` / GitHub Release + WAR + Docker/GHCR |
+| `release-pipeline/` | `workflow_dispatch` Release: checkout `master` + WAR + DAST + GHCR + GitHub Release |
 | `deploy-pipeline/` | Academy + paid app CD (discover + compose; copy into the app repo) |
 
 ## GitHub Flow
 
 ```
 feature branch push  →  Fast Feedback (Integration only)
-PR / push → develop  →  Integration CI (full gates, no packaging)
-develop → master PR or published GitHub Release
-                     →  Release (full gates + WAR + Docker image)
+PR / push → develop  →  Integration CI (full gates, no packaging; SAST here)
+workflow_dispatch     →  Release (master + QC + image + DAST + public GHCR + GitHub Release)
 ```
 
-Release stops at **packaged artifacts** (WAR, image tar; GHCR push off pull request). Academy CD consumes a public GHCR/ECR tag or the tar.
+Release does **not** rerun SAST/CodeQL. Packaging writes the WAR and image tar; **Publish** pushes public GHCR and creates the GitHub Release. The caller is `workflow_dispatch` only (it must not use `on: release` — it **creates** the GitHub Release). Academy and paid CD consume a public GHCR/ECR tag or the tar.
 
 ## Pipeline boundaries
 
@@ -35,7 +34,7 @@ Release stops at **packaged artifacts** (WAR, image tar; GHCR push off pull requ
 | --- | --- |
 | Build, test, and package | In scope |
 | Create or change infrastructure | Out of scope (infra project) |
-| Deploy the packaged service | Academy CD in `deploy-pipeline/` (copy into the app repo). Needs a public GHCR/ECR tag from Release |
+| Deploy the packaged service | Academy + paid CD in `deploy-pipeline/` (copy into the app repo). Needs a public GHCR/ECR tag from Release |
 | Operate the live system | Infra estate + this CD. See [`docs/BOOTSTRAP.md`](docs/BOOTSTRAP.md) |
 
 ## Toolchain
@@ -52,4 +51,4 @@ Release stops at **packaged artifacts** (WAR, image tar; GHCR push off pull requ
 | Code scanning | CodeQL `java-kotlin` |
 | Package | versioned WAR + `tomcat:10.1-jdk21-temurin` + `ROOT.war` |
 
-Reusable YAML `DEFAULT_APP_REPOSITORY` is `SA62-team1/heavy-rental-spring-rest-api` (local `act` fallback). When Release/CI runs **in** `Heavy-Rental/heavy-rental-spring-rest-api`, checkout is the calling repo.
+Reusable YAML `DEFAULT_APP_REPOSITORY` is `SA62-team1/heavy-rental-spring-rest-api` on Fast Feedback and Integration CI (local `act` fallback). Release uses `Heavy-Rental/heavy-rental-spring-rest-api`. When Fast Feedback or Integration CI runs **in** `Heavy-Rental/heavy-rental-spring-rest-api`, checkout is the calling commit. Release always checks out **`master`**.

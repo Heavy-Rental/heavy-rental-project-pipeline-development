@@ -1,4 +1,4 @@
-# Prepare heavy-rental-spring-rest-api for Academy CD
+# Prepare heavy-rental-spring-rest-api for Academy and paid CD
 
 **App repo:** [Heavy-Rental/heavy-rental-spring-rest-api](https://github.com/Heavy-Rental/heavy-rental-spring-rest-api)  
 **Release CI:** `release-pipeline/` (already copied into the app repo `.github/workflows/` on `develop`)  
@@ -43,12 +43,13 @@ GHCR name: `ghcr.io/<owner>/heavy_rental_rest_api` (lowercase). On `Heavy-Rental
 
 | Release trigger | What you get |
 | --- | --- |
-| PR `develop` → `master` | Versioned WAR + docker **tar artifact**. **No GHCR push.** |
-| **Published GitHub Release** | Tar **and** GHCR `<version>` + `:latest` |
+| **Actions → Release → Run workflow** (`workflow_dispatch`) | Checks out `master`, DAST, public GHCR `<version>` + `:latest`, and creates the GitHub Release (tar is also uploaded). |
 
-Academy guests pull **public** GHCR with no token. A PR build is not enough for `REST_IMAGE=ghcr.io/…` unless you `docker load` the tar (`image_http_url` / `IMAGE_HTTP_URL`) or copy the image to ECR.
+The Release caller is dispatch-only. Do not add `on: release` — this workflow **creates** the GitHub Release. Do not expect GHCR from a `develop` → `master` PR.
 
-`DEFAULT_APP_REPOSITORY: SA62-team1/…` in the reusable YAML is only for local `act`. When Release runs **in** `heavy-rental-spring-rest-api`, checkout is the calling repo (into `app/`). That is correct.
+Academy guests pull **public** GHCR with no token. If GHCR is private, `docker load` the tar (`image_http_url` / `IMAGE_HTTP_URL`) or copy the image to ECR.
+
+Fast Feedback / Integration CI `DEFAULT_APP_REPOSITORY: SA62-team1/…` is only for local `act`. Release’s fallback is `Heavy-Rental/heavy-rental-spring-rest-api`. When Release runs **in** `heavy-rental-spring-rest-api`, checkout is still **`master`** (into `app/`), not the calling SHA. That is correct.
 
 ---
 
@@ -133,7 +134,7 @@ Paste Vocareum AWS Details on each Run after Start Lab, **or** store these as En
 
 This CD does **not** create the ASG. Before any `deploy`:
 
-1. Infra `action=apply` created `asg-rest` (internal ALB `:8080`).
+1. Infra `action=apply` created `asg-rest` (internet-facing REST ALB `:8080`; guests stay private).
 2. Infra `sync-secrets` filled **`heavy-rental/rest`**.
 3. Guests are InService and SSM Online (Start Lab if the session ended). Desired=0 → infra, not this CD.
 
@@ -180,4 +181,4 @@ Re-run infra `configure-only` after this patch so guests get a new `.env` includ
 - Put Vocareum keys or `sk_` in the image
 - Type instance IDs on the Run form
 - Run `terraform apply` from this workflow
-- Expect GHCR from a `develop`→`master` PR alone
+- Expect GHCR from a `develop`→`master` PR (Release is `workflow_dispatch` only)

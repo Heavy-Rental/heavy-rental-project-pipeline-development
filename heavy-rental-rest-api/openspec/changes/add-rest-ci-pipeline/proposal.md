@@ -9,7 +9,7 @@
 - OpenSpec capabilities for orchestration, Integration, QC, Security, CodeQL, Release packaging, and CI scope.
 - OpenSPDD analysis + REASONS Canvas bound to the existing six YAML files.
 - Human `specification/` index and `pipelines/rest-ci.md`.
-- CI ADRs 0004–0006 (caller gate, Environment secret split, CI stops at packaging).
+- CI ADRs 0004–0007 (caller gate, Environment secret split, CI stops at packaging, env-driven Tomcat image).
 
 ## Capabilities
 
@@ -32,3 +32,4 @@
 - **This repo:** specification + OpenSpec + SPDD + ADRs under `heavy-rental-rest-api/`.
 - **Application repo:** no copy required for this documentation change.
 - **Not in this change:** new gates, paid CD, Terraform, edits to `deploy-pipeline/` YAML.
+- **As-implemented note:** Release is `workflow_dispatch` only (creates the GitHub Release). Jobs are Integration → QC → Packaging → DAST → Publish. SAST/CodeQL stay on Integration CI. Fast Feedback / Integration CI `DEFAULT_APP_REPOSITORY` is `SA62-team1/...`; Release is `Heavy-Rental/...`.

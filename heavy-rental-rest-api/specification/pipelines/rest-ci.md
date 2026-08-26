@@ -4,9 +4,11 @@
 **Authoring tree:** `heavy-rental-rest-api/` in this pipeline-development repo  
 **Stack:** Spring Boot / Java 21 / Maven wrapper / PostgreSQL / WAR → Tomcat 10.1
 
-This family validates and packages the service. It does not create infrastructure or operate production. Academy **app CD** is [`rest-cd.md`](rest-cd.md).
+This family validates and packages the service. It does not create infrastructure or operate production. Academy and paid **app CD** is [`rest-cd.md`](rest-cd.md).
 
-Reusable YAML `DEFAULT_APP_REPOSITORY` is `SA62-team1/heavy-rental-spring-rest-api` (local `act`). When the caller runs **in** the Heavy-Rental Spring repo, checkout is the calling repo (into `app/`).
+Reusable YAML `DEFAULT_APP_REPOSITORY` is `SA62-team1/heavy-rental-spring-rest-api` on Fast Feedback and Integration CI (local `act` fallback). Release uses `Heavy-Rental/heavy-rental-spring-rest-api`. When a caller runs **in** the Heavy-Rental Spring repo, Fast Feedback and Integration CI check out the calling commit (into `app/`). Release always checks out **`master`**.
+
+Callers pass `github_environment` (`integration` / `production`). Quality Control **hardcodes** `environment: integration` or `environment: production`; the input is unused.
 
 ## GitHub Flow
 
@@ -27,13 +29,37 @@ assert-caller
       ├── Quality Control     environment: integration + REST_API_DB_*
       │                       Docker postgres:16-alpine, compile, test, package WAR
       ├── Security Testing    Semgrep Java/OWASP + Trivy SARIF
-      └── CodeQL Analysis     java / security-and-quality
+      └── CodeQL Analysis     java-kotlin / security-and-quality
       │
       ▼
  GitHub Flow CI Gate
 ```
 
-Release adds **Packaging** after Integration + QC + Security + CodeQL. Release QC uses Environment `production` and the same `REST_API_DB_*` names as Integration (still a **local** Docker Postgres). Packaging writes a versioned WAR, a Tomcat image tar, GHCR push off PR, and a localhost JDBC env file **without password**. That env file is a workflow artifact only; Academy CD does not use it. The image must accept `POSTGRES_*` / `SPRING_DATASOURCE_*` / `HAYSTACK_BASE_URL` / Stripe / `APP_JWT_SECRET` at runtime (ADR 0007); Packaging proves that with dummy env and refuses baked hostnames.
+## Job graph (Release)
+
+SAST/CodeQL stay on Integration CI (`develop`). Release does **not** rerun them.
+
+```
+assert-caller
+      │
+      ▼
+ Integration          checkout master, Java 21 + ./mvnw, layout
+      │
+      ▼
+ Quality Control      environment: production + REST_API_DB_*
+                      Docker postgres:16-alpine, compile, test, package WAR
+      │
+      ▼
+ Packaging            versioned WAR + Tomcat image tar (needs Integration + QC)
+      │
+      ▼
+ DAST                 run image; OWASP ZAP + Dastardly + Nuclei
+      │
+      ▼
+ Publish              public GHCR + GitHub Release on master
+```
+
+Release QC uses Environment `production` (hardcoded) and the same `REST_API_DB_*` names as Integration (still a **local** Docker Postgres). Packaging writes a versioned WAR, a Tomcat image tar, and a localhost JDBC env file **without password**. That env file is a workflow artifact only; Academy CD does not use it. The image must accept `POSTGRES_*` / `SPRING_DATASOURCE_*` / `HAYSTACK_BASE_URL` / Stripe / `APP_JWT_SECRET` at runtime (ADR 0007); Packaging proves that with dummy env and refuses baked hostnames. **Publish** (not Packaging) pushes `ghcr.io/<owner>/heavy_rental_rest_api:<x.y.z>` and `:latest`, then creates the GitHub Release. The Release caller is `workflow_dispatch` only, so GHCR always runs on a successful dispatch.
 
 QC “Package WAR” on Integration CI is **build verification**, not a deploy.
 
@@ -109,4 +135,4 @@ actionlint heavy-rental-rest-api/release-pipeline/rest-api-release-caller.yml
 
 - OpenSpec: [`../../openspec/changes/add-rest-ci-pipeline/`](../../openspec/changes/add-rest-ci-pipeline/)
 - OpenSPDD: [`../../spdd/analysis/add-rest-ci-pipeline.md`](../../spdd/analysis/add-rest-ci-pipeline.md)
-- ADRs 0004–0006: [`../../docs/adr/`](../../docs/adr/)
+- ADRs 0004–0007: [`../../docs/adr/`](../../docs/adr/)

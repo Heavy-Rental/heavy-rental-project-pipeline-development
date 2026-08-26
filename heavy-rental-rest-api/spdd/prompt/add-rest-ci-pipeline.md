@@ -10,9 +10,9 @@ When reality diverges, fix this prompt first — then update the YAML.
 ## R — Requirements
 
 - Three-pipeline GitHub Flow family for the Spring REST API.
-- Fast Feedback: Integration only, feature-branch pushes (ignore `master`/`develop`).
+- Fast Feedback: Integration only, feature-branch pushes (ignore `master`/`develop`). No `pull_request` trigger.
 - Integration CI: PR/push `develop` + `workflow_dispatch`. Jobs: Assert caller → Integration → (QC ∥ Security ∥ CodeQL) → GitHub Flow CI Gate.
-- Release: published GitHub Release **or** PR `develop` → `master`. Same gates + Packaging (WAR + Tomcat image; tar always; GHCR off PR). Image is env-driven: refuse baked `POSTGRES_*` / `SPRING_DATASOURCE_*` / `HAYSTACK_*` / `STRIPE_*` / `APP_JWT_*`; prove dummy runtime env. Do not `COPY` `spring-datasource.env` into the image.
+- Release: `workflow_dispatch` only (creates the GitHub Release; do not use `on: release`). Jobs: Assert caller → Integration (checkout `master`) → QC → Packaging → DAST → Publish. No Security Testing or CodeQL on Release. Image is env-driven: refuse baked `POSTGRES_*` / `SPRING_DATASOURCE_*` / `HAYSTACK_*` / `STRIPE_*` / `APP_JWT_*`; prove dummy runtime env. Do not `COPY` `spring-datasource.env` into the image. Publish (not Packaging) pushes GHCR and `gh release create`.
 - Java 21 Temurin + `./mvnw`. QC starts Docker `postgres:16-alpine`.
 - Integration QC secrets: `REST_API_DB_*` / Environment `integration`.
 - Release QC secrets: same `REST_API_DB_*` names / Environment `production`. `REST_API_DB_URL` is derived.
@@ -30,16 +30,18 @@ classDiagram
     class SecurityTestingJob
     class CodeQLJob
     class PackagingJob
+    class DastJob
+    class PublishJob
     class GitHubFlowGateJob
     CallerWorkflow --> ReusableWorkflow : uses
     ReusableWorkflow --> IntegrationJob
     IntegrationJob --> QualityControlJob
     IntegrationJob --> SecurityTestingJob
     IntegrationJob --> CodeQLJob
-    QualityControlJob --> PackagingJob
-    SecurityTestingJob --> PackagingJob
-    CodeQLJob --> PackagingJob
     QualityControlJob --> GitHubFlowGateJob
+    QualityControlJob --> PackagingJob
+    PackagingJob --> DastJob
+    DastJob --> PublishJob
 ```
 
 Artifacts:
@@ -49,15 +51,17 @@ Artifacts:
 | Maven fingerprint | `pom.xml` |
 | Test reports | surefire / failsafe |
 | SARIF | `security-reports/semgrep.sarif`, `security-reports/trivy-fs.sarif` |
-| Release WAR | versioned + stable copies |
-| Release image tar | `heavy-rental-rest-api-v{version}-build{run}-{sha}.tar.gz` |
-| GHCR | `ghcr.io/{owner}/heavy-rental-rest-api:{tag}` (not on pull_request) |
+| Combined security PDF | `security-combined-report-pdf` (Integration CI) |
+| Release WAR | versioned `heavy-rental-rest-api-v{version}-build{run}-{sha}.war` + stable copy |
+| Release image tar | `heavy_rental_rest_api-image.tar.gz` |
+| GHCR | `ghcr.io/{owner}/heavy_rental_rest_api:{x.y.z}` and `:latest` (Publish on dispatch) |
+| Combined DAST PDF | `dast-combined-report-pdf` |
 | Cloud JDBC env | `release-deploy-config/spring-datasource.env` (no password) |
 
 ## A — Approach
 
 - Keep existing YAML. New work is OpenSpec + SPDD + ADR + `specification/`.
-- `DEFAULT_APP_REPOSITORY`: `SA62-team1/heavy-rental-spring-rest-api` (act). Installed caller uses the Heavy-Rental Spring repo.
+- Fast Feedback / Integration CI `DEFAULT_APP_REPOSITORY`: `SA62-team1/heavy-rental-spring-rest-api` (act). Release: `Heavy-Rental/heavy-rental-spring-rest-api`. Installed Fast Feedback / CI callers check out the calling commit; Release always checks out `master`.
 
 ## S — Structure
 
@@ -82,6 +86,8 @@ Job `name:` values (branch protection):
 - `CodeQL Analysis`
 - `GitHub Flow CI Gate`
 - `Packaging` (release only)
+- `DAST` (release only)
+- `Publish` (release only)
 
 ## O — Operations
 
@@ -93,7 +99,7 @@ Job `name:` values (branch protection):
 
 - `# ====...====` headers on YAML.
 - `set -euo pipefail` on multi-line `run:`.
-- No `secrets: inherit`.
+- No `secrets: inherit` on **CI** callers (paid CD does inherit; that is a different family).
 - No `environment:` on caller `uses:` jobs.
 - Bind `github.*` / `inputs.*` through `env:` inside `run:`.
 - SARIF is the security report standard.
@@ -106,7 +112,8 @@ Job `name:` values (branch protection):
 - **DO NOT** bake `POSTGRES_*`, `SPRING_DATASOURCE_*`, `HAYSTACK_*`, `STRIPE_*`, `APP_JWT_*`, or `REST_API_*` into the Release image (`ENV`/`ARG`/`COPY .env`/`--build-arg`).
 - **DO NOT** `COPY` `spring-datasource.env` into the image.
 - **DO NOT** require `REST_API_DB_URL` as a secret.
-- **DO NOT** `docker push` on pull_request events.
+- **DO NOT** subscribe the Release caller to `pull_request` or `on: release` (dispatch only; Publish creates the GitHub Release).
+- **DO NOT** `docker push` from Packaging (Publish does).
 - **DO NOT** put `on: push` on reusable files.
 - **DO NOT** use Python/uv, Node, or Android SDK as the app toolchain.
 - **DO NOT** cancel in-progress Release runs.
