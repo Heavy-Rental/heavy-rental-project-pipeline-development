@@ -2,29 +2,29 @@
 
 ## Purpose
 
-Release packaging produces a Vite `dist/` zip and an nginx Docker image after the quality and security gates pass.
+Release packaging produces a Vite `dist/` zip and an nginx Docker image tar after Integration and Quality Control pass. DAST scans that image. Publish then pushes public GHCR and creates the GitHub Release. Security Testing, CodeQL, and REST Endpoint Tests stay on Integration CI.
 
 ## ADDED Requirements
 
 ### Requirement: Packaging waits for gates
-Packaging SHALL run only after Integration, Quality Control, Security Testing, and CodeQL have succeeded.
+Packaging SHALL run only after Integration and Quality Control have succeeded. It SHALL NOT wait for Security Testing or CodeQL (those jobs are Integration CI only).
 
-#### Scenario: Security red blocks packaging
-- GIVEN Security Testing failed
+#### Scenario: Quality Control red blocks packaging
+- GIVEN Quality Control failed
 - WHEN Packaging is evaluated
 - THEN Packaging does not start
 
-### Requirement: Vite production build
-Packaging SHALL run `npm run build` and SHALL fail if `dist/` is missing, `dist/index.html` is missing, or no JavaScript bundle exists. It SHALL fail if `dist/` looks like source (`package.json` or `node_modules` inside `dist/`).
+### Requirement: Vite api-mode build
+Packaging SHALL run `npx tsc -b` then `npx vite build --mode api` and SHALL fail if `dist/` is missing, `dist/index.html` is missing, or no JavaScript bundle exists. It SHALL fail if `dist/` looks like source (`package.json` or `node_modules` inside `dist/`). It SHALL NOT run `npm run build` (`MODE=production`).
 
 #### Scenario: SPA output
-- GIVEN `npm run build` succeeds
+- GIVEN `npx vite build --mode api` succeeds
 - WHEN Packaging verifies output
 - THEN `dist/index.html` exists
 - AND at least one `.js` or `.mjs` file exists under `dist/`
 
-### Requirement: Zip plus nginx image
-Packaging SHALL zip the `dist/` contents and SHALL always generate and build an `nginx:1.27-alpine` image serving that static tree (SPA try_files on port 80). It SHALL NOT use an application `Dockerfile` as the GHCR/CD image. It SHALL save a gzipped image tar.
+### Requirement: Zip plus nginx image tar
+Packaging SHALL zip the `dist/` contents and SHALL always generate and build an `nginx:1.27-alpine` image serving that static tree (SPA try_files on port 80). It SHALL NOT use an application `Dockerfile` as the GHCR/CD image. It SHALL save a gzipped image tar. Packaging SHALL NOT `docker push`.
 
 #### Scenario: App Dockerfile is not the deploy image
 - GIVEN the React repo contains a `Dockerfile`
@@ -37,28 +37,19 @@ Packaging SHALL zip the `dist/` contents and SHALL always generate and build an 
 - WHEN Packaging saves the image
 - THEN a gzipped tar artifact exists and is non-empty
 
-### Requirement: GHCR push only off pull requests
-Packaging SHALL push the image to `ghcr.io/<owner>/heavy_rental_web_portal` tagged with a new `x.y.z` semver and `:latest` when the event is not a pull request. The semver SHALL be the highest existing `x.y.z` tag on that GHCR package with the patch incremented; if no such tag exists, it SHALL be `1.0.0`. Packaging SHALL NOT overwrite an existing `x.y.z` tag. On a `develop` → `master` pull request it SHALL skip the push and still upload the tar.
+#### Scenario: Packaging does not push
+- GIVEN Packaging finished the Docker build
+- WHEN Packaging completes
+- THEN no `docker push` runs in Packaging
+- AND the gzipped image tar is still uploaded for DAST and Publish
 
-#### Scenario: Published release pushes
-- GIVEN a published GitHub Release triggered the release pipeline
-- AND the highest GHCR `heavy_rental_web_portal` semver tag is `1.0.1` or none exist
-- WHEN Packaging finishes the Docker build
-- THEN `docker push` runs for `ghcr.io/<owner>/heavy_rental_web_portal:1.0.2` (or `1.0.0` when none exist) and `:latest`
-
-#### Scenario: PR skips registry push
-- GIVEN a pull request from `develop` to `master` triggered the release pipeline
-- WHEN Packaging finishes the Docker build
-- THEN no `docker push` runs
-- AND the gzipped image tar is still uploaded
-
-### Requirement: Vite production profile is scanned before npm run build
+### Requirement: Vite production profile is scanned before vite build
 Packaging SHALL seed `.env.production` from the app checkout (`.env.production` or `docs/samples/.env.production`) or generated empty-backend defaults. It SHALL fail if that file assigns `sk_`, `whsec_`, `REST_BASE_URL` / `HAYSTACK_BASE_URL` / non-empty `VITE_*` backend URLs (except a same-origin path), `APP_JWT_SECRET`, `POSTGRES_*`, or lab `localhost:8080` / `8000`. Packaging SHALL run `npx tsc -b` then `npx vite build --mode api` so `import.meta.env.MODE` is `api` (Spring login, rental-plan cart, deposit). It SHALL pass empty process-env `VITE_API_TARGET`, `VITE_API_URL`, `VITE_REST_*`, and `VITE_HAYSTACK_*` (overrides app `.env.api` compose hostname). Packaging SHALL NOT `COPY` `.env` / `.env.production` into the nginx image.
 
 #### Scenario: Lab URL in .env.production fails
 - GIVEN app `.env.production` contains `VITE_REST_BASE_URL=http://localhost:8080`
 - WHEN Packaging scans the file
-- THEN the job fails before `npm run build`
+- THEN the job fails before `vite build`
 
 #### Scenario: Academy image is Vite mode api
 - GIVEN Packaging builds the SPA
@@ -67,7 +58,7 @@ Packaging SHALL seed `.env.production` from the app checkout (`.env.production` 
 - AND process env `VITE_API_TARGET` is empty
 
 ### Requirement: Academy Stripe publishable key is baked at Packaging
-Packaging SHALL use Environment `academy` and SHALL pass non-empty `vars.VITE_STRIPE_PUBLISHABLE_KEY` into `vite build --mode api` as process env. Empty SHALL warn and SHALL NOT fail. A value starting with `sk_` or `whsec_` SHALL fail. Packaging SHALL NOT pass `STRIPE_API_KEY`.
+Packaging SHALL use Environment `academy` and SHALL pass non-empty `vars.VITE_STRIPE_PUBLISHABLE_KEY` into `vite build --mode api` as process env. Empty SHALL warn and SHALL NOT fail. A value starting with `sk_` or `whsec_` SHALL fail. Packaging SHALL NOT pass `STRIPE_API_KEY`. Fast Feedback and Integration CI SHALL NOT set `environment:`.
 
 #### Scenario: Academy pk_ is injected
 - GIVEN Environment `academy` variable `VITE_STRIPE_PUBLISHABLE_KEY` is `pk_test_example`
@@ -108,3 +99,22 @@ After `docker build`, Packaging SHALL inspect `Config.Env` (no baked REST/Vite/S
 - THEN `GET /` on port 80 returns HTML
 - AND `GET /spa-fallback-check` returns HTML
 - AND the container is removed before Packaging finishes
+
+### Requirement: DAST scans the packaged image
+DAST SHALL run after Packaging succeeds. It SHALL start the packaged image and run OWASP ZAP, Dastardly, and Nuclei. It SHALL upload `dast-reports/` including `combined-dast-report.pdf` (artifact `dast-combined-report-pdf`).
+
+#### Scenario: DAST needs Packaging
+- GIVEN Packaging failed
+- WHEN DAST is evaluated
+- THEN DAST does not start
+
+### Requirement: Publish pushes GHCR and creates the GitHub Release
+Publish SHALL run after Packaging and DAST succeed. It SHALL push the image to `ghcr.io/<owner>/heavy_rental_web_portal` tagged with a new `x.y.z` semver and `:latest`. The semver SHALL be the highest existing `x.y.z` tag on that GHCR package with the patch incremented; if no such tag exists, it SHALL be `1.0.0`. Publish SHALL NOT overwrite an existing `x.y.z` tag. Publish SHALL create a GitHub Release on `master` (`gh release create`). The Release caller SHALL NOT subscribe to `release` or `pull_request` events.
+
+#### Scenario: workflow_dispatch publishes
+- GIVEN a `workflow_dispatch` triggered the release pipeline
+- AND DAST succeeded
+- AND the highest GHCR `heavy_rental_web_portal` semver tag is `1.0.1` or none exist
+- WHEN Publish runs
+- THEN `docker push` runs for `ghcr.io/<owner>/heavy_rental_web_portal:1.0.2` (or `1.0.0` when none exist) and `:latest`
+- AND `gh release create` runs targeting `master`

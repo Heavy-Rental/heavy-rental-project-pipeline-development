@@ -1,8 +1,8 @@
 # Portal app CD (Academy)
 
-This workflow discovers `asg-portal` and can re-run portal compose (branch 2). It does **not** run Terraform or create the ASG. The Release image is a **React + Vite static SPA** (`npm run build` → nginx). This CD mounts nginx `/api` → `REST_BASE_URL`.
+This workflow discovers `asg-portal` and can re-run portal compose (branch 2). It does **not** run Terraform or create the ASG. The Release image is a **React + Vite static SPA** (`vite build --mode api` → nginx). This CD mounts nginx `/api` → `REST_BASE_URL`.
 
-Specification index: [`../specification/README.md`](../specification/README.md). CD walkthrough: [`../specification/pipelines/portal-cd.md`](../specification/pipelines/portal-cd.md). App-repo checklist: [`PREPARE-PORTAL-REPO.md`](PREPARE-PORTAL-REPO.md). GHCR publish (login skipped on PR, no `GITHUB_TOKEN` secret): [`GHCR-RELEASE.md`](GHCR-RELEASE.md). Vite production sample: [`samples/.env.production`](samples/.env.production).
+Specification index: [`../specification/README.md`](../specification/README.md). CD walkthrough: [`../specification/pipelines/portal-cd.md`](../specification/pipelines/portal-cd.md). App-repo checklist: [`PREPARE-PORTAL-REPO.md`](PREPARE-PORTAL-REPO.md). GHCR publish (dispatch Release after merge; Publish creates the GitHub Release; no `GITHUB_TOKEN` secret): [`GHCR-RELEASE.md`](GHCR-RELEASE.md). Vite production sample: [`samples/.env.production`](samples/.env.production).
 
 Install from **`deploy-pipeline/`** into the React repo (same paths as PREPARE §4):
 
@@ -22,7 +22,7 @@ Infra `aws-infra-academy.yml` `configure-only` / `apply` runs `scripts/sync-secr
 | Owner | Keys | Who reads them |
 | --- | --- | --- |
 | Terraform → `heavy-rental/portal` | `REST_BASE_URL=http://<rest_alb_dns>:8080` | Portal CD nginx `/api` (not the JS bundle) |
-| Infra academy Stripe `pk_` → portal SM | `STRIPE_PUBLISHABLE_KEY`, `VITE_STRIPE_PUBLISHABLE_KEY` | Stored on the guest `.env`. The static SPA **cannot** read SM. Bake `pk_` only via app `.env.production` + new `npm run build` |
+| Infra academy Stripe `pk_` → portal SM | `STRIPE_PUBLISHABLE_KEY`, `VITE_STRIPE_PUBLISHABLE_KEY` | Stored on the guest `.env`. The static SPA **cannot** read SM. Bake `pk_` only via academy `VITE_STRIPE_PUBLISHABLE_KEY` + new `vite build --mode api` |
 | Terraform → `heavy-rental/rest` | `HAYSTACK_BASE_URL=http://<haystack_alb_dns>:8000`, `APP_CORS_ALLOWED_ORIGINS=http://<portal_alb_dns>`, SoR `POSTGRES_*` | **Spring REST** (`application-prod.properties` `${…}`). Not the React SPA |
 | Infra academy secrets → REST SM | `STRIPE_API_KEY`, `STRIPE_WEBHOOK_SECRET`, `APP_JWT_SECRET`, optional OneMap, optional pricing vars | **Spring REST** only. Never in Vite or the nginx image |
 | Image `dist/` from `vite build --mode api` | `MODE=api` + empty `VITE_API_TARGET` / `VITE_*` backends (same-origin `/api`) | Browser JS → guest `/api` → Spring REST |
@@ -83,7 +83,7 @@ The **runner** uses Vocareum keys. The **EC2** uses `LabRole`.
 
 - Use CI Environments `integration` / `production` as CD
 - Put Vocareum keys or Stripe `sk_` in the image, in `.env.production`, or on the Run form
-- Bake `REST_BASE_URL` / Haystack ALB / `localhost:8080` into `npm run build`
+- Bake `REST_BASE_URL` / Haystack ALB / `localhost:8080` into `vite build --mode api`
 - Expect GitHub `VITE_*` vars to reconfigure the running SPA
 - Type instance IDs on the Run form
 - Run `terraform apply` from this workflow

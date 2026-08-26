@@ -4,7 +4,7 @@ This folder is the **human index** for the GitHub Actions family authored in `he
 
 The React **product** specification is **not** here. It lives in the application repository.
 
-Infrastructure setup (VPC, ASGs) is **not** specified here. It belongs to the infra project. This tree authors **CI + Release packaging** and **Academy app CD**.
+Infrastructure setup (VPC, ASGs) is **not** specified here. It belongs to the infra project. This tree authors **CI + Release packaging** and **Academy + paid app CD**.
 
 The Integration CI authoring path is `integration_pipeline/` (underscore), not `integration-pipeline/`.
 
@@ -13,7 +13,7 @@ The Integration CI authoring path is `integration_pipeline/` (underscore), not `
 | Concern | Specified here? |
 | --- | --- |
 | Fast Feedback, Integration CI, Release packaging | Yes — CI family |
-| Academy app CD (discover `asg-portal` + compose) | Yes — CD family |
+| Academy and paid app CD (discover `asg-portal` + compose) | Yes — CD family |
 | Create or change infrastructure | No — infra project |
 | Operate the live system (`stop` / `destroy`) | No — infra project after go-live |
 
@@ -31,7 +31,7 @@ Conflict order: **OpenSpec scenarios → OpenSPDD Safeguards → ADR → YAML**.
 
 ### CI family — [`../openspec/changes/add-portal-ci-pipeline/`](../openspec/changes/add-portal-ci-pipeline/)
 
-As-implemented spec of the existing Fast Feedback / Integration / Release YAML.
+As-implemented spec of the existing Fast Feedback / Integration / Release YAML. Release is `workflow_dispatch` only (Packaging → DAST → Publish GHCR + GitHub Release).
 
 - Proposal: [`proposal.md`](../openspec/changes/add-portal-ci-pipeline/proposal.md)
 - Design: [`design.md`](../openspec/changes/add-portal-ci-pipeline/design.md)
@@ -47,8 +47,9 @@ As-implemented spec of the existing Fast Feedback / Integration / Release YAML.
 - [`../openspec/changes/add-portal-cd-academy-skeleton/`](../openspec/changes/add-portal-cd-academy-skeleton/)
 - [`../openspec/changes/add-portal-cd-academy-deploy/`](../openspec/changes/add-portal-cd-academy-deploy/)
 - [`../openspec/changes/add-portal-cd-paid-deploy/`](../openspec/changes/add-portal-cd-paid-deploy/)
-- SPDD: [`../spdd/analysis/add-portal-cd-academy-skeleton.md`](../spdd/analysis/add-portal-cd-academy-skeleton.md), [`../spdd/analysis/add-portal-cd-academy-deploy.md`](../spdd/analysis/add-portal-cd-academy-deploy.md)
+- SPDD: [`../spdd/analysis/add-portal-cd-academy-skeleton.md`](../spdd/analysis/add-portal-cd-academy-skeleton.md), [`../spdd/analysis/add-portal-cd-academy-deploy.md`](../spdd/analysis/add-portal-cd-academy-deploy.md), [`../spdd/analysis/add-portal-cd-paid-deploy.md`](../spdd/analysis/add-portal-cd-paid-deploy.md)
 - Walkthrough: [`pipelines/portal-cd.md`](pipelines/portal-cd.md) (`configure-only` three stores)
+- Two CD Actions: [ADR 0009](../docs/adr/0009-two-cd-actions-academy-paid.md)
 - Operator: [`../docs/BOOTSTRAP.md`](../docs/BOOTSTRAP.md), [`../docs/PREPARE-PORTAL-REPO.md`](../docs/PREPARE-PORTAL-REPO.md)
 
 ## Workflows (implementation)

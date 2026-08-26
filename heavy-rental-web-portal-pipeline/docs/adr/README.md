@@ -10,7 +10,7 @@ Conflict order: **OpenSpec → OpenSPDD → ADR → YAML**.
 | [0005](0005-portal-ci-rest-tests-skip-clean.md) | REST endpoint tests skip cleanly until scripts exist |
 | [0006](0006-portal-ci-stops-at-packaging.md) | CI family stops at packaging |
 | [0007](0007-portal-ci-release-image-cloud-ready.md) | Release image is a static SPA; CD owns `/api` |
-| [0008](0008-portal-vite-profile-vs-infra-estate.md) | Vite `.env.production` at `npm run build`; REST hosts from AWS; academy vars are not SPA config |
+| [0008](0008-portal-vite-profile-vs-infra-estate.md) | Vite `.env.production` at `vite build --mode api`; REST hosts from AWS; academy vars are not SPA config |
 
 ## CD family (`add-portal-cd-academy-*`)
 

@@ -3,6 +3,7 @@
 - **Status:** Accepted
 - **Date:** 2026-08-18
 - **Amended:** 2026-08-18 — three stores for CD `configure-only`
+- **Amended:** 2026-08-26 — build command is `vite build --mode api` (not `npm run build`)
 - **Change:** `add-portal-ci-pipeline` / `add-portal-cd-academy-deploy` (env ownership)
 - **Related:** [0007](0007-portal-ci-release-image-cloud-ready.md), [0003](0003-reuse-infra-portal-ansible.md)
 - **Infra ground truth:** `aws-infra-academy.yml` → `scripts/sync-secrets.sh`
@@ -10,7 +11,7 @@
 
 ## Context
 
-Haystack ships a sanitized `.env` inside the uvicorn image because pydantic reads it at runtime. Spring REST loads `application-prod.properties` with `${ENV}` placeholders filled from `heavy-rental/rest`. The portal is a **React + npm + Vite** SPA: `import.meta.env.VITE_*` is inlined by `npm run build`. nginx does not run Node. A haystack-style `COPY .env` or a Spring-style academy overlay of `VITE_*` would not configure the running browser app.
+Haystack ships a sanitized `.env` inside the uvicorn image because pydantic reads it at runtime. Spring REST loads `application-prod.properties` with `${ENV}` placeholders filled from `heavy-rental/rest`. The portal is a **React + npm + Vite** SPA: `import.meta.env.VITE_*` is inlined by `vite build --mode api`. nginx does not run Node. A haystack-style `COPY .env` or a Spring-style academy overlay of `VITE_*` would not configure the running browser app.
 
 Spring REST already consumes the estate keys the portal must **not** bake: `POSTGRES_*`, `HAYSTACK_BASE_URL`, `APP_CORS_ALLOWED_ORIGINS`, `STRIPE_API_KEY` / webhook, `APP_JWT_SECRET`, OneMap, pricing flags. Infra `sync-secrets` writes those to `heavy-rental/rest` and writes `REST_BASE_URL` + Stripe `pk_` to `heavy-rental/portal`.
 

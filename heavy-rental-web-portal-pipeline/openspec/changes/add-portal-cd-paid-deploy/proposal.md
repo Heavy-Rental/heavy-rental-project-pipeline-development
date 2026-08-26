@@ -2,7 +2,9 @@
 
 ## Why
 
-Portal CD is Academy-only (ADR 0001). Infra paid (`aws-infra-paid.yml`, Environment `AWS_ACTUAL`) already creates `asg-portal`. Operators cannot roll a portal image onto that estate without Vocareum keys.
+**Status:** Delivered (`portal-cd-paid-caller.yml`).
+
+Portal CD was Academy-only (ADR 0001). Infra paid (`aws-infra-paid.yml`, Environment `AWS_ACTUAL`) already creates `asg-portal`. Operators cannot roll a portal image onto that estate without Vocareum keys.
 
 ## What Changes
 

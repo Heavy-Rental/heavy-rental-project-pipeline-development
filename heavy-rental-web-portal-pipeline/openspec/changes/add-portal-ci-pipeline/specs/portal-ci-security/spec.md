@@ -24,8 +24,8 @@ Security Testing SHALL run Semgrep with TypeScript, React, JavaScript, Node.js, 
 - THEN the finding is ERROR severity
 - AND the Semgrep gate fails
 
-### Requirement: npm audit report
-Security Testing SHALL run npm audit and convert the JSON to SARIF when conversion is implemented. An audit finding SHALL NOT by itself replace the Trivy CRITICAL gate.
+### Requirement: npm audit gate
+Security Testing SHALL run `npm audit --audit-level=high`, convert the JSON to SARIF, and SHALL fail the job when that audit exits non-zero (high or critical). The Trivy CRITICAL filesystem gate SHALL still run independently.
 
 ### Requirement: Trivy filesystem scan
 Security Testing SHALL write `trivy-fs.sarif` and fail only on unfixed CRITICAL vulnerabilities.

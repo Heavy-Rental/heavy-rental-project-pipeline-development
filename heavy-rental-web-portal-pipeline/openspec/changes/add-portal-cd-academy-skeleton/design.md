@@ -2,7 +2,7 @@
 
 ## Context
 
-Study `WEB-PORTAL-CD-FEASIBILITY.md` §5 / `IMPLEMENTATION-PLAN.md` §5. Infra `HR-162` already composes portal. This repo’s Release pipeline builds the image (`ghcr.io/<owner>/heavy-rental-web-portal:<tag>` off PR) and a `.tar.gz` artifact.
+Study `WEB-PORTAL-CD-FEASIBILITY.md` §5 / `IMPLEMENTATION-PLAN.md` §5. Infra `HR-162` already composes portal. This repo’s Release pipeline builds the image (`ghcr.io/<owner>/heavy_rental_web_portal:<semver>` via Publish after DAST) and a `.tar.gz` artifact.
 
 ## Decisions
 
