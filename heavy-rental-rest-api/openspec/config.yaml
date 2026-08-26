@@ -6,9 +6,9 @@ context: |
   Two families live here:
     1. CI — Fast Feedback, Integration CI, and Release packaging
        (openspec/changes/add-rest-ci-pipeline/). As-implemented of existing YAML.
-    2. Academy app CD — discover asg-rest and compose
-       (openspec/changes/add-rest-cd-academy-skeleton/ and
-       add-rest-cd-academy-deploy/, add-rest-cd-paid-deploy/).
+    2. App CD — discover asg-rest and compose (academy Vocareum +
+       paid OIDC callers: add-rest-cd-academy-skeleton,
+       add-rest-cd-academy-deploy, add-rest-cd-paid-deploy).
   Product behaviour for the Spring service is NOT specified here.
   Infrastructure setup and operate (stop / destroy) belong to the infra project.
   Authoring-tree DEFAULT_APP_REPOSITORY may still be SA62-team1/... for local act;

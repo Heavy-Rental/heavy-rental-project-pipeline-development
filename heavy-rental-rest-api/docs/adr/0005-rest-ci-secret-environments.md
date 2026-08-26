@@ -2,7 +2,7 @@
 
 - **Status:** Accepted
 - **Date:** 2026-08-17
-- **Updated:** 2026-08-18
+- **Updated:** 2026-08-25
 - **Change:** `add-rest-ci-pipeline`
 
 ## Context
@@ -22,3 +22,4 @@ These names are **not** the guest compose contract. Do not add `REST_API_CLOUD_D
 - Missing `REST_API_DB_*` secrets fail QC before Postgres starts.
 - Dummy local values are enough (they do not need to match Academy RDS).
 - Operators must not copy CI Postgres credentials onto the EC2 or into Academy CD.
+- Callers must not map `REST_API_DB_*` into the reusable workflow. A `uses:` job cannot see Environment secrets; empty values would shadow QC.

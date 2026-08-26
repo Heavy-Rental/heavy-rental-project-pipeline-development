@@ -31,7 +31,7 @@ REST Fast Feedback / Integration / Release YAML already exists. Haystack and mob
 
 1. **Wrong toolchain** — Node, uv, or Gradle on this family. Forbidden.
 2. **Secret mix-up** — putting `REST_API_DB_*` on the guest or using them as Academy RDS.
-3. **`environment:` on `uses:`** — invalid; explicit secrets map only.
+3. **`environment:` on `uses:`** — invalid; QC reads Environment secrets; no caller map and no inherit.
 4. **Scope creep** — Terraform or Ansible in CI YAML. Forbidden.
 
 ## Strategy

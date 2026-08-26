@@ -2,6 +2,7 @@
 
 - **Status:** Accepted
 - **Date:** 2026-08-17
+- **Updated:** 2026-08-25
 - **Change:** `add-rest-ci-pipeline`
 
 ## Context
@@ -15,4 +16,4 @@ Each reusable file exposes only `on: workflow_call`. `assert-caller` fails unles
 ## Consequences
 
 - Operators copy six YAML files into the Spring repo `.github/workflows/`.
-- Callers pass database secrets with an explicit map. `environment:` on a `uses:` job is invalid.
+- Callers do not pass `REST_API_DB_*` and do not use `secrets: inherit`. `environment:` on a `uses:` job is invalid; QC reads Environment secrets on the reusable-workflow job.

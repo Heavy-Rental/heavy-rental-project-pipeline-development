@@ -6,14 +6,14 @@ The Spring **product** specification is **not** here. It lives in the applicatio
 
 https://github.com/Heavy-Rental/heavy-rental-spring-rest-api
 
-Infrastructure setup (VPC, ASGs, RDS) is **not** specified here. It belongs to the infra project. This tree authors **CI + Release packaging** and **Academy app CD**.
+Infrastructure setup (VPC, ASGs, RDS) is **not** specified here. It belongs to the infra project. This tree authors **CI + Release packaging** and **Academy + paid app CD**.
 
 ## Pipeline boundaries
 
 | Concern | Specified here? |
 | --- | --- |
 | Fast Feedback, Integration CI, Release packaging | Yes — CI family |
-| Academy app CD (discover `asg-rest` + compose) | Yes — CD family |
+| Academy and paid app CD (discover `asg-rest` + compose) | Yes — CD family |
 | Create or change infrastructure | No — infra project |
 | Operate the live system (`stop` / `destroy`) | No — infra project after go-live |
 
@@ -23,7 +23,7 @@ Infrastructure setup (VPC, ASGs, RDS) is **not** specified here. It belongs to t
 | --- | --- | --- |
 | **OpenSpec** | [`../openspec/`](../openspec/) | Observable behavior: requirements and GIVEN/WHEN/THEN scenarios |
 | **OpenSPDD** | [`../spdd/`](../spdd/) | Implementation contract: REASONS Canvas (how to write the YAML, what not to invent) |
-| **ADR** | [`../docs/adr/`](../docs/adr/) | Why: caller gate, Environment secrets split, env-driven Tomcat image (0007), Academy-only CD, masked keys |
+| **ADR** | [`../docs/adr/`](../docs/adr/) | Why: caller gate, Environment secrets split, env-driven Tomcat image (0007), two CD Actions (0008), masked keys |
 
 Conflict order: **OpenSpec scenarios → OpenSPDD Safeguards → ADR → YAML**. If the YAML cannot satisfy a scenario without breaking a safeguard, stop and update the spec first.
 
@@ -45,9 +45,11 @@ As-implemented spec of the existing Fast Feedback / Integration / Release YAML.
 
 - [`../openspec/changes/add-rest-cd-academy-skeleton/`](../openspec/changes/add-rest-cd-academy-skeleton/)
 - [`../openspec/changes/add-rest-cd-academy-deploy/`](../openspec/changes/add-rest-cd-academy-deploy/)
-- SPDD: [`../spdd/analysis/add-rest-cd-academy-skeleton.md`](../spdd/analysis/add-rest-cd-academy-skeleton.md), [`../spdd/analysis/add-rest-cd-academy-deploy.md`](../spdd/analysis/add-rest-cd-academy-deploy.md)
+- [`../openspec/changes/add-rest-cd-paid-deploy/`](../openspec/changes/add-rest-cd-paid-deploy/)
+- SPDD: [`../spdd/analysis/add-rest-cd-academy-skeleton.md`](../spdd/analysis/add-rest-cd-academy-skeleton.md), [`../spdd/analysis/add-rest-cd-academy-deploy.md`](../spdd/analysis/add-rest-cd-academy-deploy.md), [`../spdd/analysis/add-rest-cd-paid-deploy.md`](../spdd/analysis/add-rest-cd-paid-deploy.md)
 - Walkthrough: [`pipelines/rest-cd.md`](pipelines/rest-cd.md)
 - Operator: [`../docs/BOOTSTRAP.md`](../docs/BOOTSTRAP.md), [`../docs/PREPARE-SPRING-REPO.md`](../docs/PREPARE-SPRING-REPO.md)
+- Two CD Actions: [ADR 0008](../docs/adr/0008-two-cd-actions-academy-paid.md)
 
 ## Workflows (implementation)
 
