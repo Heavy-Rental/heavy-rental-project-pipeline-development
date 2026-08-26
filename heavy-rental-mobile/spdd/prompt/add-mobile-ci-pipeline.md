@@ -10,8 +10,8 @@ When reality diverges, fix this prompt first — then update the YAML.
 ## R — Requirements
 
 - Provide the same three-pipeline GitHub Flow family used by REST API and the web portal, adapted for Heavy Rental mobile (`Heavy-Rental/heavy-rental-mobile`).
-- Fast Feedback: Integration only, feature-branch pushes (ignore `master`/`develop`).
-- Integration CI: PR/push `develop` + `workflow_dispatch`. Jobs: Assert caller → Integration → (QC ∥ Security ∥ CodeQL ∥ Mock Contract Tests) → GitHub Flow CI Gate.
+- Fast Feedback: Integration only, feature-branch pushes (ignore `master`/`develop`). No `pull_request` trigger.
+- Integration CI: PR/push `develop` + `workflow_dispatch`. Jobs: Assert caller → Integration → (QC ∥ Security ∥ CodeQL ∥ Mock Contract Tests) → GitHub Flow CI Gate. On `pull_request`, Integration reuses a successful Fast Feedback run for the head SHA (skip Android SDK / Gradle wrapper / `:app:preBuild` / layout). An in-flight Fast Feedback run is waited on; the pending-run jq filter is inlined in `PENDING_ID` / `PENDING_URL` (same form as `SUCCESS_ID`), not a `PENDING_FILTER` variable. The CI caller must not `uses:` `fast-feedback-pipeline.yml`.
 - Release: published GitHub Release **or** PR `develop` → `master`. Same gates as CI (without Mock Contract Tests as a packaging dependency) + unsigned APK Packaging.
 - Specs (OpenSpec + this canvas) and YAML all live under `heavy-rental-mobile/`.
 - Install story: copy each caller + reusable pair into the application repo `.github/workflows/`.
@@ -69,7 +69,7 @@ Artifacts:
 ## A — Approach
 
 - Clone REST/portal **orchestration** (header comments, `assert-caller` case on `github.workflow_ref`, Semgrep-safe source resolver, `APP_PATH: app`, artifact names).
-- Replace toolchain: Temurin **17**, `android-actions/setup-android@v3`, `platforms;android-35`, Gradle wrapper `--no-daemon`.
+- Replace toolchain: Temurin **17**, `android-actions/setup-android@v4`, `platforms;android-35`, Gradle wrapper `--no-daemon`.
 - Integration resolve step: `./gradlew --no-daemon :app:preBuild` (do not depend on a specific configuration name).
 - QC: `./gradlew --no-daemon :app:lintDebug :app:testDebugUnitTest :app:assembleDebug`.
 - Mocks: Node 22, detect `mock:prism` then `mock:mockoon`, plus `mock:verify`; listen `127.0.0.1:8081`.
@@ -132,7 +132,7 @@ Job `name:` values (branch protection):
 - `set -euo pipefail` on every multi-line `run:`.
 - No `secrets: inherit`.
 - No `environment:` on caller `uses:` jobs (invalid) and none on mobile QC.
-- `actions/checkout@v4`, `actions/setup-java@v4`, `actions/setup-node@v4`, `actions/setup-python@v5`, `actions/cache@v4`, `actions/upload-artifact@v4`, `android-actions/setup-android@v3`, `aquasecurity/trivy-action@v0.36.0`, `github/codeql-action/*@v3`.
+- Action pins (ADR 0005): `actions/checkout@v7`, `actions/setup-java@v6`, `actions/setup-node@v7`, `actions/setup-python@v7`, `actions/cache@v6`, `actions/upload-artifact@v7`, `actions/download-artifact@v8`, `actions/github-script@v9`, `android-actions/setup-android@v4`, `aquasecurity/trivy-action@v0.36.0`, `github/codeql-action/*@v4`.
 - Gradle invocations always `--no-daemon`.
 - Write `$GITHUB_STEP_SUMMARY` tables for source resolution, Integration, QC, gate, packaging.
 - SARIF is the security report standard; console tables are logs only.
@@ -145,7 +145,12 @@ Job `name:` values (branch protection):
 - **DO NOT** start Postgres or require `REST_API_DB_*` / cloud DB secrets.
 - **DO NOT** call a live Spring Boot host; mocks are `127.0.0.1` only.
 - **DO NOT** put `on: push` / `pull_request` / `workflow_dispatch` on reusable files.
+- **DO NOT** `uses:` `fast-feedback-pipeline.yml` from `mobile-ci-caller.yml`.
+- **DO NOT** skip the Integration job with `if:` (reuse only skips Android SDK / Gradle wrapper / `:app:preBuild` / layout).
+- **DO NOT** assign `PENDING_FILTER` and interpolate it into `PENDING_ID` / `PENDING_URL`. Inline the pending-status jq filter (same quoting as `SUCCESS_ID`).
+- **DO NOT** subscribe Fast Feedback to `pull_request`.
 - **DO NOT** interpolate `${{ github.* }}` or `${{ inputs.* }}` inside `run:` script bodies.
 - **DO NOT** change REST API, portal, or the Android product `specification/` in the application repo.
 - **DO NOT** invent a fourth pipeline or rename jobs away from the branch-protection list.
 - **DO NOT** cancel in-progress Release runs.
+- **DO NOT** SHA-pin GitHub Actions (Haystack style) or pin `trivy-action@master`. Use the ADR 0005 major tags.

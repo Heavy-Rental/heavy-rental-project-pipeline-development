@@ -164,20 +164,20 @@ jobs:
 
       - name: Checkout calling repository (PR / push head)
         if: steps.meta.outputs.checkout_mode == 'caller'
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           path: ${{ env.APP_PATH }}
 
       - name: Checkout remote application repository
         if: steps.meta.outputs.checkout_mode == 'remote'
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           repository: ${{ steps.meta.outputs.app_repository }}
           ref: ${{ steps.meta.outputs.app_ref }}
           path: ${{ env.APP_PATH }}
 
       - name: Setup Java ${{ env.JAVA_VERSION }}
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v6
         with:
           distribution: ${{ env.JAVA_DISTRIBUTION }}
           java-version: ${{ env.JAVA_VERSION }}
@@ -190,7 +190,7 @@ jobs:
             ${{ env.APP_PATH }}/gradle/wrapper/gradle-wrapper.properties
 
       - name: Setup Android SDK
-        uses: android-actions/setup-android@v3
+        uses: android-actions/setup-android@v4
         with:
           packages: >
             tools
@@ -244,7 +244,7 @@ jobs:
           echo "Fast feedback integration checks passed."
 
       - name: Upload Gradle project fingerprint
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: fast-feedback-integration-metadata
           path: |

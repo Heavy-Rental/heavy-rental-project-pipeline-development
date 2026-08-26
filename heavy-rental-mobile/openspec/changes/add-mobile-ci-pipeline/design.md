@@ -26,11 +26,13 @@ This pipeline-development repo already authors REST API and web-portal workflows
 
 1. **Reusable + caller gate.** Copy the REST/portal model. Each reusable file rejects any `github.workflow_ref` that is not its matching caller.
 2. **JDK 17, not 21.** Matches `app/build.gradle.kts` (`JavaVersion.VERSION_17`, `jvmTarget = "17"`). REST API stays on 21; do not share that constant.
-3. **`android-actions/setup-android@v3`** for SDK + license acceptance; install `platforms;android-35` and a 35.x build-tools package.
+3. **`android-actions/setup-android@v4`** for SDK + license acceptance; install `platforms;android-35` and a 35.x build-tools package.
 4. **No GitHub Environment / secrets on QC.** Mobile tests do not need Postgres.
 5. **Mock job uses `mock:prism` (headless) + `mock:verify`.** Skip cleanly only when those scripts are absent from `package.json`.
 6. **Release APK is unsigned.** Stage versioned + stable filenames. AAB only if `assembleRelease` already produces one.
 7. **Specs and YAML live under `heavy-rental-mobile/`.** OpenSpec, OpenSPDD, and workflow files stay with the pipeline they describe.
+8. **Integration CI reuses Fast Feedback on `pull_request`.** The CI caller does not `uses:` `fast-feedback-pipeline.yml`. Integration looks up `mobile-fast-feedback-caller.yml` for the PR head SHA, waits if in-flight, and skips Android SDK / Gradle / layout when Fast Feedback succeeded. Pending-run jq is inlined in `PENDING_ID` / `PENDING_URL` (do not assign `PENDING_FILTER`).
+9. **Floating Action majors, not SHAs.** Pin current stable tags (`checkout@v7`, `setup-java@v6`, `setup-android@v4`, `codeql-action@v4`, and peers). Do not SHA-pin like Haystack. ADR 0005 is the pin table.
 
 ## Risks / Trade-offs
 

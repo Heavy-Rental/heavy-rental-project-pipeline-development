@@ -20,6 +20,15 @@
 # Reusable workflow (same repository):
 #   ./.github/workflows/integration-pipeline.yml
 #
+# Fast Feedback (do NOT call it from this file)
+# ---------------------------------------------
+# mobile-fast-feedback-caller.yml owns the Integration stage on feature-branch
+# pushes. Do not `uses:` fast-feedback-pipeline.yml here — that would run Fast
+# Feedback a second time when a PR is opened.
+# On pull_request, integration-pipeline.yml Integration reuses a successful
+# Fast Feedback run for the PR head SHA instead of repeating Android SDK /
+# Gradle / layout. An in-flight Fast Feedback run is waited on.
+#
 # Job priority (do not reorder conceptually)
 # -----------------------------------------
 #   1. Integration           ← HIGHEST PRIORITY (required status check)

@@ -24,7 +24,7 @@ This family is **CI and unsigned APK packaging only**. There is no Academy app C
 | --- | --- | --- |
 | **OpenSpec** | [`../openspec/`](../openspec/) | Observable behavior: requirements and GIVEN/WHEN/THEN scenarios |
 | **OpenSPDD** | [`../spdd/`](../spdd/) | Implementation contract: REASONS Canvas (how to write the YAML, what not to invent) |
-| **ADR** | [`../docs/adr/`](../docs/adr/) | Why: caller gate, JDK 17, unsigned APK, mocks on Integration only |
+| **ADR** | [`../docs/adr/`](../docs/adr/) | Why: caller gate, JDK 17, unsigned APK, mocks on Integration only, Action majors |
 
 Conflict order: **OpenSpec scenarios → OpenSPDD Safeguards → ADR → YAML**. If the YAML cannot satisfy a scenario without breaking a safeguard, stop and update the spec first.
 

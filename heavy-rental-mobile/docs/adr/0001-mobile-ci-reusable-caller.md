@@ -2,6 +2,7 @@
 
 - **Status:** Accepted
 - **Date:** 2026-08-17
+- **Updated:** 2026-08-26
 - **Change:** `add-mobile-ci-pipeline`
 
 ## Context
@@ -16,3 +17,4 @@ Each reusable file exposes only `on: workflow_call`. `assert-caller` fails unles
 
 - Operators copy six YAML files into `Heavy-Rental/heavy-rental-mobile` `.github/workflows/`.
 - Local `act` skips the filename gate when `ACT=true`.
+- Integration CI caller must not `uses:` `fast-feedback-pipeline.yml`. On pull_request, Integration reuses a successful Fast Feedback run for the PR head SHA. An in-flight run is waited on. The pending-run jq filter is inlined in `PENDING_ID` / `PENDING_URL` (same form as `SUCCESS_ID`); splitting it into a `PENDING_FILTER` variable breaks the lookup.

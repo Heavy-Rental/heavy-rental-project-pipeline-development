@@ -62,6 +62,12 @@ Each caller SHALL use the GitHub Flow triggers defined for its pipeline and SHAL
 - WHEN Fast Feedback is evaluated
 - THEN Fast Feedback does not start from that push
 
+#### Scenario: Fast feedback ignores pull requests
+- GIVEN a pull request targeting `develop`
+- WHEN Fast Feedback is evaluated
+- THEN Fast Feedback does not start from that pull request
+- AND Integration CI owns the pull request
+
 #### Scenario: Integration CI owns develop
 - GIVEN a pull request targeting `develop`, or a push to `develop`, or `workflow_dispatch`
 - WHEN Integration CI is evaluated
@@ -101,9 +107,48 @@ Fast Feedback and Integration CI SHALL cancel superseded runs for the same PR or
 - THEN the in-flight run is not cancelled
 
 ### Requirement: Least-privilege permissions
-Callers and reusable workflows SHALL request `contents: read`, `pull-requests: read`, and `actions: read`. Integration CI and Release SHALL also request `security-events: write`. They SHALL NOT request `packages: write` in this change.
+Callers and reusable workflows SHALL request `contents: read`, `pull-requests: read`, and `actions: read`. Integration CI and Release SHALL also request `security-events: write`. They SHALL NOT request `packages: write` in this change. Fast Feedback and Integration CI SHALL request `actions: read` (Integration looks up Fast Feedback runs).
 
 #### Scenario: No registry write
 - GIVEN any mobile pipeline in this change
 - WHEN permissions are declared
 - THEN `packages: write` is absent
+
+### Requirement: Fast Feedback is not invoked from Integration CI
+The Integration CI caller SHALL NOT `uses:` `fast-feedback-pipeline.yml`. Fast Feedback SHALL remain the sole Integration-stage run on a feature-branch push. On `pull_request`, Integration SHALL reuse a successful Fast Feedback run for the PR head SHA instead of repeating Android SDK, Gradle wrapper, `:app:preBuild`, and layout checks.
+
+When looking up an in-flight Fast Feedback run, Integration SHALL pass the pending-status jq filter inline to the `PENDING_ID` and `PENDING_URL` `jq_field` calls, matching the `SUCCESS_ID` / `SUCCESS_URL` form. It SHALL NOT assign that filter to a `PENDING_FILTER` shell variable and interpolate it on the following lines (that construction fails the wait-for-run lookup).
+
+#### Scenario: CI caller does not call Fast Feedback
+- GIVEN `mobile-ci-caller.yml` is installed in the mobile repository
+- WHEN the Integration CI caller job is declared
+- THEN it `uses:` `.github/workflows/integration-pipeline.yml`
+- AND it does not `uses:` `fast-feedback-pipeline.yml`
+
+#### Scenario: PR reuses a successful Fast Feedback run
+- GIVEN a pull request targeting `develop`
+- AND `mobile-fast-feedback-caller.yml` has a successful run for the PR head SHA
+- WHEN Integration runs
+- THEN Android SDK setup, Gradle wrapper, `:app:preBuild`, and layout checks are skipped
+- AND Integration still succeeds so Quality Control, Security Testing, CodeQL, and Mock Contract Tests can start
+
+#### Scenario: PR waits for in-flight Fast Feedback
+- GIVEN a pull request targeting `develop`
+- AND Fast Feedback for the PR head SHA is queued or in progress
+- WHEN Integration looks up that run
+- THEN the pending-status jq filter is inlined in the `PENDING_ID` and `PENDING_URL` `jq_field` arguments (same form as `SUCCESS_ID` / `SUCCESS_URL`)
+- AND it does not interpolate a `PENDING_FILTER` shell variable
+- AND it waits for that run to finish
+- AND if Fast Feedback succeeds, Android SDK, Gradle wrapper, `:app:preBuild`, and layout checks are skipped
+
+#### Scenario: Missing or failed Fast Feedback runs locally
+- GIVEN a pull request targeting `develop`
+- AND Fast Feedback for the PR head SHA is missing or did not succeed
+- WHEN Integration runs
+- THEN it runs JDK 17, Android SDK, Gradle wrapper, `:app:preBuild`, and layout checks locally
+
+#### Scenario: Non-PR Integration runs locally
+- GIVEN a push to `develop` or `workflow_dispatch`
+- WHEN Integration runs
+- THEN it does not reuse Fast Feedback
+- AND it runs JDK 17, Android SDK, Gradle wrapper, `:app:preBuild`, and layout checks locally
