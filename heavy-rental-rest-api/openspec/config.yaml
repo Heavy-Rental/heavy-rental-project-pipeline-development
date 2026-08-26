@@ -15,3 +15,7 @@ context: |
   Release DEFAULT_APP_REPOSITORY is Heavy-Rental/heavy-rental-spring-rest-api and
   checkout is always master. When Fast Feedback / Integration CI run in the
   Heavy-Rental Spring repo, checkout is the calling commit.
+  Feature-branch push runs Fast Feedback (Integration only). PR Integration Check
+  reuses that SHA and does not call fast-feedback-pipeline.yml. Integration CI
+  job name is Integration Check. Integration caller passes REST_API_DB_* via an
+  explicit secrets map (Repository secrets); Release QC reads Environment production.

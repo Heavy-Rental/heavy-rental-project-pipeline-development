@@ -7,7 +7,7 @@ Conflict order: **OpenSpec → OpenSPDD → ADR → YAML**.
 | ID | Title |
 | --- | --- |
 | [0004](0004-rest-ci-reusable-caller.md) | Reusable workflows plus a sole-allowed caller |
-| [0005](0005-rest-ci-secret-environments.md) | Integration vs Release `REST_API_DB_*` Environments |
+| [0005](0005-rest-ci-secret-environments.md) | Integration repo-secret map vs Release Environment `REST_API_DB_*` |
 | [0006](0006-rest-ci-stops-at-packaging.md) | CI family stops at packaging |
 | [0007](0007-rest-ci-release-image-env-driven.md) | Release image takes guest config from the environment |
 

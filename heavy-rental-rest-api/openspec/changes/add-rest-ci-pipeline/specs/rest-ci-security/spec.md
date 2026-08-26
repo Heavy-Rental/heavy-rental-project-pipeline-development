@@ -7,18 +7,25 @@ Static and supply-chain scanning of the Java / Spring application. Standard repo
 ## ADDED Requirements
 
 ### Requirement: Security Testing needs Integration
-Security Testing SHALL run only after Integration succeeds, in parallel with Quality Control, and SHALL scan the same application source.
+Security Testing SHALL run only after Integration Check succeeds, in parallel with Quality Control, and SHALL scan the same application source.
 
 ### Requirement: Semgrep Java SAST
-Security Testing SHALL run Semgrep with Java, OWASP Top Ten, security-audit, secrets, CWE Top 25, FindSecBugs, Gitleaks, SQL injection, JWT, and insecure-transport rulesets, plus custom ERROR-severity rules that flag hard-coded credentials in Spring properties/YAML, `${VAR:plaintext}` credential defaults, JDBC URLs with embedded user:password, hard-coded Java password/secret assignments, fully exposed Actuator endpoints, and globally disabled Spring Security. It SHALL always attempt to write `semgrep.sarif`, `semgrep.json`, and `semgrep.txt` covering all severities (not only ERROR). It SHALL fail the job only when ERROR-severity findings exist (or Semgrep cannot complete the gate scan). It SHALL NOT use the removed `p/spring` ruleset as a required config.
+Security Testing SHALL run two Semgrep passes. The application pass SHALL use Java, OWASP Top Ten, security-audit, secrets, CWE Top 25, FindSecBugs, Gitleaks, SQL injection, JWT, and insecure-transport rulesets, plus custom ERROR-severity rules that flag hard-coded credentials in Spring properties/YAML, `${VAR:plaintext}` credential defaults, JDBC URLs with embedded user:password, hard-coded Java password/secret assignments, fully exposed Actuator endpoints, and globally disabled Spring Security. The application pass SHALL exclude `.github/**` so `p/secrets` and `p/gitleaks` do not flag reusable-workflow secrets-context maps. The GitHub Actions pass SHALL scan `.github/**` with `p/github-actions` plus custom rules that flag `secrets: inherit` (ERROR, except `rest-api-cd-paid-caller.yml`) and hard-coded workflow credentials, and SHALL allow explicit GitHub secrets-context maps and `persist-credentials`. It SHALL always attempt to write `semgrep.sarif` and `semgrep-gha.sarif` (and application `semgrep.json` / `semgrep.txt`) covering all severities (not only ERROR). It SHALL fail the job only when ERROR-severity findings exist on either pass (or Semgrep cannot complete the gate scan). It SHALL NOT use the removed `p/spring` ruleset as a required config.
 
 #### Scenario: SARIF written on clean scan
 - GIVEN Semgrep finds no ERROR-severity issues
 - WHEN Security Testing runs
 - THEN `security-reports/semgrep.sarif` exists
+- AND `security-reports/semgrep-gha.sarif` exists
 - AND `security-reports/semgrep.json` exists
 - AND `security-reports/semgrep.txt` exists
 - AND the Semgrep gate step succeeds
+
+#### Scenario: explicit secrets map is not a finding
+- GIVEN a workflow maps `REST_API_DB_PASSWORD: ${{ secrets.REST_API_DB_PASSWORD }}`
+- WHEN the GitHub Actions Semgrep pass runs
+- THEN that mapping is not an ERROR finding
+- AND `secrets: inherit` in a CI caller would be an ERROR finding
 
 #### Scenario: full report when ERROR gate fails
 - GIVEN Semgrep reports at least one ERROR-severity finding
@@ -73,7 +80,7 @@ Security Testing SHALL combine present scanner outputs under `security-reports/`
 - AND a check named `Security combined report (PDF)` is created when the Checks API accepts the request
 
 ### Requirement: Publish SARIF
-Security Testing SHALL upload Semgrep SARIF/JSON/text and Trivy SARIF files as a workflow artifact and SHALL attempt to publish SARIF to GitHub Code Scanning. A Code Scanning upload failure SHALL NOT fail the job.
+Security Testing SHALL upload Semgrep SARIF/JSON/text (including `semgrep-gha.sarif`) and Trivy SARIF files as a workflow artifact and SHALL attempt to publish SARIF to GitHub Code Scanning (application Semgrep, GHA Semgrep, and Trivy). A Code Scanning upload failure SHALL NOT fail the job.
 
 #### Scenario: Code Scanning optional
 - GIVEN SARIF files exist and the Code Scanning API rejects the upload

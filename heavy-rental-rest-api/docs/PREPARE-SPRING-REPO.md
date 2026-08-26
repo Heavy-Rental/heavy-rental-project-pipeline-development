@@ -64,7 +64,7 @@ On app `develop` today:
 
 ## 3. Produce a pullable image
 
-1. CI Environment **`production`** (Release QC) has `REST_API_DB_NAME` / `USER` / `PASSWORD` / `PORT`. Dummy local values are enough. Those names are **not** CD and **not** what the guest reads. Do not add `REST_API_CLOUD_DB_*`. `REST_API_DB_URL` is not a secret.
+1. Integration CI: put `REST_API_DB_NAME` / `USER` / `PASSWORD` / `PORT` on **Repository secrets** (the caller explicit map cannot see Environment secrets). Optionally also on Environment `integration`. Release QC: Environment **`production`** has the same four names. Dummy local values are enough. Those names are **not** CD and **not** what the guest reads. Do not add `REST_API_CLOUD_DB_*`. `REST_API_DB_URL` is not a secret.
 2. Merge to `master`, then run **Actions → Release → Run workflow**. That checks out `master`, runs DAST, pushes public GHCR, and creates the GitHub Release.
 3. Org Packages → `heavy_rental_rest_api` → visibility **Public**. Private GHCR fails CD on purpose (no PAT on the guest).
 4. Record the tag, for example `ghcr.io/heavy-rental/heavy_rental_rest_api:1.0.0` (or `:latest`). Prefer a **new** version tag each deploy (`compose up` is not `--pull always`).

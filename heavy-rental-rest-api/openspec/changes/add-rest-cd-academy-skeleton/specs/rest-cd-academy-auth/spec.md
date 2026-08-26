@@ -5,7 +5,13 @@
 ## ADDED Requirements
 
 ### Requirement: Academy Vocareum credentials
-Every AWS job on the **academy caller** SHALL use Environment `academy`. Credentials SHALL come from `$GITHUB_EVENT_PATH` form fields or Environment secrets `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` / `AWS_SESSION_TOKEN`. Jobs SHALL `::add-mask::` those values before `$GITHUB_ENV`. The configuration SHALL NOT interpolate `${{ inputs.aws_access_key_id }}` (or secret/token) in `env:`. CI Environments `integration` / `production` SHALL NOT be used as CD auth.
+Every AWS job on the **academy caller** SHALL use Environment `academy`. Credentials SHALL come from `$GITHUB_EVENT_PATH` form fields or Environment secrets `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` / `AWS_SESSION_TOKEN`. Jobs SHALL `::add-mask::` those values before `$GITHUB_ENV`. The configuration SHALL NOT interpolate `${{ inputs.aws_access_key_id }}` (or secret/token) in `env:`. CI Environments `integration` / `production` SHALL NOT be used as CD auth. The academy caller SHALL declare `id-token: write` so it can `uses:` the shared reusable workflow; Academy SHALL still authenticate with Vocareum keys, not GitHub OIDC.
+
+#### Scenario: Caller may invoke the shared reusable
+- GIVEN `rest-api-cd-academy-caller.yml` calls `rest-api-cd-academy.yml`
+- WHEN permissions are declared
+- THEN `id-token: write` is present
+- AND AWS credentials still come from Vocareum form fields or Environment `academy` secrets
 
 #### Scenario: Wrong Environment
 - GIVEN `aws_environment` is not `academy`
