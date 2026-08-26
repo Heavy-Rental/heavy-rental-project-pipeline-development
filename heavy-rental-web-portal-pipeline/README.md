@@ -21,8 +21,8 @@ Start here: [`specification/README.md`](specification/README.md). App-repo CD ch
 ## GitHub Flow
 
 ```
-feature branch push  →  Fast Feedback (Integration only)
-PR / push → develop  →  Integration CI (full gates, no packaging; SAST here)
+feature branch push  →  Fast Feedback (Integration only; sole Integration-stage run for that SHA)
+PR / push → develop  →  Integration CI (Integration Check reuses Fast Feedback on PR; full gates; SAST here)
 workflow_dispatch     →  Release (master + QC + image + DAST + public GHCR + GitHub Release)
 ```
 
@@ -50,3 +50,5 @@ Release stops at **packaged artifacts** (`dist/` zip, image tar, public GHCR, Gi
 | SAST / SCA | Semgrep TS/React + npm audit SARIF + Trivy |
 | Code scanning | CodeQL `javascript-typescript` |
 | Package | `tsc -b` + `vite build --mode api` → `dist/` zip + `nginx:1.27-alpine` tar; Publish pushes GHCR |
+
+Reusable YAML `DEFAULT_APP_REPOSITORY` is `SA62-team1/heavy-rental-react-web-portal` on Fast Feedback and Integration CI (local `act` fallback). Release uses `Heavy-Rental/heavy-rental-react-web-portal`. When Fast Feedback or Integration CI runs **in** `Heavy-Rental/heavy-rental-react-web-portal`, checkout is the calling commit. Release always checks out **`master`**.

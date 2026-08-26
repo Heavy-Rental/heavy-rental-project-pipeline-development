@@ -38,7 +38,7 @@ Step-by-step (do not set `GITHUB_TOKEN`, dispatch after merge, public package, `
 
 Academy guests pull **public** GHCR with no token. A `develop` → `master` PR does **not** run Release. You need this dispatch (or `docker load` the tar via `image_http_url` / `IMAGE_HTTP_URL`, or copy the image to ECR).
 
-Fast Feedback / Integration `DEFAULT_APP_REPOSITORY: SA62-team1/heavy-rental-react-web-portal` is only for local `act`. Release YAML defaults to `Heavy-Rental/heavy-rental-react-web-portal`. When Release runs **in** the Heavy-Rental portal repo, checkout is the calling repo (into `app/`) at `master`.
+Fast Feedback / Integration `DEFAULT_APP_REPOSITORY: SA62-team1/heavy-rental-react-web-portal` is only for local `act`. Release YAML defaults to `Heavy-Rental/heavy-rental-react-web-portal`. When Fast Feedback or Integration CI runs **in** the Heavy-Rental portal repo, checkout is the calling commit. On pull_request, Integration Check reuses a successful Fast Feedback run for the PR head SHA instead of repeating `npm ci`. When Release runs **in** the Heavy-Rental portal repo, checkout is the calling repo (into `app/`) at `master`.
 
 ---
 
@@ -46,8 +46,21 @@ Fast Feedback / Integration `DEFAULT_APP_REPOSITORY: SA62-team1/heavy-rental-rea
 
 Typical app `develop` today:
 
-- Present or pending: Fast Feedback, Integration, Release (copy from this tree)
+- Present or pending: Fast Feedback, Integration CI, Release (copy the six CI YAML files from this tree)
 - **Missing until you copy:** `deploy-pipeline/` (CD caller, reusable workflow, `resolve-vocareum-aws`, `ansible/`)
+
+Copy into the React repo `.github/workflows/`:
+
+```
+portal-fast-feedback-caller.yml
+fast-feedback-pipeline.yml
+portal-ci-caller.yml
+integration-pipeline.yml
+portal-release-caller.yml
+release-pipeline.yml
+```
+
+Branch protection on `develop` must require **Integration Check** (not **Integration**). Fast Feedback still publishes a check named **Integration**.
 
 Do **not** copy `specification/`.
 

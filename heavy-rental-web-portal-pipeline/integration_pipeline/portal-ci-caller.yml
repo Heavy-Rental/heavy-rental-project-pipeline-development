@@ -12,7 +12,7 @@
 # GitHub Flow
 # -----------
 #   1. Branch from develop
-#   2. Open a pull request into develop → this workflow runs (Integration first)
+#   2. Open a pull request into develop → this workflow runs (Integration Check first)
 #   3. Review + green checks → merge into develop
 #   4. Release packaging → portal-release-caller.yml on workflow_dispatch
 #                          (Publish creates the GitHub Release)
@@ -20,13 +20,21 @@
 # Reusable workflow (same repository):
 #   ./.github/workflows/integration-pipeline.yml
 #
+# Fast Feedback (do NOT call it from this file)
+# ---------------------------------------------
+# portal-fast-feedback-caller.yml owns the Integration stage on feature-branch
+# pushes. Do not `uses:` fast-feedback-pipeline.yml here — that would run Fast
+# Feedback a second time when a PR is opened.
+# On pull_request, integration-pipeline.yml Integration Check reuses a successful
+# Fast Feedback run for the PR head SHA instead of repeating npm ci / install health.
+#
 # Job priority (do not reorder conceptually)
 # -----------------------------------------
-#   1. Integration           ← HIGHEST PRIORITY (required status check)
-#   2. Quality Control       (needs Integration)
-#   2. Security Testing      (needs Integration; parallel with QC)
-#   2. CodeQL Analysis       (needs Integration; JS/TS Code Scanning)
-#   3. REST Endpoint Tests   (needs Integration; skip-clean until mock scripts exist)
+#   1. Integration Check     ← HIGHEST PRIORITY (required status check)
+#   2. Quality Control       (needs Integration Check)
+#   2. Security Testing      (needs Integration Check; parallel with QC)
+#   2. CodeQL Analysis       (needs Integration Check; JS/TS Code Scanning)
+#   3. REST Endpoint Tests   (needs Integration Check; skip-clean until mock scripts exist)
 #   4. GitHub Flow CI Gate   (aggregate of the above — optional single check)
 #
 # Setup
@@ -37,7 +45,7 @@
 # 2. Branch protection on develop (Settings → Branches):
 #      - Require a pull request before merging
 #      - Require status checks to pass before merging:
-#          * Integration              ← require this first / highest priority
+#          * Integration Check        ← require this first / highest priority
 #          * Quality Control
 #          * Security Testing
 #          * CodeQL Analysis
@@ -72,7 +80,7 @@ permissions:
   checks: write
 
 jobs:
-  # Integration is the first / highest-priority job inside the reusable workflow
+  # Integration Check is the first / highest-priority job inside the reusable workflow
   integration-pipeline:
     name: Integration pipeline
     # Same-repo reusable workflow — both files live under .github/workflows/

@@ -11,21 +11,22 @@ Authoring path for Integration CI is `integration_pipeline/` (underscore).
 **Goals:**
 
 - Same GitHub Flow as REST / Haystack / mobile.
-- Integration first; later jobs need Integration.
+- Integration Check first on Integration CI; later jobs `needs: [integration-check]`. Fast Feedback and Release keep job `integration`.
+- PR Integration Check reuses a successful Fast Feedback run for the head SHA (CI caller does not `uses:` Fast Feedback).
 - Node 22 + npm ci + ESLint + `tsc`.
 - REST endpoint tests against a local mock; skip-clean until scripts exist.
 - Release artifacts consumable by Academy CD (`dist/` zip + nginx image tar; Publish pushes GHCR after DAST).
 
 **Non-Goals:**
 
-- Changing existing YAML
 - Hitting live Spring / Haystack from CI
 - Terraform / compose / operate
+- Unifying Release `DEFAULT_APP_REPOSITORY` (`Heavy-Rental/...`) with Fast Feedback / Integration CI (`SA62-team1/...` act fallback)
 
 ## Decisions
 
-1. **Reusable + caller gate.** Sole callers: `portal-fast-feedback-caller.yml`, `portal-ci-caller.yml`, `portal-release-caller.yml`.
-2. **Node 22 + npm ci.** Integration verifies `package-lock.json` and `node_modules`.
+1. **Reusable + caller gate.** Sole callers: `portal-fast-feedback-caller.yml`, `portal-ci-caller.yml`, `portal-release-caller.yml`. Integration CI caller `uses:` `./.github/workflows/integration-pipeline.yml` (copy both files into the portal repo). It does not `uses:` Fast Feedback.
+2. **Node 22 + npm ci.** Integration verifies `package-lock.json` and `node_modules`, unless Integration Check reused Fast Feedback.
 3. **QC is lint + typecheck.** No Postgres. Integration CI has no GitHub Environment.
 4. **REST Endpoint Tests skip-clean** when `package.json` lacks both a mock script (`mock:server` / `api:mock` / `start:mock`) and a test script (`test:api` / `test:endpoints` / `test:rest`). Mock binds `127.0.0.1:4010`.
 5. **Release is `workflow_dispatch` only.** Merge to `master`, then Actions → Release → Run workflow. Publish creates the GitHub Release. The caller does not subscribe to `release` or `pull_request`.

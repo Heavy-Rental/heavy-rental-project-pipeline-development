@@ -6,13 +6,13 @@
 
 This family validates and packages the SPA. Academy **app CD** is [`portal-cd.md`](portal-cd.md).
 
-Fast Feedback and Integration reusable YAML `DEFAULT_APP_REPOSITORY` is `SA62-team1/heavy-rental-react-web-portal` (local `act`). Release reusable YAML uses `Heavy-Rental/heavy-rental-react-web-portal`. When the caller runs **in** the portal repo, checkout is the calling repo (into `app/`).
+Fast Feedback and Integration reusable YAML `DEFAULT_APP_REPOSITORY` is `SA62-team1/heavy-rental-react-web-portal` (local `act`). Release reusable YAML uses `Heavy-Rental/heavy-rental-react-web-portal`. When a caller runs **in** the Heavy-Rental portal repo, Fast Feedback and Integration CI check out the calling commit (into `app/`). Release always checks out **`master`**.
 
 ## GitHub Flow
 
 ```
-feature branch push  →  Fast Feedback (Integration only)
-PR / push → develop  →  Integration CI (full gates, no packaging; SAST here)
+feature branch push  →  Fast Feedback (Integration only; sole Integration-stage run for that SHA)
+PR / push → develop  →  Integration CI (Integration Check reuses Fast Feedback on PR; full gates; SAST here)
 workflow_dispatch     →  Release (master + QC + image + DAST + public GHCR + GitHub Release)
 ```
 
@@ -22,7 +22,9 @@ workflow_dispatch     →  Release (master + QC + image + DAST + public GHCR + G
 assert-caller
       │
       ▼
- Integration          Node 22 + npm ci + lockfile / node_modules health
+ Integration Check    PR: reuse Fast Feedback for the head SHA (skip npm ci / install health)
+                      else: Node 22 + npm ci + lockfile / node_modules health
+                      job id integration-check
       │
       ├── Quality Control        npm run lint + npx tsc -b
       ├── Security Testing       Semgrep TS/React + npm audit SARIF + Trivy
@@ -33,7 +35,11 @@ assert-caller
  GitHub Flow CI Gate
 ```
 
-Release (`workflow_dispatch` of **Release**) does **not** re-run Security Testing, CodeQL, or REST Endpoint Tests. Those stay on Integration CI. Release job graph:
+Do **not** `uses:` `fast-feedback-pipeline.yml` from `portal-ci-caller.yml`. Copy both Integration files into the portal repo and call `./.github/workflows/integration-pipeline.yml`.
+
+## Job graph (Release)
+
+SAST, CodeQL, and REST Endpoint Tests stay on Integration CI (`develop`). Release does **not** rerun them.
 
 ```
 assert-caller
@@ -65,7 +71,7 @@ The nginx image is a React + npm + Vite static SPA (ADR 0007 / 0008). Packaging 
 | --- | --- |
 | Runtime | Node 22 |
 | Install | `npm ci` when `node_modules` cache misses |
-| Integration | `package-lock.json` + `node_modules` + `npm ls --depth=0` |
+| Integration | `package-lock.json` + `node_modules` + `npm ls --depth=0`. On Integration CI pull_request, skip cache / `npm ci` / install health when Fast Feedback already succeeded for the head SHA |
 | QC | `npm run lint` (ESLint) + `npx tsc -b --pretty false` |
 | REST tests | `mock:server` / `api:mock` / `start:mock` + `test:api` / `test:endpoints` / `test:rest` |
 | Mock URL | `http://127.0.0.1:4010` (`MOCK_API_*`) |
@@ -78,7 +84,7 @@ The nginx image is a React + npm + Vite static SPA (ADR 0007 / 0008). Packaging 
 
 ## Branch protection (application repo `develop`)
 
-1. Integration *(highest priority)*
+1. Integration Check *(highest priority)*
 2. Quality Control
 3. Security Testing
 4. CodeQL Analysis

@@ -7,7 +7,7 @@ GitHub CodeQL analysis for the JavaScript / TypeScript portal.
 ## ADDED Requirements
 
 ### Requirement: CodeQL needs Integration
-CodeQL Analysis SHALL run only after Integration succeeds.
+CodeQL Analysis SHALL run only after Integration Check succeeds and SHALL analyze the same application source.
 
 ### Requirement: Language is javascript-typescript
 CodeQL SHALL initialize with language `javascript-typescript`.

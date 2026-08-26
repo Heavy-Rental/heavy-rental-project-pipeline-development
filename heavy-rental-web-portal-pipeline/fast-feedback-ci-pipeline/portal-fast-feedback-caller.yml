@@ -18,7 +18,8 @@
 #   Does NOT run on:
 #     - push to master
 #     - push to develop
-#     - pull_request events (full CI: portal-ci-caller.yml owns PR → develop)
+#     - pull_request events (full CI: portal-ci-caller.yml owns PR → develop;
+#       that caller must not uses: this Fast Feedback workflow)
 #
 # Reusable workflow (same repository):
 #   ./.github/workflows/fast-feedback-pipeline.yml

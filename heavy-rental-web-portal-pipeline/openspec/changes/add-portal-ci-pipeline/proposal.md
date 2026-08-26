@@ -2,11 +2,11 @@
 
 ## Why
 
-`heavy-rental-web-portal-pipeline/` authors Fast Feedback, Integration CI, and Release YAML. Haystack and mobile specify that family with OpenSpec + OpenSPDD + ADRs. This change records the **existing** behavior. It does not add jobs or change workflows.
+`heavy-rental-web-portal-pipeline/` authors Fast Feedback, Integration CI, and Release YAML. Haystack and mobile specify that family with OpenSpec + OpenSPDD + ADRs. This change records the **as-implemented** behavior so later edits have a contract.
 
 ## What Changes
 
-- OpenSpec capabilities for orchestration, Integration, QC, Security, CodeQL, REST endpoint tests, Release packaging, and CI scope.
+- OpenSpec capabilities for orchestration, Integration, QC, Security, CodeQL, REST endpoint tests, Release packaging, and CI scope (Integration Check, Fast Feedback reuse).
 - OpenSPDD analysis + REASONS Canvas bound to the existing six YAML files.
 - Human `specification/` index and `pipelines/portal-ci.md`.
 - CI ADRs 0004–0008 (0007 = static SPA; 0008 = Vite `.env.production` vs AWS REST host).
@@ -27,9 +27,12 @@
 
 ### Modified Capabilities
 
-- None (YAML already shipped).
+- `portal-ci-orchestration` (Fast Feedback reuse; CI caller does not `uses:` Fast Feedback)
+- `portal-ci-integration` (job id `integration-check` on Integration CI)
+- `portal-ci-quality` / `portal-ci-security` / `portal-ci-codeql` / `portal-ci-rest-endpoints` (needs Integration Check)
 
 ## Impact
 
-- **This repo:** specification + OpenSpec + SPDD + ADRs under `heavy-rental-web-portal-pipeline/`.
-- **Not in this change:** new gates, paid CD, Terraform, edits to `deploy-pipeline/` YAML.
+- **This repo:** specification + OpenSpec + SPDD + ADRs + CI YAML under `heavy-rental-web-portal-pipeline/`.
+- **Not in this change:** paid CD, Terraform, edits to `deploy-pipeline/` YAML.
+- **As-implemented note:** Release is `workflow_dispatch` only (creates the GitHub Release). Jobs are Integration → QC → Packaging → DAST → Publish. SAST/CodeQL/REST tests stay on Integration CI. Integration CI job is **Integration Check** (`needs: [integration-check]`) and reuses Fast Feedback on PR. Fast Feedback / Integration CI `DEFAULT_APP_REPOSITORY` is `SA62-team1/...`; Release is `Heavy-Rental/...`.

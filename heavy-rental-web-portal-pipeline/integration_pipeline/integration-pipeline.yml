@@ -1,13 +1,17 @@
 # =============================================================================
 # Heavy Rental Web Portal — Integration CI Pipeline (reusable)
 # =============================================================================
-# Stages:
-#   1. Integration         — checkout, Node 22, npm ci, install health
-#   2. Quality Control     — ESLint + TypeScript (needs Integration)
-#   3. Security Testing    — Semgrep + npm audit + Trivy (needs Integration)
-#   4. CodeQL Analysis     — GitHub CodeQL for JavaScript/TypeScript (needs Integration)
-#   5. REST Endpoint Tests — mock server HTTP tests (needs Integration)
-#   6. GitHub Flow CI Gate — aggregate: Integration first, then QC + Security + CodeQL + REST
+# Stages (priority order — Integration Check is highest priority):
+#   1. Integration Check (HIGHEST) checkout, Node 22, npm ci, install health
+#      On pull_request: reuse a successful Fast Feedback CI run for the PR head
+#      SHA instead of repeating those steps. Fast Feedback owns the Integration
+#      stage on feature-branch pushes; this job must not invoke that workflow.
+#      Push to develop / workflow_dispatch / missing Fast Feedback → run fully.
+#   2. Quality Control     — ESLint + TypeScript (needs Integration Check)
+#   3. Security Testing    — Semgrep + npm audit + Trivy (needs Integration Check)
+#   4. CodeQL Analysis     — GitHub CodeQL for JavaScript/TypeScript (needs Integration Check)
+#   5. REST Endpoint Tests — mock server HTTP tests (needs Integration Check)
+#   6. GitHub Flow CI Gate — aggregate: Integration Check first, then QC + Security + CodeQL + REST
 #   Security report format (standard): SARIF 2.1.0
 #     - Semgrep → semgrep.sarif
 #     - npm audit → npm-audit.sarif (converted from audit JSON)
@@ -20,9 +24,23 @@
 #   REST endpoint tests: against a local mock server (not a live backend)
 #     Skips cleanly until both scripts exist in the portal package.json.
 #
-# Application:
-#   https://github.com/SA62-team1/heavy-rental-react-web-portal
-#   React 19 + TypeScript + Vite 8 (npm)
+# GitHub Flow for develop (validate only — NEVER deploys)
+# --------------------------------------------------------------------------
+#   1. Branch from develop
+#   2. Push feature branch → portal-fast-feedback-caller (Integration stage once)
+#   3. Open PR → develop (or push to develop) → portal-ci-caller → this workflow
+#      PR Integration Check reuses Fast Feedback for the head SHA; do not call
+#      fast-feedback-pipeline.yml from portal-ci-caller.yml (that would run it twice).
+#   4. Branch protection on develop should require:
+#        - "Integration Check"        ← highest priority / must pass first
+#        - "Quality Control"
+#        - "Security Testing"
+#        - "CodeQL Analysis"
+#        - "REST Endpoint Tests"
+#        - "GitHub Flow CI Gate"       ← optional single aggregate check
+#   5. Merge when green → develop is integration-tested, not production-deployed
+#   6. Deploy packaging / GHCR lives only in release-pipeline.yml
+#      (workflow_dispatch via portal-release-caller.yml; creates the GitHub Release)
 #
 # How the portal uses this
 # ------------------------
@@ -37,13 +55,12 @@
 # The caller invokes this workflow with:
 #   uses: ./.github/workflows/integration-pipeline.yml
 #
-# Also mirrored in the pipeline-development repo for discovery/testing:
-#   .github/workflows/web-portal-ci.yml
-# Keep this file and that mirror in sync when developing here.
+# Authoring copy lives in this tree. Install into the portal repo as
+#   .github/workflows/integration-pipeline.yml
+# There is no .github/workflows/web-portal-ci.yml mirror in this repo.
 #
 # Local validation (from pipeline-development repo root, in the devcontainer):
 #   actionlint heavy-rental-web-portal-pipeline/integration_pipeline/integration-pipeline.yml
-#   actionlint .github/workflows/web-portal-ci.yml
 # =============================================================================
 
 name: Web Portal CI
@@ -131,13 +148,19 @@ jobs:
           esac
 
   # ---------------------------------------------------------------------------
-  # 1. Integration — fetch source, install dependencies, verify install health
+  # 1. Integration Check — HIGHEST PRIORITY (GitHub Flow PR gate starts here)
+  #    All other jobs declare needs: integration-check so they never run if this fails.
+  #    Job id is integration-check so it is not confused with Fast Feedback Integration.
+  #    Always run this job (never if: skip it) so QC / Security / CodeQL / REST tests
+  #    keep their needs: and branch protection still sees the check.
+  #    On pull_request, skip npm ci / install health when Fast Feedback already passed
+  #    for the PR head SHA. Do not uses: fast-feedback-pipeline.yml from the CI caller.
   # ---------------------------------------------------------------------------
-  integration:
-    name: Integration
+  integration-check:
+    name: Integration Check
     runs-on: ubuntu-latest
     needs: [assert-caller]
-    timeout-minutes: 15
+    timeout-minutes: 20
     outputs:
       app_repository: ${{ steps.meta.outputs.app_repository }}
       app_ref: ${{ steps.meta.outputs.app_ref }}
@@ -166,7 +189,7 @@ jobs:
             APP_REF="${INPUT_REF:-${DEFAULT_APP_REF_VALUE}}"
             MODE=remote
           else
-            # portal-ci-caller.yml in the same repo: use this commit
+            # Same-repo caller: use this commit
             APP_REPO="${GH_REPOSITORY}"
             APP_REF="${INPUT_REF:-${GH_SHA}}"
             MODE=caller
@@ -187,35 +210,145 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
           echo "Integrating application: $APP_REPO @ $APP_REF (mode=$MODE)"
 
-      # Caller mode: checkout the portal (or other caller) at the PR/push SHA
+      - name: Reuse Fast Feedback Integration when it already passed
+        id: reuse
+        env:
+          # Bind contexts here — never interpolate github/inputs directly in run: scripts
+          # (avoids Semgrep run-shell-injection).
+          GH_TOKEN: ${{ github.token }}
+          EVENT_NAME: ${{ github.event_name }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          GH_REPOSITORY: ${{ github.repository }}
+          FF_WORKFLOW_FILE: portal-fast-feedback-caller.yml
+        run: |
+          set -euo pipefail
+          REUSE=false
+
+          finish() {
+            echo "reuse=${REUSE}" >> "$GITHUB_OUTPUT"
+            {
+              echo "### Fast Feedback reuse"
+              echo ""
+              echo "$1"
+            } >> "$GITHUB_STEP_SUMMARY"
+          }
+
+          if [ "${EVENT_NAME}" != "pull_request" ]; then
+            echo "Event is ${EVENT_NAME} (not pull_request) — run Integration Check."
+            finish "Event \`${EVENT_NAME}\` — ran Integration Check locally (Fast Feedback is feature-branch push only)."
+            exit 0
+          fi
+
+          COMMIT="${HEAD_SHA}"
+          if [ -z "${COMMIT}" ]; then
+            echo "PR head SHA is empty — run Integration Check."
+            finish "PR head SHA empty — ran Integration Check locally."
+            exit 0
+          fi
+
+          echo "Looking up Fast Feedback (${FF_WORKFLOW_FILE}) for commit ${COMMIT}"
+
+          list_runs() {
+            gh run list \
+              --repo "${GH_REPOSITORY}" \
+              --workflow "${FF_WORKFLOW_FILE}" \
+              --commit "${COMMIT}" \
+              --json databaseId,status,conclusion,url \
+              --limit 20 \
+              2>/dev/null || echo "[]"
+          }
+
+          run_count() {
+            echo "${1}" | jq 'length' 2>/dev/null || echo 0
+          }
+
+          jq_field() {
+            echo "${1}" | jq -r "${2}" 2>/dev/null || true
+          }
+
+          # PR opened in the same moment as the push: the Fast Feedback run may
+          # not exist yet. Retry briefly before falling back to local checks.
+          ATTEMPT=1
+          MAX_APPEAR=12
+          RUNS="[]"
+          while [ "${ATTEMPT}" -le "${MAX_APPEAR}" ]; do
+            RUNS="$(list_runs)"
+            [ -n "${RUNS}" ] || RUNS="[]"
+            if [ "$(run_count "${RUNS}")" -gt 0 ]; then
+              break
+            fi
+            echo "No Fast Feedback run for ${COMMIT} yet (attempt ${ATTEMPT}/${MAX_APPEAR})"
+            sleep 5
+            ATTEMPT=$((ATTEMPT + 1))
+          done
+
+          [ -n "${RUNS}" ] || RUNS="[]"
+          if [ "$(run_count "${RUNS}")" -eq 0 ]; then
+            echo "No Fast Feedback run for ${COMMIT} — run Integration Check."
+            finish "No Fast Feedback run for \`${COMMIT}\` — ran Integration Check locally."
+            exit 0
+          fi
+
+          jq_field "${RUNS}" '.[] | "id=\(.databaseId) status=\(.status) conclusion=\(.conclusion // "null") url=\(.url)"'
+
+          SUCCESS_ID="$(jq_field "${RUNS}" '[.[] | select(.conclusion == "success")] | .[0].databaseId // empty')"
+          SUCCESS_URL="$(jq_field "${RUNS}" '[.[] | select(.conclusion == "success")] | .[0].url // empty')"
+          if [ -n "${SUCCESS_ID}" ]; then
+            REUSE=true
+            echo "Reusing successful Fast Feedback run ${SUCCESS_ID}: ${SUCCESS_URL}"
+            finish "Reused Fast Feedback run [${SUCCESS_ID}](${SUCCESS_URL}) for \`${COMMIT}\`. npm ci / install-health steps skipped."
+            exit 0
+          fi
+
+          PENDING_FILTER='[.[] | select(.status == "queued" or .status == "in_progress" or .status == "waiting" or .status == "pending" or .status == "requested")]'
+          PENDING_ID="$(jq_field "${RUNS}" "${PENDING_FILTER} | .[0].databaseId // empty')"
+          PENDING_URL="$(jq_field "${RUNS}" "${PENDING_FILTER} | .[0].url // empty')"
+          if [ -z "${PENDING_ID}" ]; then
+            echo "Fast Feedback finished without success for ${COMMIT} — run Integration Check."
+            finish "Fast Feedback did not succeed for \`${COMMIT}\` — ran Integration Check locally."
+            exit 0
+          fi
+
+          echo "Waiting for in-flight Fast Feedback run ${PENDING_ID}: ${PENDING_URL}"
+          set +e
+          timeout 600 gh run watch "${PENDING_ID}" --repo "${GH_REPOSITORY}" --exit-status --interval 10
+          WATCH_RC=$?
+          set -e
+          if [ "${WATCH_RC}" -eq 0 ]; then
+            REUSE=true
+            echo "Fast Feedback run ${PENDING_ID} succeeded — skip npm ci / install health."
+            finish "Waited for Fast Feedback run [${PENDING_ID}](${PENDING_URL}) (success). npm ci / install-health steps skipped."
+            exit 0
+          fi
+
+          echo "Fast Feedback run ${PENDING_ID} did not succeed (watch exit=${WATCH_RC}) — run Integration Check."
+          finish "Fast Feedback run [${PENDING_ID}](${PENDING_URL}) did not succeed (watch exit=${WATCH_RC}) — ran Integration Check locally."
+
       - name: Checkout calling repository (PR / push head)
         if: steps.meta.outputs.checkout_mode == 'caller'
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           path: ${{ env.APP_PATH }}
-          # github.repository / github.sha from the caller workflow (portal PR)
 
-      # Remote mode: checkout portal from pipeline-development or explicit override
       - name: Checkout remote application repository
         if: steps.meta.outputs.checkout_mode == 'remote'
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           repository: ${{ steps.meta.outputs.app_repository }}
           ref: ${{ steps.meta.outputs.app_ref }}
           path: ${{ env.APP_PATH }}
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: ${{ env.NODE_VERSION }}
-          # Caches the npm download cache (~/.npm) keyed on package-lock.json
           cache: npm
           cache-dependency-path: ${{ env.APP_PATH }}/package-lock.json
 
-      # Restores / saves installed node_modules across runs when the lockfile is unchanged
       - name: Cache node_modules
+        if: steps.reuse.outputs.reuse != 'true'
         id: cache-node-modules
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ${{ env.APP_PATH }}/node_modules
           key: node-modules-${{ runner.os }}-node${{ env.NODE_VERSION }}-${{ hashFiles(format('{0}/package-lock.json', env.APP_PATH)) }}
@@ -223,11 +356,12 @@ jobs:
             node-modules-${{ runner.os }}-node${{ env.NODE_VERSION }}-
 
       - name: Install dependencies (npm ci)
-        if: steps.cache-node-modules.outputs.cache-hit != 'true'
+        if: steps.reuse.outputs.reuse != 'true' && steps.cache-node-modules.outputs.cache-hit != 'true'
         working-directory: ${{ env.APP_PATH }}
         run: npm ci
 
       - name: Report dependency cache status
+        if: steps.reuse.outputs.reuse != 'true'
         run: |
           if [ "${{ steps.cache-node-modules.outputs.cache-hit }}" = "true" ]; then
             echo "node_modules restored from cache (skipped npm ci)."
@@ -237,6 +371,7 @@ jobs:
           echo "Lockfile hash key uses package-lock.json + Node ${{ env.NODE_VERSION }} + ${{ runner.os }}"
 
       - name: Verify install integrity
+        if: steps.reuse.outputs.reuse != 'true'
         working-directory: ${{ env.APP_PATH }}
         run: |
           set -euo pipefail
@@ -252,7 +387,7 @@ jobs:
           echo "Integration checks passed."
 
       - name: Upload lockfile fingerprint for downstream jobs
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: integration-metadata
           path: |
@@ -266,25 +401,25 @@ jobs:
   quality-control:
     name: Quality Control
     runs-on: ubuntu-latest
-    needs: integration
+    needs: [integration-check]
     timeout-minutes: 15
     steps:
       - name: Checkout calling repository (PR / push head)
-        if: needs.integration.outputs.checkout_mode == 'caller'
-        uses: actions/checkout@v4
+        if: needs.integration-check.outputs.checkout_mode == 'caller'
+        uses: actions/checkout@v7
         with:
           path: ${{ env.APP_PATH }}
 
       - name: Checkout remote application repository
-        if: needs.integration.outputs.checkout_mode == 'remote'
-        uses: actions/checkout@v4
+        if: needs.integration-check.outputs.checkout_mode == 'remote'
+        uses: actions/checkout@v7
         with:
-          repository: ${{ needs.integration.outputs.app_repository }}
-          ref: ${{ needs.integration.outputs.app_ref }}
+          repository: ${{ needs.integration-check.outputs.app_repository }}
+          ref: ${{ needs.integration-check.outputs.app_ref }}
           path: ${{ env.APP_PATH }}
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
@@ -292,7 +427,7 @@ jobs:
 
       - name: Cache node_modules
         id: cache-node-modules
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ${{ env.APP_PATH }}/node_modules
           key: node-modules-${{ runner.os }}-node${{ env.NODE_VERSION }}-${{ hashFiles(format('{0}/package-lock.json', env.APP_PATH)) }}
@@ -318,21 +453,21 @@ jobs:
   security-testing:
     name: Security Testing
     runs-on: ubuntu-latest
-    needs: integration
+    needs: [integration-check]
     timeout-minutes: 40
     steps:
       - name: Checkout calling repository (PR / push head)
-        if: needs.integration.outputs.checkout_mode == 'caller'
-        uses: actions/checkout@v4
+        if: needs.integration-check.outputs.checkout_mode == 'caller'
+        uses: actions/checkout@v7
         with:
           path: ${{ env.APP_PATH }}
 
       - name: Checkout remote application repository
-        if: needs.integration.outputs.checkout_mode == 'remote'
-        uses: actions/checkout@v4
+        if: needs.integration-check.outputs.checkout_mode == 'remote'
+        uses: actions/checkout@v7
         with:
-          repository: ${{ needs.integration.outputs.app_repository }}
-          ref: ${{ needs.integration.outputs.app_ref }}
+          repository: ${{ needs.integration-check.outputs.app_repository }}
+          ref: ${{ needs.integration-check.outputs.app_ref }}
           path: ${{ env.APP_PATH }}
 
       - name: Create security reports directory
@@ -340,7 +475,7 @@ jobs:
 
       # --- SAST: static analysis (standard report format: SARIF) ---
       - name: Setup Python (Semgrep)
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7
         with:
           python-version: "3.12"
 
@@ -538,7 +673,7 @@ jobs:
 
       # --- SCA: dependency vulnerabilities (npm audit → SARIF) ---
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
@@ -546,7 +681,7 @@ jobs:
 
       - name: Cache node_modules
         id: cache-node-modules
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ${{ env.APP_PATH }}/node_modules
           key: node-modules-${{ runner.os }}-node${{ env.NODE_VERSION }}-${{ hashFiles(format('{0}/package-lock.json', env.APP_PATH)) }}
@@ -672,7 +807,7 @@ jobs:
         run: echo "week=$(date -u +%Y-W%V)" >> "$GITHUB_OUTPUT"
 
       - name: Cache Trivy DBs
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ${{ github.workspace }}/.cache/trivy
           key: trivy-db-${{ runner.os }}-${{ steps.trivy-cache-meta.outputs.week }}
@@ -1176,7 +1311,7 @@ jobs:
       - name: Upload combined security report (PDF)
         if: always() && hashFiles('security-reports/combined-security-report.pdf') != ''
         id: upload-security-pdf
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: security-combined-report-pdf
           path: security-reports/combined-security-report.pdf
@@ -1202,7 +1337,7 @@ jobs:
         continue-on-error: true
         env:
           PDF_URL: ${{ steps.upload-security-pdf.outputs.artifact-url }}
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         with:
           script: |
             const url = process.env.PDF_URL;
@@ -1229,7 +1364,7 @@ jobs:
 
       - name: Upload security reports (SARIF)
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: security-reports-sarif
           path: |
@@ -1240,13 +1375,13 @@ jobs:
 
   # ---------------------------------------------------------------------------
   # 4. CodeQL analysis — GitHub CodeQL for JavaScript / TypeScript
-  #    Runs after Integration; parallel with QC, Security, and REST tests.
+  #    Runs after Integration Check; parallel with QC, Security, and REST tests.
   #    Results appear under the repository Security → Code scanning alerts.
   # ---------------------------------------------------------------------------
   codeql:
     name: CodeQL Analysis
     runs-on: ubuntu-latest
-    needs: [integration]
+    needs: [integration-check]
     timeout-minutes: 45
     permissions:
       contents: read
@@ -1254,17 +1389,17 @@ jobs:
       actions: read
     steps:
       - name: Checkout calling repository (PR / push head)
-        if: needs.integration.outputs.checkout_mode == 'caller'
-        uses: actions/checkout@v4
+        if: needs.integration-check.outputs.checkout_mode == 'caller'
+        uses: actions/checkout@v7
         with:
           path: ${{ env.APP_PATH }}
 
       - name: Checkout remote application repository
-        if: needs.integration.outputs.checkout_mode == 'remote'
-        uses: actions/checkout@v4
+        if: needs.integration-check.outputs.checkout_mode == 'remote'
+        uses: actions/checkout@v7
         with:
-          repository: ${{ needs.integration.outputs.app_repository }}
-          ref: ${{ needs.integration.outputs.app_ref }}
+          repository: ${{ needs.integration-check.outputs.app_repository }}
+          ref: ${{ needs.integration-check.outputs.app_ref }}
           path: ${{ env.APP_PATH }}
 
       - name: Initialize CodeQL (JavaScript / TypeScript)
@@ -1276,7 +1411,7 @@ jobs:
           queries: security-and-quality
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
@@ -1284,7 +1419,7 @@ jobs:
 
       - name: Cache node_modules
         id: cache-node-modules
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ${{ env.APP_PATH }}/node_modules
           key: node-modules-${{ runner.os }}-node${{ env.NODE_VERSION }}-${{ hashFiles(format('{0}/package-lock.json', env.APP_PATH)) }}
@@ -1356,25 +1491,25 @@ jobs:
   rest-endpoint-tests:
     name: REST Endpoint Tests
     runs-on: ubuntu-latest
-    needs: integration
+    needs: [integration-check]
     timeout-minutes: 20
     steps:
       - name: Checkout calling repository (PR / push head)
-        if: needs.integration.outputs.checkout_mode == 'caller'
-        uses: actions/checkout@v4
+        if: needs.integration-check.outputs.checkout_mode == 'caller'
+        uses: actions/checkout@v7
         with:
           path: ${{ env.APP_PATH }}
 
       - name: Checkout remote application repository
-        if: needs.integration.outputs.checkout_mode == 'remote'
-        uses: actions/checkout@v4
+        if: needs.integration-check.outputs.checkout_mode == 'remote'
+        uses: actions/checkout@v7
         with:
-          repository: ${{ needs.integration.outputs.app_repository }}
-          ref: ${{ needs.integration.outputs.app_ref }}
+          repository: ${{ needs.integration-check.outputs.app_repository }}
+          ref: ${{ needs.integration-check.outputs.app_ref }}
           path: ${{ env.APP_PATH }}
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
@@ -1382,7 +1517,7 @@ jobs:
 
       - name: Cache node_modules
         id: cache-node-modules
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ${{ env.APP_PATH }}/node_modules
           key: node-modules-${{ runner.os }}-node${{ env.NODE_VERSION }}-${{ hashFiles(format('{0}/package-lock.json', env.APP_PATH)) }}
@@ -1593,7 +1728,7 @@ jobs:
 
       - name: Upload REST endpoint test reports
         if: always() && steps.detect.outputs.ready == 'true'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: rest-endpoint-test-reports
           path: test-reports/
@@ -1602,25 +1737,25 @@ jobs:
 
   # ---------------------------------------------------------------------------
   # 6. GitHub Flow CI gate — aggregate status for branch protection
-  #    Integration is evaluated first (highest priority); then QC, Security,
+  #    Integration Check is evaluated first (highest priority); then QC, Security,
   #    CodeQL, and REST Endpoint Tests.
   # ---------------------------------------------------------------------------
   github-flow-gate:
     name: GitHub Flow CI Gate
     runs-on: ubuntu-latest
-    # Always run so a failed Integration still produces a red gate check
+    # Always run so a failed Integration Check still produces a red gate check
     if: always()
     needs:
-      - integration
+      - integration-check
       - quality-control
       - security-testing
       - codeql
       - rest-endpoint-tests
     timeout-minutes: 5
     steps:
-      - name: Enforce Integration priority and full CI green
+      - name: Enforce Integration Check priority and full CI green
         env:
-          INTEGRATION: ${{ needs.integration.result }}
+          INTEGRATION: ${{ needs.integration-check.result }}
           QUALITY: ${{ needs.quality-control.result }}
           SECURITY: ${{ needs.security-testing.result }}
           CODEQL: ${{ needs.codeql.result }}
@@ -1633,22 +1768,22 @@ jobs:
             echo ""
             echo "| Job | Result | Priority |"
             echo "| --- | --- | --- |"
-            echo "| Integration | \`${INTEGRATION}\` | **1 (highest)** |"
+            echo "| Integration Check | \`${INTEGRATION}\` | **1 (highest)** |"
             echo "| Quality Control | \`${QUALITY}\` | 2 |"
             echo "| Security Testing | \`${SECURITY}\` | 2 |"
             echo "| CodeQL Analysis | \`${CODEQL}\` | 2 |"
             echo "| REST Endpoint Tests | \`${REST_TESTS}\` | 3 |"
           } >> "$GITHUB_STEP_SUMMARY"
 
-          echo "Integration (priority 1): ${INTEGRATION}"
+          echo "Integration Check (priority 1): ${INTEGRATION}"
           echo "Quality Control (priority 2): ${QUALITY}"
           echo "Security Testing (priority 2): ${SECURITY}"
           echo "CodeQL Analysis (priority 2): ${CODEQL}"
           echo "REST Endpoint Tests (priority 3): ${REST_TESTS}"
 
           if [ "${INTEGRATION}" != "success" ]; then
-            echo "::error::Integration is the highest-priority gate and did not succeed (result=${INTEGRATION})."
-            echo "Fix Integration before Quality Control / Security / CodeQL / REST tests can proceed."
+            echo "::error::Integration Check is the highest-priority gate and did not succeed (result=${INTEGRATION})."
+            echo "Fix Integration Check before Quality Control / Security / CodeQL / REST tests can proceed."
             exit 1
           fi
           if [ "${QUALITY}" != "success" ]; then
@@ -1668,4 +1803,4 @@ jobs:
             exit 1
           fi
 
-          echo "GitHub Flow CI gate passed: Integration first, then QC + Security + CodeQL + REST Endpoint Tests."
+          echo "GitHub Flow CI gate passed: Integration Check first, then QC + Security + CodeQL + REST Endpoint Tests."

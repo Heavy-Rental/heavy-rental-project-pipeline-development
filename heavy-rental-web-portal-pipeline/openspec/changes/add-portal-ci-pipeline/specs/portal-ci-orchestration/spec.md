@@ -20,9 +20,10 @@ The system SHALL provide three pipeline pairs (caller + reusable workflow): Fast
 - GIVEN a pull request targeting `develop`
 - WHEN the Integration CI caller runs
 - THEN it invokes the reusable integration workflow
-- AND that workflow runs Integration, then Quality Control, Security Testing, CodeQL, and REST Endpoint Tests (each needing Integration)
+- AND that workflow runs Integration Check, then Quality Control, Security Testing, CodeQL, and REST Endpoint Tests (each needing Integration Check)
 - AND it ends with a GitHub Flow CI Gate
 - AND it does not run Packaging
+- AND the Integration CI caller does not `uses:` `fast-feedback-pipeline.yml`
 
 #### Scenario: Release adds packaging, DAST, and Publish
 - GIVEN a `workflow_dispatch` of the Release caller
@@ -72,20 +73,64 @@ Fast Feedback SHALL ignore pushes to `develop` and `master`. Integration CI SHAL
 - AND Publish in a `workflow_dispatch` run is what creates the GitHub Release
 
 ### Requirement: Source resolution
-Each reusable workflow SHALL check out the calling repository at the calling commit unless `app_repository` names a different repository.
+Fast Feedback and Integration CI SHALL check out the calling repository at the calling commit unless `app_repository` names a different repository, in which case they SHALL check out that repository at `app_ref` or the pipeline default ref (`develop`). Release SHALL check out **`master`** in both same-repo and remote modes and SHALL ignore the calling SHA and `app_ref`.
 
-#### Scenario: Same-repo caller
+#### Scenario: Same-repo caller (Fast Feedback / Integration CI)
 - GIVEN the caller is the portal repository and `app_repository` is empty
-- WHEN Integration resolves the source
+- WHEN Fast Feedback Integration or Integration Check resolves the source
 - THEN checkout mode is `caller`
+- AND the application is checked out at the calling `github.sha`
 
-#### Scenario: Release checks out master
+#### Scenario: Release always checks out master
 - GIVEN a `workflow_dispatch` of the Release caller in the portal repository
 - WHEN Integration resolves the source
-- THEN the application is checked out at `master`
+- THEN checkout mode is `caller`
+- AND the application is checked out at `master` (not the calling SHA)
+
+#### Scenario: Remote override
+- GIVEN `app_repository` is a different owner/name than the calling repository
+- WHEN Fast Feedback Integration or Integration Check resolves the source
+- THEN checkout mode is `remote`
+- AND the named repository is checked out at `app_ref` or `develop`
+- AND Release still checks out `master`
 
 ### Requirement: Concurrency
 Fast Feedback and Integration CI SHALL cancel superseded runs. Release SHALL NOT cancel an in-flight packaging run.
 
 ### Requirement: Least-privilege permissions
-Only the Release caller and reusable release workflow SHALL request `packages: write`. Integration CI and Release SHALL request `security-events: write`.
+Only the Release caller and reusable release workflow SHALL request `packages: write`. Integration CI and Release SHALL request `security-events: write`. Fast Feedback and Integration CI SHALL request `actions: read` (Integration Check looks up Fast Feedback runs).
+
+### Requirement: Fast Feedback is not invoked from Integration CI
+The Integration CI caller SHALL NOT `uses:` `fast-feedback-pipeline.yml`. Fast Feedback SHALL remain the sole Integration-stage run on a feature-branch push. On `pull_request`, Integration Check SHALL reuse a successful Fast Feedback run for the PR head SHA instead of repeating `npm ci` and install-health checks.
+
+#### Scenario: CI caller does not call Fast Feedback
+- GIVEN `portal-ci-caller.yml` is installed in the portal repository
+- WHEN the Integration CI caller job is declared
+- THEN it `uses:` `.github/workflows/integration-pipeline.yml`
+- AND it does not `uses:` `fast-feedback-pipeline.yml`
+
+#### Scenario: PR reuses a successful Fast Feedback run
+- GIVEN a pull request targeting `develop`
+- AND `portal-fast-feedback-caller.yml` has a successful run for the PR head SHA
+- WHEN Integration Check runs
+- THEN Cache `node_modules`, `npm ci`, and install-health checks are skipped
+- AND Integration Check still succeeds so Quality Control, Security Testing, CodeQL, and REST Endpoint Tests can start
+
+#### Scenario: PR waits for in-flight Fast Feedback
+- GIVEN a pull request targeting `develop`
+- AND Fast Feedback for the PR head SHA is queued or in progress
+- WHEN Integration Check looks up that run
+- THEN it waits for that run to finish
+- AND if Fast Feedback succeeds, `npm ci` and install-health checks are skipped
+
+#### Scenario: Missing or failed Fast Feedback runs locally
+- GIVEN a pull request targeting `develop`
+- AND Fast Feedback for the PR head SHA is missing or did not succeed
+- WHEN Integration Check runs
+- THEN it runs Node 22, Cache `node_modules` / `npm ci`, and install-health checks locally
+
+#### Scenario: Non-PR Integration Check runs locally
+- GIVEN a push to `develop` or `workflow_dispatch`
+- WHEN Integration Check runs
+- THEN it does not reuse Fast Feedback
+- AND it runs Node 22, Cache `node_modules` / `npm ci`, and install-health checks locally
