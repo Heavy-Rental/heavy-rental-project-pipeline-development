@@ -7,15 +7,15 @@ Compile-time quality for the Spring REST API: compile, unit/Spring tests against
 ## ADDED Requirements
 
 ### Requirement: Quality Control needs Integration
-Quality Control SHALL run only after Integration succeeds and SHALL check out the same application source Integration resolved.
+Quality Control SHALL run only after Integration succeeds (Integration Check on Integration CI) and SHALL check out the same application source Integration resolved.
 
 #### Scenario: Same checkout mode
-- GIVEN Integration published `checkout_mode`, `app_repository`, and `app_ref`
+- GIVEN Integration Check published `checkout_mode`, `app_repository`, and `app_ref`
 - WHEN Quality Control starts
 - THEN it checks out the application using those outputs
 
 ### Requirement: Integration CI uses Environment integration
-On the Integration CI reusable workflow, Quality Control SHALL hardcode `environment: integration` (the `github_environment` workflow_call input is unused) and SHALL require secrets `REST_API_DB_NAME`, `REST_API_DB_USER`, `REST_API_DB_PASSWORD`, and `REST_API_DB_PORT`.
+On the Integration CI reusable workflow, Quality Control SHALL hardcode `environment: integration` (the `github_environment` workflow_call input is unused) and SHALL require secrets `REST_API_DB_NAME`, `REST_API_DB_USER`, `REST_API_DB_PASSWORD`, and `REST_API_DB_PORT`. Those values SHALL come from the caller explicit secrets map and/or Environment `integration`. Repository secrets are required for the caller map because a `uses:` job cannot read Environment secrets.
 
 #### Scenario: Missing integration secret fails
 - GIVEN any of `REST_API_DB_NAME`, `REST_API_DB_USER`, `REST_API_DB_PASSWORD`, `REST_API_DB_PORT` is empty

@@ -35,11 +35,13 @@ The REST CI family SHALL NOT monitor, scale, or run `stop` / `destroy`.
 - THEN no job tails production logs or mutates a running ASG
 
 ### Requirement: CI database secrets are not guest config
-Quality Control Docker Postgres secrets (`REST_API_DB_*` on Integration Environment `integration` and Release Environment `production`) SHALL NOT be documented or used as the guest `heavy-rental/rest` secret. Release SHALL NOT require `REST_API_CLOUD_DB_*`.
+Quality Control Docker Postgres secrets (`REST_API_DB_*`) SHALL NOT be documented or used as the guest `heavy-rental/rest` secret. Integration CI SHALL require those names as Repository secrets (caller explicit map) and MAY also store them on Environment `integration`. Release SHALL read the same names from Environment `production` only (no caller map). Release SHALL NOT require `REST_API_CLOUD_DB_*`.
 
 #### Scenario: Names stay separate
 - GIVEN a reader of this family's specification
 - WHEN they read the secret tables
 - THEN guest compose is described as Academy CD + `heavy-rental/rest`
 - AND `REST_API_DB_*` is described as local Docker QC only
+- AND Integration CI lists Repository secrets for the caller map
+- AND Release lists Environment `production`
 - AND `REST_API_CLOUD_DB_*` is not listed as a required GitHub secret

@@ -31,7 +31,7 @@ Conflict order: **OpenSpec scenarios → OpenSPDD Safeguards → ADR → YAML**.
 
 ### CI family — [`../openspec/changes/add-rest-ci-pipeline/`](../openspec/changes/add-rest-ci-pipeline/)
 
-As-implemented spec of the existing Fast Feedback / Integration / Release YAML.
+As-implemented spec of Fast Feedback / Integration Check / Release YAML (PR reuses Fast Feedback; Integration caller passes `REST_API_DB_*`).
 
 - Proposal: [`proposal.md`](../openspec/changes/add-rest-ci-pipeline/proposal.md)
 - Design: [`design.md`](../openspec/changes/add-rest-ci-pipeline/design.md)

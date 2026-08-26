@@ -20,9 +20,10 @@ The system SHALL provide three pipeline pairs (caller + reusable workflow): Fast
 - GIVEN a pull request targeting `develop`
 - WHEN the Integration CI caller runs
 - THEN it invokes the reusable integration workflow
-- AND that workflow runs Integration, then Quality Control, Security Testing, and CodeQL (each needing Integration)
+- AND that workflow runs Integration Check, then Quality Control, Security Testing, and CodeQL (each needing Integration Check)
 - AND it ends with a GitHub Flow CI Gate that requires all of those jobs to succeed
 - AND it does not run Packaging
+- AND the Integration CI caller does not `uses:` `fast-feedback-pipeline.yml`
 
 #### Scenario: Release adds packaging, DAST, and publish
 - GIVEN an operator runs Actions → Release → Run workflow (`workflow_dispatch`)
@@ -72,7 +73,7 @@ Fast Feedback and Integration CI SHALL check out the calling repository at the c
 
 #### Scenario: Same-repo caller (Fast Feedback / Integration CI)
 - GIVEN the caller is the Spring REST API repository and `app_repository` is empty
-- WHEN Fast Feedback or Integration CI Integration resolves the source
+- WHEN Fast Feedback Integration or Integration Check resolves the source
 - THEN checkout mode is `caller`
 - AND the application is checked out at the calling `github.sha`
 
@@ -84,7 +85,7 @@ Fast Feedback and Integration CI SHALL check out the calling repository at the c
 
 #### Scenario: Remote override
 - GIVEN `app_repository` is a different owner/name than the calling repository
-- WHEN Fast Feedback or Integration CI Integration resolves the source
+- WHEN Fast Feedback Integration or Integration Check resolves the source
 - THEN checkout mode is `remote`
 - AND the named repository is checked out at `app_ref` or `develop`
 - AND Release still checks out `master`
@@ -116,14 +117,52 @@ Fast Feedback and Integration CI SHALL request `contents: read`, `pull-requests:
 - WHEN permissions are declared
 - THEN `packages: write` is absent
 
-### Requirement: Caller does not pass QC secrets
-The Integration CI and Release callers SHALL NOT pass `REST_API_DB_*`, SHALL NOT set `environment:` on the `uses:` job, and SHALL NOT use `secrets: inherit`. Quality Control SHALL read `REST_API_DB_*` from its job Environment (`integration` or `production`). They SHALL NOT pass `REST_API_DB_URL`.
+### Requirement: Fast Feedback is not invoked from Integration CI
+The Integration CI caller SHALL NOT `uses:` `fast-feedback-pipeline.yml`. Fast Feedback SHALL remain the sole Integration-stage run on a feature-branch push. On `pull_request`, Integration Check SHALL reuse a successful Fast Feedback run for the PR head SHA instead of repeating Maven/layout.
 
-#### Scenario: Integration caller has no secrets map
+#### Scenario: CI caller does not call Fast Feedback
+- GIVEN `rest-api-ci-caller.yml` is installed in the Spring repository
+- WHEN the Integration CI caller job is declared
+- THEN it `uses:` `.github/workflows/integration-pipeline.yml`
+- AND it does not `uses:` `fast-feedback-pipeline.yml`
+
+#### Scenario: PR reuses a successful Fast Feedback run
+- GIVEN a pull request targeting `develop`
+- AND `rest-api-fast-feedback-caller.yml` has a successful run for the PR head SHA
+- WHEN Integration Check runs
+- THEN Maven dependency resolve and layout checks are skipped
+- AND Integration Check still succeeds so Quality Control, Security Testing, and CodeQL can start
+
+#### Scenario: PR waits for in-flight Fast Feedback
+- GIVEN a pull request targeting `develop`
+- AND Fast Feedback for the PR head SHA is queued or in progress
+- WHEN Integration Check looks up that run
+- THEN it waits for that run to finish
+- AND if Fast Feedback succeeds, Maven/layout are skipped
+
+#### Scenario: Missing or failed Fast Feedback runs locally
+- GIVEN a pull request targeting `develop`
+- AND Fast Feedback for the PR head SHA is missing or did not succeed
+- WHEN Integration Check runs
+- THEN it runs Java 21, Maven dependency resolve, and layout checks locally
+
+#### Scenario: Non-PR Integration Check runs locally
+- GIVEN a push to `develop` or `workflow_dispatch`
+- WHEN Integration Check runs
+- THEN it does not reuse Fast Feedback
+- AND it runs Java 21, Maven dependency resolve, and layout checks locally
+
+### Requirement: Integration caller passes QC secrets explicitly
+The Integration CI caller SHALL pass `REST_API_DB_NAME`, `REST_API_DB_USER`, `REST_API_DB_PASSWORD`, and `REST_API_DB_PORT` via an explicit `secrets:` map. It SHALL NOT set `environment:` on the `uses:` job and SHALL NOT use `secrets: inherit`. Those names SHALL be Repository secrets on the application repo (a `uses:` job cannot read Environment secrets). Quality Control SHALL still use `environment: integration`. Neither caller SHALL pass `REST_API_DB_URL`.
+
+The Release caller SHALL NOT pass `REST_API_DB_*`, SHALL NOT set `environment:` on the `uses:` job, and SHALL NOT use `secrets: inherit`. Release Quality Control SHALL read `REST_API_DB_*` from Environment `production`.
+
+#### Scenario: Integration caller has an explicit secrets map
 - GIVEN `rest-api-ci-caller.yml` invokes the reusable integration workflow
 - WHEN the job is declared
-- THEN the `uses:` job has no `secrets:` key
+- THEN the `uses:` job has an explicit `secrets:` map for `REST_API_DB_NAME`, `REST_API_DB_USER`, `REST_API_DB_PASSWORD`, and `REST_API_DB_PORT`
 - AND the `uses:` job has no `environment:` key
+- AND `secrets: inherit` is absent
 
 #### Scenario: Release caller has no secrets map
 - GIVEN `rest-api-release-caller.yml` invokes the reusable release workflow

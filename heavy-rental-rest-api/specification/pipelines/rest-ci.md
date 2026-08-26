@@ -13,8 +13,8 @@ Callers pass `github_environment` (`integration` / `production`). Quality Contro
 ## GitHub Flow
 
 ```
-feature branch push  →  Fast Feedback (Integration only)
-PR / push → develop  →  Integration CI (full gates, no packaging; SAST here)
+feature branch push  →  Fast Feedback (Integration only; sole Integration-stage run for that SHA)
+PR / push → develop  →  Integration CI (Integration Check reuses Fast Feedback on PR; full gates; SAST here)
 workflow_dispatch     →  Release (master + QC + image + DAST + public GHCR + GitHub Release)
 ```
 
@@ -24,16 +24,20 @@ workflow_dispatch     →  Release (master + QC + image + DAST + public GHCR + G
 assert-caller
       │
       ▼
- Integration          Java 21 + ./mvnw dependency:resolve + layout
+ Integration Check    PR: reuse Fast Feedback for the head SHA (skip Maven/layout)
+                      else: Java 21 + ./mvnw dependency:resolve + layout
+                      job id integration-check (not environment: integration)
       │
-      ├── Quality Control     environment: integration + REST_API_DB_*
+      ├── Quality Control     environment: integration + REST_API_DB_* (caller map)
       │                       Docker postgres:16-alpine, compile, test, package WAR
-      ├── Security Testing    Semgrep Java/OWASP + Trivy SARIF
+      ├── Security Testing    Semgrep app + GHA + Trivy SARIF
       └── CodeQL Analysis     java-kotlin / security-and-quality
       │
       ▼
  GitHub Flow CI Gate
 ```
+
+Do **not** `uses:` `fast-feedback-pipeline.yml` from `rest-api-ci-caller.yml`. Copy both Integration files into the Spring repo and call `./.github/workflows/integration-pipeline.yml`.
 
 ## Job graph (Release)
 
@@ -72,7 +76,7 @@ QC “Package WAR” on Integration CI is **build verification**, not a deploy.
 | Integration | `dependency:resolve` + `pom.xml` / `mvnw` / `src/main/java` / `src/main/resources` |
 | QC tests | `./mvnw test` against `jdbc:postgresql://localhost:<PORT>/<NAME>` |
 | QC package | `./mvnw -DskipTests package` (prefer `.war`) |
-| SAST | Semgrep `p/java` + OWASP / security-audit / secrets / CWE Top 25 / FindSecBugs / Gitleaks / SQL injection / JWT / insecure-transport, plus custom ERROR rules for plaintext credentials in Spring properties/YAML (`p/spring` is gone). Reports: `semgrep.sarif` + `semgrep.json` + `semgrep.txt` (all severities); gate is ERROR-only |
+| SAST | Two Semgrep passes. App: `p/java` + OWASP / security-audit / secrets / CWE Top 25 / FindSecBugs / Gitleaks / SQL injection / JWT / insecure-transport, plus custom ERROR rules for plaintext credentials in Spring properties/YAML (`p/spring` is gone); excludes `.github/**`. GHA: `p/github-actions` plus custom inherit / hardcoded-secret rules (`secrets: inherit` ERROR except paid CD caller; explicit secrets-context maps allowed). Reports: `semgrep.sarif` + `semgrep-gha.sarif` + `semgrep.json` + `semgrep.txt` (all severities); gate is ERROR-only |
 | SCA / FS | Trivy FS SARIF; CRITICAL unfixed fails |
 | Human security report | Combined PDF artifact `security-combined-report-pdf` (`security-reports/combined-security-report.pdf`); download from the PR Checks tab (workflow Summary → Artifacts, or Security Testing job summary) |
 | Human DAST report | Combined PDF artifact `dast-combined-report-pdf` (`dast-reports/combined-dast-report.pdf`); download from the Release run Summary → Artifacts, the DAST job summary link, or the GitHub Release |
@@ -81,20 +85,20 @@ QC “Package WAR” on Integration CI is **build verification**, not a deploy.
 
 ## Secrets
 
-Configure on the **application** repo, not this pipeline-development repo. Put them on the Environment (not repository secrets, and not on the caller `uses:` job).
+Configure on the **application** repo, not this pipeline-development repo.
 
-| Pipeline | Environment | Names |
+| Pipeline | Where | Names |
 | --- | --- | --- |
-| Integration CI QC | `integration` | `REST_API_DB_NAME`, `REST_API_DB_USER`, `REST_API_DB_PASSWORD`, `REST_API_DB_PORT` |
-| Release QC + Packaging | `production` | Same four names. Dummy local values are enough. |
+| Integration CI QC | **Repository secrets** (required for the caller map). Optionally also Environment `integration`. | `REST_API_DB_NAME`, `REST_API_DB_USER`, `REST_API_DB_PASSWORD`, `REST_API_DB_PORT` |
+| Release QC + Packaging | Environment `production` (no caller map) | Same four names. Dummy local values are enough. |
 
 `REST_API_DB_URL` is **not** a secret. QC builds `jdbc:postgresql://localhost:<PORT>/<NAME>` after Docker Postgres starts. Do not add `REST_API_CLOUD_DB_*`. Guest CD config is `heavy-rental/rest` on the instance.
 
-Callers must not pass `REST_API_DB_*` and must not use `secrets: inherit`. A `uses:` job cannot read Environment secrets; an explicit map is empty and would shadow QC. Do not set `environment:` on a `uses:` job.
+Integration CI caller **does** pass `REST_API_DB_*` via an explicit `secrets:` map. A `uses:` job cannot read Environment secrets, so those values must be Repository secrets. Release caller must **not** pass a map (QC reads Environment `production`). Neither caller uses `secrets: inherit`. Do not set `environment:` on a `uses:` job.
 
 ## Branch protection (application repo `develop`)
 
-1. Integration *(highest priority)*
+1. Integration Check *(highest priority)*
 2. Quality Control
 3. Security Testing
 4. CodeQL Analysis

@@ -22,7 +22,7 @@ Start here: [`specification/README.md`](specification/README.md). App-repo CD ch
 
 ```
 feature branch push  →  Fast Feedback (Integration only)
-PR / push → develop  →  Integration CI (full gates, no packaging; SAST here)
+PR / push → develop  →  Integration CI (Integration Check reuses Fast Feedback on PR; full gates; SAST here)
 workflow_dispatch     →  Release (master + QC + image + DAST + public GHCR + GitHub Release)
 ```
 
@@ -47,7 +47,7 @@ Release does **not** rerun SAST/CodeQL. Packaging writes the WAR and image tar; 
 | Build | Maven wrapper (`./mvnw`) |
 | Integration | `dependency:resolve` + layout (`pom.xml`, `mvnw`, `src/main/java`) |
 | QC | compile + Spring tests against Docker `postgres:16-alpine` + package WAR |
-| SAST / SCA | Semgrep Java/OWASP + Trivy |
+| SAST / SCA | Semgrep Java/OWASP (app) + Semgrep GHA + Trivy |
 | Code scanning | CodeQL `java-kotlin` |
 | Package | versioned WAR + `tomcat:10.1-jdk21-temurin` + `ROOT.war` |
 
