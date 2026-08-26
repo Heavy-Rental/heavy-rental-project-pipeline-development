@@ -15,4 +15,4 @@ The first portal CD workflow is **Academy only** (`web-portal-cd-academy.yml`). 
 ## Consequences
 
 - Same Environment secret names as infra CD.
-- Pointing this workflow at `paid` fails closed.
+- Pointing this workflow at `AWS_ACTUAL` fails closed (use `portal-cd-paid-caller.yml`).

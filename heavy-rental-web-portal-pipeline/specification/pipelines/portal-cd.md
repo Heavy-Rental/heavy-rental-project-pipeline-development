@@ -1,4 +1,4 @@
-# Web portal Academy CD family
+# Web portal app CD family (Academy + paid)
 
 **Application:** Heavy-Rental/heavy-rental-react-web-portal  
 **Authoring tree:** `heavy-rental-web-portal-pipeline/deploy-pipeline/`  
@@ -11,11 +11,13 @@ Operator checklist: [`../../docs/PREPARE-PORTAL-REPO.md`](../../docs/PREPARE-POR
 ## Actions
 
 ```
-workflow_dispatch (Academy: Environment academy + Vocareum keys.
-Paid: Environment AWS_ACTUAL + OIDC, no Vocareum keys)
+Two callers (same reusable jobs):
+  portal-cd-academy-caller.yml     Environment academy + Vocareum keys
+  portal-cd-paid-caller.yml        Environment AWS_ACTUAL + OIDC, no Vocareum keys
       │
       ▼
- assert-lab          refuse non-academy; resolve keys (masked); sts
+ assert               academy: refuse non-academy, resolve keys (masked), sts
+                      paid: refuse non-AWS_ACTUAL, OIDC, no AWS_ACCESS_KEY_ID
       │
       ▼
  discover-targets    SSM inventory asg-portal
@@ -36,15 +38,17 @@ Paid: Environment AWS_ACTUAL + OIDC, no Vocareum keys)
 ## Job graph
 
 ```
-assert-lab
+assert (academy Vocareum | paid OIDC)
       │
       ▼
  discover-targets
       │
-      ├── resolve-image    (deploy / configure-only)
+      ├── resolve-image    (deploy only; stock nginx forbidden)
       ├── ansible-portal   guest_base + portal only; --limit portal
       └── verify           SSM GET / on :80
 ```
+
+Paid Ansible SSM uses `heavy-rental-ssm-<account>-actual` (not the tfstate bucket). Academy keeps the tfstate bucket for SSM transfer. `REST_BASE_URL` is the **internet-facing** REST ALB (`http://<rest_alb_dns>:8080`, infra ADR 0018).
 
 ## Environment `academy`
 
@@ -56,11 +60,23 @@ assert-lab
 | Variable | `IMAGE_HTTP_URL` | Optional HTTPS or `s3://` CI tar |
 | Variable | `VITE_STRIPE_PUBLISHABLE_KEY` | Optional `pk_`. Overlay guest `.env` on deploy/configure-only. Browser still uses the key baked at Release |
 
-Do **not** set `REST_BASE_URL`, `VITE_*`, `VITE_API_TARGET`, Stripe `sk_` / `whsec_`, `HAYSTACK_BASE_URL`, CORS, JWT, or RDS here.
+Do **not** set `REST_BASE_URL`, other `VITE_*`, `VITE_API_TARGET`, Stripe `sk_` / `whsec_`, `HAYSTACK_BASE_URL`, CORS, JWT, or RDS here. `VITE_STRIPE_PUBLISHABLE_KEY` (`pk_` only) is the exception.
 
 Do **not** point this workflow at CI Environments `integration` or `production`.
 
-The **runner** uses Vocareum keys. The **EC2** uses `LabRole`.
+The academy **runner** uses Vocareum keys. The academy **EC2** uses `LabRole`.
+
+## Environment `AWS_ACTUAL`
+
+| Kind | Name | Role |
+| --- | --- | --- |
+| Variable or secret | `AWS_ROLE_TO_ASSUME` | GitHub OIDC. Required on paid |
+| Variable | `AWS_REGION` | Defaults to `us-east-1` |
+| Variable | `PORTAL_IMAGE` | Public GHCR or ECR tag. Empty on `configure-only` → stock `nginx` |
+| Variable | `IMAGE_HTTP_URL` | Optional HTTPS or `s3://` CI tar |
+| Variable | `VITE_STRIPE_PUBLISHABLE_KEY` | Optional `pk_`. Overlay guest `.env`. Browser still uses the key baked at Release |
+
+Paid caller declares **no** Vocareum key inputs. It fails if Environment is not `AWS_ACTUAL`, if `AWS_ACCESS_KEY_ID` is set, or if `AWS_ROLE_TO_ASSUME` is empty. The **EC2** uses `hr-paid-portal`. Do **not** set `REST_BASE_URL`, other `VITE_*`, Stripe `sk_` / `whsec_`, or RDS here. `VITE_STRIPE_PUBLISHABLE_KEY` (`pk_` only) is the exception.
 
 ## configure-only configuration (three stores)
 
@@ -79,8 +95,10 @@ Infra `aws-infra-academy.yml` `sync-secrets` must have filled `heavy-rental/port
 | Source | Destination in the React repo |
 | --- | --- |
 | `portal-cd-academy-caller.yml` | `.github/workflows/` |
+| `portal-cd-paid-caller.yml` | `.github/workflows/` |
 | `web-portal-cd-academy.yml` | `.github/workflows/` |
 | `resolve-vocareum-aws/action.yml` | `.github/actions/resolve-vocareum-aws/` |
+| `resolve-aws-profile/action.yml` | `.github/actions/resolve-aws-profile/` |
 | `ansible/` | **`deploy-pipeline/ansible/`** (keep this path) |
 
 ## Local validation (this repo)
@@ -88,6 +106,7 @@ Infra `aws-infra-academy.yml` `sync-secrets` must have filled `heavy-rental/port
 ```bash
 actionlint heavy-rental-web-portal-pipeline/deploy-pipeline/web-portal-cd-academy.yml
 actionlint heavy-rental-web-portal-pipeline/deploy-pipeline/portal-cd-academy-caller.yml
+actionlint heavy-rental-web-portal-pipeline/deploy-pipeline/portal-cd-paid-caller.yml
 ```
 
 ## Pipeline boundaries
@@ -99,9 +118,10 @@ actionlint heavy-rental-web-portal-pipeline/deploy-pipeline/portal-cd-academy-ca
 | Ansible groups rest / haystack / neo4j | No |
 | Rebuild the image | No — consume Release artifacts |
 | `stop` / `destroy` | No — infra CD |
+| Paid / OIDC | Yes — `portal-cd-paid-caller.yml` (ADR 0009) |
 
 ## Specs
 
-- OpenSpec: [`../../openspec/changes/add-portal-cd-academy-skeleton/`](../../openspec/changes/add-portal-cd-academy-skeleton/), [`../../openspec/changes/add-portal-cd-academy-deploy/`](../../openspec/changes/add-portal-cd-academy-deploy/)
-- OpenSPDD: [`../../spdd/analysis/add-portal-cd-academy-deploy.md`](../../spdd/analysis/add-portal-cd-academy-deploy.md)
-- ADRs 0001–0003, 0007–0008: [`../../docs/adr/`](../../docs/adr/)
+- OpenSpec: [`../../openspec/changes/add-portal-cd-academy-skeleton/`](../../openspec/changes/add-portal-cd-academy-skeleton/), [`../../openspec/changes/add-portal-cd-academy-deploy/`](../../openspec/changes/add-portal-cd-academy-deploy/), [`../../openspec/changes/add-portal-cd-paid-deploy/`](../../openspec/changes/add-portal-cd-paid-deploy/)
+- OpenSPDD: [`../../spdd/analysis/add-portal-cd-academy-deploy.md`](../../spdd/analysis/add-portal-cd-academy-deploy.md), [`../../spdd/analysis/add-portal-cd-paid-deploy.md`](../../spdd/analysis/add-portal-cd-paid-deploy.md)
+- ADRs 0001–0003, 0007–0009: [`../../docs/adr/`](../../docs/adr/)

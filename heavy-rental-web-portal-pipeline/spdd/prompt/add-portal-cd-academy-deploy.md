@@ -7,7 +7,7 @@ Implement Academy portal CD compose (branch 2) in `deploy-pipeline/`.
 ## Safeguards
 
 - No terraform, no `stop` / `destroy`
-- No `npm run build` / `docker build` (SPA was already built with npm in Release)
+- No `npm run build` / `vite build` / `docker build` (SPA was already built with `vite build --mode api` in Release)
 - No Ansible groups rest / haystack / neo4j
 - No PAT on the guest; private GHCR fails closed
 - No `STRIPE_API_KEY` / webhook / PEM on portal `.env`

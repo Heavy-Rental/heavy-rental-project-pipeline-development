@@ -14,8 +14,8 @@
 #   1. Branch from develop
 #   2. Open a pull request into develop → this workflow runs (Integration first)
 #   3. Review + green checks → merge into develop
-#   4. Release packaging → portal-release-caller.yml on GitHub Release
-#                          publish, or on PR develop → master
+#   4. Release packaging → portal-release-caller.yml on workflow_dispatch
+#                          (Publish creates the GitHub Release)
 #
 # Reusable workflow (same repository):
 #   ./.github/workflows/integration-pipeline.yml
@@ -26,7 +26,7 @@
 #   2. Quality Control       (needs Integration)
 #   2. Security Testing      (needs Integration; parallel with QC)
 #   2. CodeQL Analysis       (needs Integration; JS/TS Code Scanning)
-#   3. REST Endpoint Tests   (needs Integration; when mock scripts exist)
+#   3. REST Endpoint Tests   (needs Integration; skip-clean until mock scripts exist)
 #   4. GitHub Flow CI Gate   (aggregate of the above — optional single check)
 #
 # Setup
@@ -41,6 +41,7 @@
 #          * Quality Control
 #          * Security Testing
 #          * CodeQL Analysis
+#          * REST Endpoint Tests      ← skip-clean until scripts exist; keep required
 #          * GitHub Flow CI Gate      ← optional single aggregate check
 #      - Do not allow bypassing the above for administrators (recommended)
 # =============================================================================

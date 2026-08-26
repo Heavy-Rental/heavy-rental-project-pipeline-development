@@ -18,10 +18,11 @@ The portal CI family SHALL NOT apply Terraform or create `asg-portal`.
 The portal CI family SHALL NOT compose onto `asg-portal`. Deployment belongs to the Academy CD family.
 
 #### Scenario: Release stops at artifacts
-- GIVEN Packaging succeeds
-- WHEN the Release workflow finishes
+- GIVEN Packaging and DAST succeed
+- WHEN Publish finishes
 - THEN a `dist/` zip and a gzipped image tar have been uploaded
-- AND GHCR push has run only when the event is not a pull request
+- AND GHCR push has run for `<semver>` and `:latest`
+- AND a GitHub Release has been created on `master`
 - AND no job runs Ansible
 
 ### Requirement: Family does not operate production

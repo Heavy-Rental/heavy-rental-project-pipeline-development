@@ -1,18 +1,18 @@
 # Web portal CI family
 
-**Application:** Heavy-Rental/heavy-rental-react-web-portal (YAML `DEFAULT_APP_REPOSITORY`: `SA62-team1/heavy-rental-react-web-portal` for local act)  
+**Application:** Heavy-Rental/heavy-rental-react-web-portal  
 **Authoring tree:** `heavy-rental-web-portal-pipeline/`  
 **Stack:** React 19 + TypeScript + Vite 8 / Node 22 / npm
 
 This family validates and packages the SPA. Academy **app CD** is [`portal-cd.md`](portal-cd.md).
 
-When the caller runs **in** the portal repo, checkout is the calling repo (into `app/`).
+Fast Feedback and Integration reusable YAML `DEFAULT_APP_REPOSITORY` is `SA62-team1/heavy-rental-react-web-portal` (local `act`). Release reusable YAML uses `Heavy-Rental/heavy-rental-react-web-portal`. When the caller runs **in** the portal repo, checkout is the calling repo (into `app/`).
 
 ## GitHub Flow
 
 ```
 feature branch push  →  Fast Feedback (Integration only)
-PR / push → develop  →  Integration CI (full gates, no packaging)
+PR / push → develop  →  Integration CI (full gates, no packaging; SAST here)
 workflow_dispatch     →  Release (master + QC + image + DAST + public GHCR + GitHub Release)
 ```
 
@@ -33,9 +33,31 @@ assert-caller
  GitHub Flow CI Gate
 ```
 
-Release adds **Packaging** after Integration + QC + Security + CodeQL. Release does **not** run REST Endpoint Tests. The nginx image is a React + npm + Vite static SPA (ADR 0007 / 0008): Packaging uses Environment `academy`, seeds/scans `.env.production`, then `tsc -b` + **`vite build --mode api`** with empty `VITE_API_TARGET` / backend `VITE_*` and academy `VITE_STRIPE_PUBLISHABLE_KEY` (`pk_` only). Spring login and `/api` work after CD mounts REST ALB. No baked `REST_BASE_URL` or `http://heavy-rental-rest-api:8080`.
+Release (`workflow_dispatch` of **Release**) does **not** re-run Security Testing, CodeQL, or REST Endpoint Tests. Those stay on Integration CI. Release job graph:
 
-No GitHub Environment or repository secrets are required for v1 CI.
+```
+assert-caller
+      │
+      ▼
+ Integration          Node 22 + npm ci; checkout master
+      │
+      ▼
+ Quality Control      npm run lint + npx tsc -b
+      │
+      ▼
+ Packaging            environment: academy; seed/scan .env.production
+                      tsc -b + vite build --mode api (empty VITE_API_TARGET)
+                      dist/ zip + nginx:1.27-alpine tar (no docker push)
+      │
+      ▼
+ DAST                 ZAP + Dastardly + Nuclei against the image
+      │
+      ▼
+ Publish              public GHCR heavy_rental_web_portal:<semver> + :latest
+                      + GitHub Release on master
+```
+
+The nginx image is a React + npm + Vite static SPA (ADR 0007 / 0008). Packaging uses Environment `academy` so academy `VITE_STRIPE_PUBLISHABLE_KEY` (`pk_` only) is baked. Spring login and `/api` work after CD mounts REST ALB. No baked `REST_BASE_URL` or `http://heavy-rental-rest-api:8080`. Fast Feedback and Integration CI do not set `environment:`.
 
 ## Node / Vite tools
 
@@ -48,11 +70,11 @@ No GitHub Environment or repository secrets are required for v1 CI.
 | REST tests | `mock:server` / `api:mock` / `start:mock` + `test:api` / `test:endpoints` / `test:rest` |
 | Mock URL | `http://127.0.0.1:4010` (`MOCK_API_*`) |
 | SAST | Semgrep `p/typescript` `p/react` `p/javascript` `p/nodejs` + OWASP / audit / secrets / CWE Top 25 / Gitleaks / SQL injection / JWT / insecure-transport, plus custom ERROR rules for plaintext credentials in `.env`/YAML and JS/TS assignments. Reports: `semgrep.sarif` + `semgrep.json` + `semgrep.txt` (all severities); gate is ERROR-only |
-| SCA | npm audit converted to SARIF + Trivy FS |
+| SCA | npm audit (high/critical fails) converted to SARIF + Trivy FS (unfixed CRITICAL fails) |
 | Human security report | Combined PDF artifact `security-combined-report-pdf`; download from the PR Checks tab (workflow Summary → Artifacts, or Security Testing job summary) |
 | Human DAST report | Combined PDF artifact `dast-combined-report-pdf` (`dast-reports/combined-dast-report.pdf`); download from the Release run Summary → Artifacts, the DAST job summary link, or the GitHub Release |
 | Code scanning | CodeQL `javascript-typescript` |
-| Package | Seed/scan `.env.production` + `tsc -b` + `vite build --mode api` (empty `VITE_API_TARGET`) → `dist/` zip + always-generated `nginx:1.27-alpine` try_files. GHCR `heavy_rental_web_portal:<semver>` + `:latest` off PR. Scan for `sk_`, localhost, `heavy-rental-rest-api`. |
+| Package | Seed/scan `.env.production` + `tsc -b` + `vite build --mode api` (empty `VITE_API_TARGET`) → `dist/` zip + always-generated `nginx:1.27-alpine` try_files tar. Publish pushes GHCR `heavy_rental_web_portal:<semver>` + `:latest` and creates the GitHub Release. Scan for `sk_`, localhost, `heavy-rental-rest-api`. |
 
 ## Branch protection (application repo `develop`)
 
@@ -102,4 +124,4 @@ Copy destination names stay hyphenated (`integration-pipeline.yml`) even though 
 
 - OpenSpec: [`../../openspec/changes/add-portal-ci-pipeline/`](../../openspec/changes/add-portal-ci-pipeline/)
 - OpenSPDD: [`../../spdd/analysis/add-portal-ci-pipeline.md`](../../spdd/analysis/add-portal-ci-pipeline.md)
-- ADRs 0004–0006: [`../../docs/adr/`](../../docs/adr/)
+- ADRs 0004–0008: [`../../docs/adr/`](../../docs/adr/)

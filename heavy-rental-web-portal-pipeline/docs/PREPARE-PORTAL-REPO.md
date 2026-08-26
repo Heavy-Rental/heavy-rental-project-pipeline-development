@@ -19,10 +19,10 @@ This is a **React + npm + Vite** SPA. Spring REST ([heavy-rental-spring-rest-api
 
 | App | Release / CD contract |
 | --- | --- |
-| Node **22**, `package-lock.json`, Vite `npm run build` | `dist/index.html` + hashed JS/CSS |
+| Node **22**, `package-lock.json`, Vite `tsc -b` + `vite build --mode api` | `dist/index.html` + hashed JS/CSS |
 | Static SPA | `nginx:1.27-alpine` serving `dist/` (try_files only). CD **replaces** `default.conf` with `/api` → `REST_BASE_URL` |
 | App `Dockerfile` ignored | Release **always** generates the nginx + Vite `dist/` image. A Node/Vite-preview Dockerfile is not used for GHCR/CD |
-| Same-origin `/api` + Spring login | Release `tsc -b` + **`vite build --mode api`**. Process env empties `VITE_API_TARGET` (do not bake `http://heavy-rental-rest-api:8080`). CD mounts `/api` → SM `REST_BASE_URL` |
+| Same-origin `/api` + Spring login | Release `tsc -b` + **`vite build --mode api`** (not `npm run build`). Process env empties `VITE_API_TARGET` (do not bake `http://heavy-rental-rest-api:8080`). CD mounts `/api` → SM `REST_BASE_URL` |
 
 Packaging seeds/scans `.env.production`, then `tsc -b` + `vite build --mode api` (empty `VITE_API_TARGET`). It scans `dist/` and the image for `sk_`, lab hosts, and `heavy-rental-rest-api`. Stripe `pk_` is allowed. Generated nginx has no `proxy_pass` host and does **not** `COPY` `.env`. After `action=deploy`, the browser uses same-origin `/api` against Spring REST.
 
@@ -32,14 +32,13 @@ GHCR name: `ghcr.io/<owner>/heavy_rental_web_portal` (lowercase). On `Heavy-Rent
 
 | Release trigger | What you get |
 | --- | --- |
-| PR `develop` → `master` | `dist/` zip + docker **tar artifact**. **No GHCR push.** Login is skipped. |
-| **Published GitHub Release** | Tar **and** GHCR `<version>` + `:latest` |
+| **workflow_dispatch** (**Release**) | `dist/` zip + docker tar + DAST, then Publish pushes GHCR `<version>` + `:latest` and creates the GitHub Release |
 
-Step-by-step (do not set `GITHUB_TOKEN`, why login is skipped, publish Release, public package, `PORTAL_IMAGE`): [`GHCR-RELEASE.md`](GHCR-RELEASE.md).
+Step-by-step (do not set `GITHUB_TOKEN`, dispatch after merge, public package, `PORTAL_IMAGE`): [`GHCR-RELEASE.md`](GHCR-RELEASE.md).
 
-Academy guests pull **public** GHCR with no token. A PR build is not enough for `PORTAL_IMAGE=ghcr.io/…` unless you `docker load` the tar (`image_http_url` / `IMAGE_HTTP_URL`) or copy the image to ECR.
+Academy guests pull **public** GHCR with no token. A `develop` → `master` PR does **not** run Release. You need this dispatch (or `docker load` the tar via `image_http_url` / `IMAGE_HTTP_URL`, or copy the image to ECR).
 
-`DEFAULT_APP_REPOSITORY: SA62-team1/heavy-rental-react-web-portal` in the reusable YAML is only for local `act`. When Release runs **in** the Heavy-Rental portal repo, checkout is the calling repo (into `app/`).
+Fast Feedback / Integration `DEFAULT_APP_REPOSITORY: SA62-team1/heavy-rental-react-web-portal` is only for local `act`. Release YAML defaults to `Heavy-Rental/heavy-rental-react-web-portal`. When Release runs **in** the Heavy-Rental portal repo, checkout is the calling repo (into `app/`) at `master`.
 
 ---
 
@@ -56,7 +55,7 @@ Do **not** copy `specification/`.
 
 ## 3. Produce a pullable image
 
-1. Merge to `master`, then run **Actions → Release → Run workflow**. That checks out `master`, runs DAST, pushes public GHCR, and creates the GitHub Release.
+1. Merge to `master`, then run **Actions → Release → Run workflow**. That checks out `master`, runs QC + Packaging + DAST, then Publish pushes public GHCR and creates the GitHub Release. Do **not** Draft a GitHub Release first.
 2. Org Packages → `heavy_rental_web_portal` → visibility **Public**. Private GHCR fails CD on purpose (no PAT on the guest).
 3. Record the tag, for example `ghcr.io/heavy-rental/heavy_rental_web_portal:1.0.0` (or `:latest`). Prefer a **new** version tag each deploy (`compose up` is not `--pull always`).
 
@@ -76,7 +75,7 @@ Copy from this tree’s `deploy-pipeline/`:
 | `resolve-vocareum-aws/action.yml` | `.github/actions/resolve-vocareum-aws/` |
 | `resolve-aws-profile/action.yml` | `.github/actions/resolve-aws-profile/` |
 | `ansible/` | **`deploy-pipeline/ansible/`** (keep this path) |
-| [`docs/samples/.env.production`](samples/.env.production) | **`.env.production`** at the React repo root (`npm run build` / Vite) |
+| [`docs/samples/.env.production`](samples/.env.production) | **`.env.production`** at the React repo root (scanned at Release; `vite build --mode api`) |
 
 ---
 
@@ -103,7 +102,7 @@ Paste Vocareum AWS Details on each Run after Start Lab, **or** store these as En
 | `IMAGE_HTTP_URL` | Optional | HTTPS or `s3://` CI `.tar.gz` for `docker load` |
 | `VITE_STRIPE_PUBLISHABLE_KEY` | Optional | Academy **variable** (`pk_` only). Release bakes it; CD overlays guest `.env`. Never `sk_` |
 
-Do **not** set `REST_BASE_URL`, `HAYSTACK_BASE_URL`, `VITE_*`, `VITE_API_TARGET`, Stripe `sk_` / `whsec_`, or `APP_CORS_*` on this Environment. They do not configure the React bundle. Same inventory as [`BOOTSTRAP.md`](BOOTSTRAP.md).
+Do **not** set `REST_BASE_URL`, `HAYSTACK_BASE_URL`, other `VITE_*`, `VITE_API_TARGET`, Stripe `sk_` / `whsec_`, or `APP_CORS_*` on this Environment. They do not configure the React bundle. `VITE_STRIPE_PUBLISHABLE_KEY` (`pk_` only) is the exception (Release bakes it; CD overlays guest `.env`). Same inventory as [`BOOTSTRAP.md`](BOOTSTRAP.md).
 
 **Minimum `verify`:** Environment `academy` + three Vocareum keys + `AWS_REGION`.  
 **Minimum `deploy`:** that, plus `PORTAL_IMAGE` or `image_ref` (or a tar **and** a matching tag). Stock nginx is forbidden on `deploy`.  
@@ -145,5 +144,5 @@ Same sequence as [`BOOTSTRAP.md`](BOOTSTRAP.md) “Every run”:
 - Expect GitHub `VITE_*` vars to reconfigure the running SPA
 - Type instance IDs on the Run form
 - Run `terraform apply` from this workflow
-- Expect GHCR from a `develop` → `master` PR alone (publish a GitHub Release)
+- Expect GHCR from a `develop` → `master` PR alone (run **Actions → Release** after merge; the pipeline creates the GitHub Release)
 - Treat a green `verify` as proof that `/api` reached REST

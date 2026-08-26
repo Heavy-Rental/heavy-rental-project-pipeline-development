@@ -14,7 +14,7 @@ Authoring path for Integration CI is `integration_pipeline/` (underscore).
 - Integration first; later jobs need Integration.
 - Node 22 + npm ci + ESLint + `tsc`.
 - REST endpoint tests against a local mock; skip-clean until scripts exist.
-- Release artifacts consumable by Academy CD (`dist/` zip + nginx image; GHCR off PR).
+- Release artifacts consumable by Academy CD (`dist/` zip + nginx image tar; Publish pushes GHCR after DAST).
 
 **Non-Goals:**
 
@@ -26,10 +26,14 @@ Authoring path for Integration CI is `integration_pipeline/` (underscore).
 
 1. **Reusable + caller gate.** Sole callers: `portal-fast-feedback-caller.yml`, `portal-ci-caller.yml`, `portal-release-caller.yml`.
 2. **Node 22 + npm ci.** Integration verifies `package-lock.json` and `node_modules`.
-3. **QC is lint + typecheck.** No Postgres, no GitHub Environment.
+3. **QC is lint + typecheck.** No Postgres. Integration CI has no GitHub Environment.
 4. **REST Endpoint Tests skip-clean** when `package.json` lacks both a mock script (`mock:server` / `api:mock` / `start:mock`) and a test script (`test:api` / `test:endpoints` / `test:rest`). Mock binds `127.0.0.1:4010`.
-5. **Release Packaging** is Node 22 + `npm ci` + `tsc -b` + **`vite build --mode api`**. Job `environment: academy` so `vars.VITE_STRIPE_PUBLISHABLE_KEY` is baked (`pk_` only). `MODE=api` so Spring login and `/api` work after CD mounts REST ALB. Empty `VITE_API_TARGET` / other backend `VITE_*`. Scan `dist/` for `sk_` / localhost / `heavy-rental-rest-api`. Always-generate nginx try_files (no `COPY .env`). GHCR off PR (ADR 0007 / 0008).
-6. **CI family stops at packaging.** Compose and the `/api` proxy live in the CD family.
+5. **Release is `workflow_dispatch` only.** Merge to `master`, then Actions → Release → Run workflow. Publish creates the GitHub Release. The caller does not subscribe to `release` or `pull_request`.
+6. **Release job graph.** Assert caller → Integration (checkout `master`) → Quality Control → Packaging → DAST → Publish. SAST, CodeQL, and REST Endpoint Tests stay on Integration CI.
+7. **Release Packaging** is Node 22 + `npm ci` + `tsc -b` + **`vite build --mode api`** (not `npm run build`). Job `environment: academy` so `vars.VITE_STRIPE_PUBLISHABLE_KEY` is baked (`pk_` only). Empty `VITE_API_TARGET` / other backend `VITE_*`. Scan `dist/` for `sk_` / localhost / `heavy-rental-rest-api`. Always-generate nginx try_files (no `COPY .env`). Packaging uploads the image tar and does not `docker push`.
+8. **Publish** pushes `ghcr.io/<owner>/heavy_rental_web_portal:<semver>` + `:latest` after DAST, then `gh release create` on `master`.
+9. **CI family stops at artifacts.** Compose and the `/api` proxy live in the CD family.
+10. **`DEFAULT_APP_REPOSITORY`.** Fast Feedback and Integration use `SA62-team1/heavy-rental-react-web-portal` (local act). Release uses `Heavy-Rental/heavy-rental-react-web-portal`. Same-repo callers still check out the calling repo.
 
 ## Open Questions
 
