@@ -4,8 +4,9 @@
 # Stages (priority order — Integration Check is highest priority):
 #   1. Integration Check (HIGHEST) checkout, Node 22, npm ci, install health
 #      On pull_request: reuse a successful Fast Feedback CI run for the PR head
-#      SHA instead of repeating those steps. Fast Feedback owns the Integration
-#      stage on feature-branch pushes; this job must not invoke that workflow.
+#      SHA instead of repeating those steps (wait if in-flight; inlined pending-run
+#      jq, no PENDING_FILTER). Fast Feedback owns the Integration stage on
+#      feature-branch pushes; this job must not invoke that workflow.
 #      Push to develop / workflow_dispatch / missing Fast Feedback → run fully.
 #   2. Quality Control     — ESLint + TypeScript (needs Integration Check)
 #   3. Security Testing    — Semgrep + npm audit + Trivy (needs Integration Check)
@@ -154,7 +155,9 @@ jobs:
   #    Always run this job (never if: skip it) so QC / Security / CodeQL / REST tests
   #    keep their needs: and branch protection still sees the check.
   #    On pull_request, skip npm ci / install health when Fast Feedback already passed
-  #    for the PR head SHA. Do not uses: fast-feedback-pipeline.yml from the CI caller.
+  #    for the PR head SHA. In-flight Fast Feedback is waited on; pending-run jq is
+  #    inlined (do not assign PENDING_FILTER). Do not uses: fast-feedback-pipeline.yml
+  #    from the CI caller.
   # ---------------------------------------------------------------------------
   integration-check:
     name: Integration Check
@@ -300,9 +303,9 @@ jobs:
             exit 0
           fi
 
-          PENDING_FILTER='[.[] | select(.status == "queued" or .status == "in_progress" or .status == "waiting" or .status == "pending" or .status == "requested")]'
-          PENDING_ID="$(jq_field "${RUNS}" "${PENDING_FILTER} | .[0].databaseId // empty')"
-          PENDING_URL="$(jq_field "${RUNS}" "${PENDING_FILTER} | .[0].url // empty')"
+          # Inline the jq filter (same form as SUCCESS_ID). Do not assign PENDING_FILTER.
+          PENDING_ID="$(jq_field "${RUNS}" '[.[] | select(.status == "queued" or .status == "in_progress" or .status == "waiting" or .status == "pending" or .status == "requested")] | .[0].databaseId // empty')"
+          PENDING_URL="$(jq_field "${RUNS}" '[.[] | select(.status == "queued" or .status == "in_progress" or .status == "waiting" or .status == "pending" or .status == "requested")] | .[0].url // empty')"
           if [ -z "${PENDING_ID}" ]; then
             echo "Fast Feedback finished without success for ${COMMIT} — run Integration Check."
             finish "Fast Feedback did not succeed for \`${COMMIT}\` — ran Integration Check locally."

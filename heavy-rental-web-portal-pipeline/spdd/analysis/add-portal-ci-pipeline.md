@@ -14,7 +14,7 @@ Portal Fast Feedback / Integration / Release YAML already exists. Haystack and m
 | --- | --- |
 | Caller | Workflow that only `uses:` a sibling reusable file |
 | Reusable pipeline | `on: workflow_call` only; `assert-caller` rejects any other file |
-| Integration | Highest-priority job: checkout + Node 22 + `npm ci` + lockfile health. Not lint, not `vite build`. Integration CI job id `integration-check` (name **Integration Check**); Fast Feedback and Release keep `integration`. Release always checks out `master`. PR Integration Check reuses Fast Feedback for the head SHA. |
+| Integration | Highest-priority job: checkout + Node 22 + `npm ci` + lockfile health. Not lint, not `vite build`. Integration CI job id `integration-check` (name **Integration Check**); Fast Feedback and Release keep `integration`. Release always checks out `master`. PR Integration Check reuses Fast Feedback for the head SHA (inlined pending-run jq; no `PENDING_FILTER`). |
 | Quality Control | ESLint + `tsc -b` |
 | REST Endpoint Tests | Local mock on `:4010`; skip-clean until scripts exist |
 | Packaging | `dist/` zip + static nginx image tar (try_files); scan for secrets/lab URLs; no `docker push` |

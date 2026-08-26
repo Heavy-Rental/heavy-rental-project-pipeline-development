@@ -103,6 +103,8 @@ Only the Release caller and reusable release workflow SHALL request `packages: w
 ### Requirement: Fast Feedback is not invoked from Integration CI
 The Integration CI caller SHALL NOT `uses:` `fast-feedback-pipeline.yml`. Fast Feedback SHALL remain the sole Integration-stage run on a feature-branch push. On `pull_request`, Integration Check SHALL reuse a successful Fast Feedback run for the PR head SHA instead of repeating `npm ci` and install-health checks.
 
+When looking up an in-flight Fast Feedback run, Integration Check SHALL pass the pending-status jq filter inline to the `PENDING_ID` and `PENDING_URL` `jq_field` calls, matching the `SUCCESS_ID` / `SUCCESS_URL` form. It SHALL NOT assign that filter to a `PENDING_FILTER` shell variable and interpolate it on the following lines (that construction fails the wait-for-run lookup).
+
 #### Scenario: CI caller does not call Fast Feedback
 - GIVEN `portal-ci-caller.yml` is installed in the portal repository
 - WHEN the Integration CI caller job is declared
@@ -120,7 +122,9 @@ The Integration CI caller SHALL NOT `uses:` `fast-feedback-pipeline.yml`. Fast F
 - GIVEN a pull request targeting `develop`
 - AND Fast Feedback for the PR head SHA is queued or in progress
 - WHEN Integration Check looks up that run
-- THEN it waits for that run to finish
+- THEN the pending-status jq filter is inlined in the `PENDING_ID` and `PENDING_URL` `jq_field` arguments (same form as `SUCCESS_ID` / `SUCCESS_URL`)
+- AND it does not interpolate a `PENDING_FILTER` shell variable
+- AND it waits for that run to finish
 - AND if Fast Feedback succeeds, `npm ci` and install-health checks are skipped
 
 #### Scenario: Missing or failed Fast Feedback runs locally

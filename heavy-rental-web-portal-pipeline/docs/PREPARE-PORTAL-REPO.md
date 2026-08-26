@@ -38,7 +38,7 @@ Step-by-step (do not set `GITHUB_TOKEN`, dispatch after merge, public package, `
 
 Academy guests pull **public** GHCR with no token. A `develop` → `master` PR does **not** run Release. You need this dispatch (or `docker load` the tar via `image_http_url` / `IMAGE_HTTP_URL`, or copy the image to ECR).
 
-Fast Feedback / Integration `DEFAULT_APP_REPOSITORY: SA62-team1/heavy-rental-react-web-portal` is only for local `act`. Release YAML defaults to `Heavy-Rental/heavy-rental-react-web-portal`. When Fast Feedback or Integration CI runs **in** the Heavy-Rental portal repo, checkout is the calling commit. On pull_request, Integration Check reuses a successful Fast Feedback run for the PR head SHA instead of repeating `npm ci`. When Release runs **in** the Heavy-Rental portal repo, checkout is the calling repo (into `app/`) at `master`.
+Fast Feedback / Integration `DEFAULT_APP_REPOSITORY: SA62-team1/heavy-rental-react-web-portal` is only for local `act`. Release YAML defaults to `Heavy-Rental/heavy-rental-react-web-portal`. When Fast Feedback or Integration CI runs **in** the Heavy-Rental portal repo, checkout is the calling commit. On pull_request, Integration Check reuses a successful Fast Feedback run for the PR head SHA instead of repeating `npm ci`. If Fast Feedback is still queued or in progress, Integration Check waits for that run (`gh run watch`); the pending-run jq filter is inlined (do not split it into `PENDING_FILTER`). When Release runs **in** the Heavy-Rental portal repo, checkout is the calling repo (into `app/`) at `master`.
 
 ---
 

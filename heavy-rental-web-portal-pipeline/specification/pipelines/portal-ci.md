@@ -12,7 +12,7 @@ Fast Feedback and Integration reusable YAML `DEFAULT_APP_REPOSITORY` is `SA62-te
 
 ```
 feature branch push  →  Fast Feedback (Integration only; sole Integration-stage run for that SHA)
-PR / push → develop  →  Integration CI (Integration Check reuses Fast Feedback on PR; full gates; SAST here)
+PR / push → develop  →  Integration CI (Integration Check reuses Fast Feedback on PR, waits if in-flight; full gates; SAST here)
 workflow_dispatch     →  Release (master + QC + image + DAST + public GHCR + GitHub Release)
 ```
 
@@ -22,7 +22,8 @@ workflow_dispatch     →  Release (master + QC + image + DAST + public GHCR + G
 assert-caller
       │
       ▼
- Integration Check    PR: reuse Fast Feedback for the head SHA (skip npm ci / install health)
+ Integration Check    PR: reuse Fast Feedback for the head SHA (skip npm ci / install health;
+                      wait if in-flight; inlined pending-run jq)
                       else: Node 22 + npm ci + lockfile / node_modules health
                       job id integration-check
       │
@@ -36,6 +37,8 @@ assert-caller
 ```
 
 Do **not** `uses:` `fast-feedback-pipeline.yml` from `portal-ci-caller.yml`. Copy both Integration files into the portal repo and call `./.github/workflows/integration-pipeline.yml`.
+
+On `pull_request`, Integration Check looks up `portal-fast-feedback-caller.yml` for the head SHA (`gh run list`). A successful run skips cache / `npm ci` / install health. An in-flight run is waited on with `gh run watch`. The pending-run `jq` filter is inlined in the `PENDING_ID` / `PENDING_URL` `jq_field` calls (same quoting as `SUCCESS_ID`). Do not assign `PENDING_FILTER` and interpolate it — that construction breaks the wait.
 
 ## Job graph (Release)
 
@@ -71,7 +74,7 @@ The nginx image is a React + npm + Vite static SPA (ADR 0007 / 0008). Packaging 
 | --- | --- |
 | Runtime | Node 22 |
 | Install | `npm ci` when `node_modules` cache misses |
-| Integration | `package-lock.json` + `node_modules` + `npm ls --depth=0`. On Integration CI pull_request, skip cache / `npm ci` / install health when Fast Feedback already succeeded for the head SHA |
+| Integration | `package-lock.json` + `node_modules` + `npm ls --depth=0`. On Integration CI pull_request, skip cache / `npm ci` / install health when Fast Feedback already succeeded for the head SHA. In-flight Fast Feedback is waited on; pending-run `jq` is inlined (`PENDING_ID` / `PENDING_URL`), not a `PENDING_FILTER` variable |
 | QC | `npm run lint` (ESLint) + `npx tsc -b --pretty false` |
 | REST tests | `mock:server` / `api:mock` / `start:mock` + `test:api` / `test:endpoints` / `test:rest` |
 | Mock URL | `http://127.0.0.1:4010` (`MOCK_API_*`) |

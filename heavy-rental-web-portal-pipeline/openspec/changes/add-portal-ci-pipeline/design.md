@@ -12,7 +12,7 @@ Authoring path for Integration CI is `integration_pipeline/` (underscore).
 
 - Same GitHub Flow as REST / Haystack / mobile.
 - Integration Check first on Integration CI; later jobs `needs: [integration-check]`. Fast Feedback and Release keep job `integration`.
-- PR Integration Check reuses a successful Fast Feedback run for the head SHA (CI caller does not `uses:` Fast Feedback).
+- PR Integration Check reuses a successful Fast Feedback run for the head SHA (CI caller does not `uses:` Fast Feedback). In-flight Fast Feedback is waited on with inlined pending-run jq (no `PENDING_FILTER`).
 - Node 22 + npm ci + ESLint + `tsc`.
 - REST endpoint tests against a local mock; skip-clean until scripts exist.
 - Release artifacts consumable by Academy CD (`dist/` zip + nginx image tar; Publish pushes GHCR after DAST).
@@ -35,6 +35,7 @@ Authoring path for Integration CI is `integration_pipeline/` (underscore).
 8. **Publish** pushes `ghcr.io/<owner>/heavy_rental_web_portal:<semver>` + `:latest` after DAST, then `gh release create` on `master`.
 9. **CI family stops at artifacts.** Compose and the `/api` proxy live in the CD family.
 10. **`DEFAULT_APP_REPOSITORY`.** Fast Feedback and Integration use `SA62-team1/heavy-rental-react-web-portal` (local act). Release uses `Heavy-Rental/heavy-rental-react-web-portal`. Same-repo callers still check out the calling repo.
+11. **Pending Fast Feedback jq.** Integration Check inlines the pending-status filter in the `PENDING_ID` / `PENDING_URL` `jq_field` calls (same quoting as `SUCCESS_ID` / `SUCCESS_URL`). It does not assign `PENDING_FILTER` and interpolate it — that construction fails the wait-for-run lookup.
 
 ## Open Questions
 
