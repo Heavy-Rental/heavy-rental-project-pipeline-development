@@ -1,8 +1,10 @@
 # Proposal: Portal CD Academy skeleton (`HR-165`)
 
+**As-built:** Compose is delivered (`add-portal-cd-academy-deploy`). First-compose is infra `deploy-projects` (`site.yml`) or this app CD (not infra `apply`). GHCR is Release Publish on `workflow_dispatch` only. Keep this file as the branch-1 record.
+
 ## Why
 
-Infra CD already creates `asg-portal` and first-compose. Portal CI already builds `nginx` + `dist/` and pushes GHCR (non-PR) plus a Release tar. There is no portal **app CD** workflow that can authenticate to Vocareum and discover those guests without Terraform.
+Infra CD already creates `asg-portal`. Portal CI already builds `nginx` + `dist/` and pushes GHCR (dispatch-only Publish) plus a Release tar. There is no portal **app CD** workflow that can authenticate to Vocareum and discover those guests without Terraform.
 
 ## What Changes
 

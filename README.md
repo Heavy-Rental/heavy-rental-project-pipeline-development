@@ -1,6 +1,6 @@
 # Heavy Rental — application GitHub Actions families
 
-Reusable GitHub Actions for the Heavy Rental **application** pipelines: Fast Feedback, Integration CI, Release packaging, and (except mobile) Academy + paid app CD.
+Reusable GitHub Actions for the Heavy Rental **application** pipelines: Fast Feedback, Integration CI, Release packaging, a scheduled Security Report (REST and portal), and (except mobile) Academy + paid app CD.
 
 This tree does **not** provision the VPC, ASGs, RDS, or NAT. That is [`heavy-rental-project-instructure-and-cloud-deploy`](../heavy-rental-project-instructure-and-cloud-deploy/). Product behaviour (FastAPI, Spring, React, Android screens) lives in each application repository.
 
@@ -10,8 +10,8 @@ This tree does **not** provision the VPC, ASGs, RDS, or NAT. That is [`heavy-ren
 | --- | --- |
 | `specification/` | Human index for all families |
 | `haystack-fast-api-pipeline/` | Haystack FastAPI CI + Academy/paid CD |
-| `heavy-rental-rest-api/` | Spring REST API CI + Academy/paid CD |
-| `heavy-rental-web-portal-pipeline/` | React portal CI + Academy/paid CD |
+| `heavy-rental-rest-api/` | Spring REST API CI + Security Report + Academy/paid CD |
+| `heavy-rental-web-portal-pipeline/` | React portal CI + Security Report + Academy/paid CD |
 | `heavy-rental-mobile/` | Android CI only (unsigned APK + MobSF; no app CD) |
 | `cloud-deployment-feasibility-studies/` | Design records + as-built tables ([`cloud-deployment-feasibility-studies/README.md`](cloud-deployment-feasibility-studies/README.md)) |
 | `scripts/` | Combined security / DAST PDF helpers (keep in sync with YAML heredocs) |

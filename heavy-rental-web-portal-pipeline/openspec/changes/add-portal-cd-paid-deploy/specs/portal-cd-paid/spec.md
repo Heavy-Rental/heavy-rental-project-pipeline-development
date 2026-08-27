@@ -3,11 +3,17 @@
 ## ADDED Requirements
 
 ### Requirement: Paid caller is OIDC-only
-`portal-cd-paid-caller.yml` SHALL NOT declare Vocareum key inputs. `aws_environment` SHALL be `AWS_ACTUAL`. Missing `AWS_ROLE_TO_ASSUME` or a set `AWS_ACCESS_KEY_ID` SHALL fail before compose.
+`portal-cd-paid-caller.yml` SHALL NOT declare Vocareum key inputs. `aws_environment` SHALL be `AWS_ACTUAL`. Missing `AWS_ROLE_TO_ASSUME` or a set `AWS_ACCESS_KEY_ID` SHALL fail before compose. The paid caller SHALL NOT pass `secrets: inherit` (Semgrep `yaml.github-actions.security.secrets-inherit`). Auth SHALL be `vars.AWS_ROLE_TO_ASSUME` plus `id-token: write`.
 
 #### Scenario: Paid refuses academy
 - GIVEN Environment `academy` on the paid caller
 - THEN assert fails and Ansible does not run
+
+#### Scenario: Paid does not inherit secrets
+- GIVEN the paid caller `uses:` the shared reusable
+- WHEN the job is declared
+- THEN `secrets: inherit` is absent
+- AND `id-token: write` is present
 
 ### Requirement: Paid Ansible SSM bucket
 Paid portal CD SHALL pass `ansible_aws_ssm_bucket_name=heavy-rental-ssm-<account>-actual`. It SHALL NOT use the Terraform state bucket.

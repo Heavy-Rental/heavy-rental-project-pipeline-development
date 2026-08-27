@@ -1,10 +1,10 @@
 # Web portal app CD family (Academy + paid)
 
-**Application:** Heavy-Rental/heavy-rental-react-web-portal  
+**Application:** https://github.com/Heavy-Rental/heavy-rental-react-web-portal  
 **Authoring tree:** `heavy-rental-web-portal-pipeline/deploy-pipeline/`  
-**Consumes:** public GHCR/ECR tag or Release image tar from the CI family ([`portal-ci.md`](portal-ci.md))
+**Consumes:** public GHCR/ECR tag or Release image tar (`heavy_rental_web_portal-image.tar.gz`) from the CI family ([`portal-ci.md`](portal-ci.md))
 
-This family discovers `asg-portal` and can re-run portal compose. It does **not** run Terraform or create the ASG. Infra `aws-infra-academy.yml` `apply` + `sync-secrets` must already have created the guests and `heavy-rental/portal` (`REST_BASE_URL=http://<rest_alb>:8080` + Stripe `pk_`). The Release image is a React/Vite static SPA (ADR 0007 / 0008); this CD mounts nginx `/api` → `REST_BASE_URL` over the image `default.conf`. GitHub `VITE_*` does not overlay the bundle. Spring REST owns Haystack, CORS, JWT, RDS, and Stripe `sk_`.
+This family discovers `asg-portal` and can re-run portal compose. It does **not** run Terraform or create the ASG. Infra `aws-infra-academy.yml` `apply` + `sync-secrets` must already have created the guests and `heavy-rental/portal` (`REST_BASE_URL=http://<rest_alb>:8080` + Stripe `pk_`). First-compose is infra `deploy-projects` (`site.yml`) or this CD (`action=deploy`); infra `apply` / `configure-only` do **not** compose portal. The Release image is a React/Vite static SPA (ADR 0007 / 0008); this CD mounts nginx `/api` → `REST_BASE_URL` over the image `default.conf`. GitHub `VITE_*` does not overlay the bundle. Spring REST owns Haystack, CORS, JWT, RDS, and Stripe `sk_`.
 
 Operator checklist: [`../../docs/PREPARE-PORTAL-REPO.md`](../../docs/PREPARE-PORTAL-REPO.md). Everyday operate: [`../../docs/BOOTSTRAP.md`](../../docs/BOOTSTRAP.md).
 
@@ -55,7 +55,7 @@ Assert Environment academy | Assert Environment AWS_ACTUAL
       └── Health GET /         (200–302)
 ```
 
-Job `name:` values: `Assert Environment academy` / `Assert Environment AWS_ACTUAL` (callers), then `Assert AWS profile`, `Discover asg-portal`, `Resolve CI image`, `Compose playbook on asg-portal`, `Health GET /`. Paid caller uses `secrets: inherit` (OIDC / Environment); academy caller does not. That inherit rule is CI-only. The academy caller still sets `id-token: write` so it can `uses:` the shared reusable; Academy authenticates with Vocareum keys, not GitHub OIDC.
+Job `name:` values: `Assert Environment academy` / `Assert Environment AWS_ACTUAL` (callers), then `Assert AWS profile`, `Discover asg-portal`, `Resolve CI image`, `Compose playbook on asg-portal`, `Health GET /`. Neither caller uses `secrets: inherit` (Semgrep `yaml.github-actions.security.secrets-inherit`). Paid CD authenticates with GitHub OIDC (`vars.AWS_ROLE_TO_ASSUME` + `id-token: write`); repository secrets are not required on that path. The academy caller still sets `id-token: write` so it can `uses:` the shared reusable; Academy authenticates with Vocareum keys, not GitHub OIDC.
 
 Paid Ansible SSM uses `heavy-rental-ssm-<account>-actual` (not the tfstate bucket). Academy keeps the tfstate bucket for SSM transfer. `REST_BASE_URL` is the **internet-facing** REST ALB (`http://<rest_alb_dns>:8080`, infra ADR 0018).
 

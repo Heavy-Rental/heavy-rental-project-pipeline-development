@@ -35,7 +35,7 @@ Packaging SHALL zip the `dist/` contents and SHALL always generate and build an 
 #### Scenario: Image tar is non-empty
 - GIVEN `docker build` succeeds
 - WHEN Packaging saves the image
-- THEN a gzipped tar artifact exists and is non-empty
+- THEN a gzipped tar artifact `heavy_rental_web_portal-image.tar.gz` exists and is non-empty
 
 #### Scenario: Packaging does not push
 - GIVEN Packaging finished the Docker build

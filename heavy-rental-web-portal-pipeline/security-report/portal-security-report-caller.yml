@@ -1,0 +1,58 @@
+# =============================================================================
+# Install into: heavy-rental-react-web-portal
+# Path:         .github/workflows/portal-security-report-caller.yml
+# =============================================================================
+# Security Report caller — summarizes this repo's existing Code Scanning
+# alerts (from Semgrep, npm audit, Trivy, CodeQL — already run by
+# integration-pipeline.yml / release-pipeline.yml). Runs no new scans.
+#
+# Place both files in the React web portal repository:
+#
+#   .github/workflows/portal-security-report-caller.yml  ← this file (triggers)
+#   .github/workflows/security-report-pipeline.yml       ← reusable pipeline
+#
+# When this runs
+# --------------
+#   Weekly, Monday 08:00 UTC
+#   Manual workflow_dispatch (for on-demand / testing)
+#
+#   Does NOT run on push or pull_request — won't interfere with existing
+#   branch protection checks.
+#
+# Reusable workflow (same repository):
+#   ./.github/workflows/security-report-pipeline.yml
+#
+# Job
+# ---
+#   1. Generate security report (reads Code Scanning alerts, writes Job
+#      Summary + security-report.md artifact, 30-day retention)
+#
+# Setup
+# -----
+# 1. Copy into the portal repo:
+#      .github/workflows/portal-security-report-caller.yml
+#      .github/workflows/security-report-pipeline.yml
+# 2. No secrets required — uses the default GITHUB_TOKEN.
+# =============================================================================
+
+name: Security Report
+
+on:
+  schedule:
+    - cron: "0 8 * * 1" # Monday 08:00 UTC
+  workflow_dispatch:
+
+concurrency:
+  group: portal-security-report-${{ github.workflow }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  security-events: read
+
+jobs:
+  security-report-pipeline:
+    name: Security report pipeline
+    # Same-repo reusable workflow — both files live under .github/workflows/
+    uses: ./.github/workflows/security-report-pipeline.yml
+    # No inputs: reports on this repo (github.repository), state=open by default

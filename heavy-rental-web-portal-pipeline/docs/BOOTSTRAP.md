@@ -56,7 +56,7 @@ Do **not** set `REST_BASE_URL`, `HAYSTACK_BASE_URL`, other `VITE_*`, `VITE_API_T
 
 ## GitHub Environment `AWS_ACTUAL` (paid)
 
-Create Environment **`AWS_ACTUAL`**. Variable `AWS_ROLE_TO_ASSUME` (OIDC). Same `AWS_REGION` / `PORTAL_IMAGE` / `IMAGE_HTTP_URL` / `VITE_STRIPE_PUBLISHABLE_KEY` on **this** Environment. **No** `AWS_ACCESS_KEY_ID`. Trust the role for this app repo. Run **Web Portal CD (paid)** after infra **AWS infrastructure (paid)** `apply`. Ansible SSM uses `heavy-rental-ssm-<account>-actual`.
+Create Environment **`AWS_ACTUAL`**. Variable `AWS_ROLE_TO_ASSUME` (OIDC). Same `AWS_REGION` / `PORTAL_IMAGE` / `IMAGE_HTTP_URL` / `VITE_STRIPE_PUBLISHABLE_KEY` on **this** Environment. **No** `AWS_ACCESS_KEY_ID`. Do **not** pass `secrets: inherit` (OIDC uses `vars.AWS_ROLE_TO_ASSUME` + `id-token`). Trust the role for this app repo. Run **Web Portal CD (paid)** after infra **AWS infrastructure (paid)** `apply`. Ansible SSM uses `heavy-rental-ssm-<account>-actual`.
 
 ## configure-only (same as [`../specification/pipelines/portal-cd.md`](../specification/pipelines/portal-cd.md))
 
@@ -68,7 +68,7 @@ Does **not** read `.env.api` / `.env.production` and does **not** run `npm`.
 | Guest `/opt/heavy-rental/.env` | Yes — SM then academy overlay | **Required** `REST_BASE_URL`. SM `pk_` unless academy `VITE_STRIPE_PUBLISHABLE_KEY` overlays it. SPA still uses the **baked** Release key. Refuse `sk_` / webhook / PEM |
 | App Vite dotenv | **No** | Release only |
 
-Infra must already have applied the estate and `sync-secrets` (`heavy-rental/portal`). Guests InService + SSM Online.
+Infra must already have applied the estate and `sync-secrets` (`heavy-rental/portal`). Infra `apply` does **not** compose portal; first compose is infra `deploy-projects` or this CD `action=deploy`. Guests InService + SSM Online.
 
 ## Every run (same as PREPARE §7)
 
@@ -90,3 +90,5 @@ The **runner** uses Vocareum keys. The **EC2** uses `LabRole`.
 - Run `terraform apply` from this workflow
 - Expect GHCR from a `develop` → `master` PR alone (run **Actions → Release** after merge; the pipeline creates the GitHub Release)
 - Treat a green `verify` as proof that `/api` reached REST
+
+Release `workflow_dispatch` Publish pushes `ghcr.io/<owner>/heavy_rental_web_portal:<x.y.z>` and `:latest` and uploads `heavy_rental_web_portal-image.tar.gz`.

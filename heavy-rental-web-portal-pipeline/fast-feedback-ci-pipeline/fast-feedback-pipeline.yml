@@ -70,7 +70,7 @@ permissions:
 env:
   NODE_VERSION: "22"
   APP_PATH: app
-  DEFAULT_APP_REPOSITORY: SA62-team1/heavy-rental-react-web-portal
+  DEFAULT_APP_REPOSITORY: Heavy-Rental/heavy-rental-react-web-portal
   DEFAULT_APP_REF: develop
 
 jobs:

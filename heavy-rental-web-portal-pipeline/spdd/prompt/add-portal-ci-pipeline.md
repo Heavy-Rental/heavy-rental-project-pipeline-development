@@ -17,6 +17,7 @@ When reality diverges, fix this prompt first — then update the YAML.
 - Node 22 + `npm ci`. Fast Feedback / Integration CI need no GitHub Environment. Release Packaging uses Environment `academy` only to bake `vars.VITE_STRIPE_PUBLISHABLE_KEY` (`pk_`).
 - Authoring path: `heavy-rental-web-portal-pipeline/integration_pipeline/`.
 - This family stops at artifacts. Academy CD is `deploy-pipeline/`.
+- Security Report pair (`portal-security-report-caller.yml` + `security-report-pipeline.yml`) summarizes existing Code Scanning alerts (Monday 08:00 UTC + `workflow_dispatch`). It is not a merge gate and does not scan.
 
 ## E — Entities
 
@@ -32,9 +33,8 @@ Artifacts:
 
 ## A — Approach
 
-- Keep the six CI YAML files as the implementation. Specs track Integration Check and Fast Feedback reuse.
-- Fast Feedback / Integration `DEFAULT_APP_REPOSITORY`: `SA62-team1/heavy-rental-react-web-portal` (act).
-- Release `DEFAULT_APP_REPOSITORY`: `Heavy-Rental/heavy-rental-react-web-portal`. Same-repo callers still check out the calling repo.
+- Keep the six CI YAML files as the GitHub Flow implementation. Specs track Integration Check and Fast Feedback reuse. Security Report is a seventh pair (caller + reusable) that summarizes existing Code Scanning alerts; it is not a merge gate.
+- Fast Feedback, Integration CI, and Release `DEFAULT_APP_REPOSITORY`: `Heavy-Rental/heavy-rental-react-web-portal`. Installed Fast Feedback / CI callers check out the calling commit; Release always checks out `master`.
 
 ## S — Structure
 
@@ -47,7 +47,8 @@ heavy-rental-web-portal-pipeline/
   fast-feedback-ci-pipeline/
   integration_pipeline/     # underscore
   release-pipeline/
-  deploy-pipeline/
+  security-report/          # scheduled/manual Code Scanning summary — not a merge gate
+  deploy-pipeline/          # CD family — not this canvas
 ```
 
 Job `name:` values:
@@ -62,6 +63,7 @@ Job `name:` values:
 - `Packaging` (Release)
 - `DAST` (Release)
 - `Publish` (Release)
+- `Assert caller` / `Generate security report` (Security Report pair; not a merge gate)
 
 ## O — Operations
 
@@ -92,4 +94,6 @@ Job `name:` values:
 - **DO NOT** put `on: push` on reusable files.
 - **DO NOT** use Java, Maven, uv, yarn, pnpm, or Android SDK as the portal toolchain (`npm ci` only).
 - **DO NOT** cancel in-progress Release runs.
+- **DO NOT** treat Security Report as a `develop` branch-protection check or run it on push / pull_request.
+- **DO NOT** pass `secrets: inherit` from `portal-cd-paid-caller.yml`.
 - **DO NOT** rename `integration_pipeline/` as part of this change.

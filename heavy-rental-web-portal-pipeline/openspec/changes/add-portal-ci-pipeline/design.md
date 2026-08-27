@@ -21,7 +21,7 @@ Authoring path for Integration CI is `integration_pipeline/` (underscore).
 
 - Hitting live Spring / Haystack from CI
 - Terraform / compose / operate
-- Unifying Release `DEFAULT_APP_REPOSITORY` (`Heavy-Rental/...`) with Fast Feedback / Integration CI (`SA62-team1/...` act fallback)
+- Changing Fast Feedback / Integration CI / Release `DEFAULT_APP_REPOSITORY` away from `Heavy-Rental/heavy-rental-react-web-portal`
 
 ## Decisions
 
@@ -34,8 +34,9 @@ Authoring path for Integration CI is `integration_pipeline/` (underscore).
 7. **Release Packaging** is Node 22 + `npm ci` + `tsc -b` + **`vite build --mode api`** (not `npm run build`). Job `environment: academy` so `vars.VITE_STRIPE_PUBLISHABLE_KEY` is baked (`pk_` only). Empty `VITE_API_TARGET` / other backend `VITE_*`. Scan `dist/` for `sk_` / localhost / `heavy-rental-rest-api`. Always-generate nginx try_files (no `COPY .env`). Packaging uploads the image tar and does not `docker push`.
 8. **Publish** pushes `ghcr.io/<owner>/heavy_rental_web_portal:<semver>` + `:latest` after DAST, then `gh release create` on `master`.
 9. **CI family stops at artifacts.** Compose and the `/api` proxy live in the CD family.
-10. **`DEFAULT_APP_REPOSITORY`.** Fast Feedback and Integration use `SA62-team1/heavy-rental-react-web-portal` (local act). Release uses `Heavy-Rental/heavy-rental-react-web-portal`. Same-repo callers still check out the calling repo.
+10. **`DEFAULT_APP_REPOSITORY`.** Fast Feedback, Integration CI, and Release use `Heavy-Rental/heavy-rental-react-web-portal`. Same-repo Fast Feedback / Integration CI callers still check out the calling commit; Release always checks out `master`.
 11. **Pending Fast Feedback jq.** Integration Check inlines the pending-status filter in the `PENDING_ID` / `PENDING_URL` `jq_field` calls (same quoting as `SUCCESS_ID` / `SUCCESS_URL`). It does not assign `PENDING_FILTER` and interpolate it — that construction fails the wait-for-run lookup.
+12. **Security Report.** `portal-security-report-caller.yml` + `security-report-pipeline.yml` summarize existing Code Scanning alerts (Monday 08:00 UTC + `workflow_dispatch`). They do not scan and are not a merge gate.
 
 ## Open Questions
 

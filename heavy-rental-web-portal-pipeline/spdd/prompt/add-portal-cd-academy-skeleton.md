@@ -9,7 +9,7 @@ Implement Academy portal CD discover only on `HR-165`.
 - No terraform, docker, ansible-playbook
 - No `${{ inputs.aws_secret` interpolation
 - No instance IDs on the form
-- No SecretString in logs
+- No SecretString or REST ALB URL in logs
 - Environment must be `academy`
 
 ## Output

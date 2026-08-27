@@ -6,7 +6,7 @@
 
 ## Context
 
-`IMPLEMENTATION-PLAN.md` §2 / §6 requires `guest_base` + `portal` with `--limit portal`. Inventing a second nginx `/api` or compose file would drift from the estate first-compose.
+`IMPLEMENTATION-PLAN.md` §2 / §6 requires `guest_base` + `portal` with `--limit portal`. Inventing a second nginx `/api` or compose file would drift from the estate `deploy-projects` / portal CD compose. Infra `apply` / `configure-only` do **not** compose portal.
 
 The portal pipeline is copied into the React repo. A git submodule of the whole infra tree is heavier than the roles this CD needs.
 

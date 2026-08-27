@@ -2,12 +2,12 @@
 
 ## Purpose
 
-How the portal CI family is invoked. The family is Fast Feedback, Integration CI, and Release. Academy CD is a separate family. Authoring path for Integration CI is `integration_pipeline/`.
+How the portal CI family is invoked: callers, reusable workflows, triggers, concurrency, permissions, and source checkout. The GitHub Flow family is Fast Feedback, Integration CI, and Release. Security Report is a scheduled/manual summary, not a merge gate. Academy CD is a separate family. Authoring path for Integration CI is `integration_pipeline/`.
 
 ## ADDED Requirements
 
 ### Requirement: Three-pipeline family
-The system SHALL provide three pipeline pairs (caller + reusable workflow): Fast Feedback, Integration CI, and Release.
+The system SHALL provide three GitHub Flow pipeline pairs (caller + reusable workflow): Fast Feedback, Integration CI, and Release. It MAY also provide a Security Report pair that is not a GitHub Flow stage.
 
 #### Scenario: Fast feedback is Integration only
 - GIVEN a push to a feature branch that is not `master` or `develop`
@@ -36,7 +36,7 @@ The system SHALL provide three pipeline pairs (caller + reusable workflow): Fast
 - AND it does not run Security Testing, CodeQL, or REST Endpoint Tests (SAST/CodeQL stay on Integration CI)
 
 ### Requirement: Reusable workflows accept only their caller
-Each reusable workflow SHALL expose only `workflow_call` and SHALL fail unless invoked by its matching caller file under `.github/workflows/`.
+Each GitHub Flow reusable workflow SHALL expose only `workflow_call` and SHALL fail unless invoked by its matching caller file under `.github/workflows/`. The Security Report reusable SHALL fail unless invoked by a `*-security-report-caller.yml` in the same repository.
 
 #### Scenario: Allowed caller
 - GIVEN `integration-pipeline.yml` is invoked by `.github/workflows/portal-ci-caller.yml`
@@ -98,7 +98,16 @@ Fast Feedback and Integration CI SHALL check out the calling repository at the c
 Fast Feedback and Integration CI SHALL cancel superseded runs. Release SHALL NOT cancel an in-flight packaging run.
 
 ### Requirement: Least-privilege permissions
-Only the Release caller and reusable release workflow SHALL request `packages: write`. Integration CI and Release SHALL request `security-events: write`. Fast Feedback and Integration CI SHALL request `actions: read` (Integration Check looks up Fast Feedback runs).
+Fast Feedback and Integration CI SHALL request `contents: read`, `pull-requests: read`, and `actions: read`. Integration CI and Release SHALL also request `security-events: write`. Integration CI SHALL also request `checks: write` (combined security PDF Checks-tab link). Only the Release caller and reusable release workflow SHALL request `packages: write` and `contents: write` (GitHub Release). Fast Feedback SHALL NOT request `packages: write` or `contents: write`. The Security Report pair SHALL request `contents: read` and `security-events: read` only.
+
+### Requirement: Security Report is not a merge gate
+The family MAY include `portal-security-report-caller.yml` plus reusable `security-report-pipeline.yml`. That pair SHALL summarize existing Code Scanning alerts into a job summary and markdown artifact. It SHALL NOT run on `pull_request` or `push`, SHALL NOT scan, and SHALL NOT be a `develop` branch-protection check.
+
+#### Scenario: Scheduled or manual only
+- GIVEN the Security Report caller
+- WHEN triggers are declared
+- THEN `schedule` and `workflow_dispatch` are present
+- AND `pull_request` and `push` are absent
 
 ### Requirement: Fast Feedback is not invoked from Integration CI
 The Integration CI caller SHALL NOT `uses:` `fast-feedback-pipeline.yml`. Fast Feedback SHALL remain the sole Integration-stage run on a feature-branch push. On `pull_request`, Integration Check SHALL reuse a successful Fast Feedback run for the PR head SHA instead of repeating `npm ci` and install-health checks.

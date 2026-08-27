@@ -2,7 +2,7 @@
 
 ## As-built (read this first)
 
-Academy branches 1–2 **and** paid portal CD are **delivered** (`add-portal-cd-academy-deploy`, `add-portal-cd-paid-deploy`, ADR 0009, Environment `AWS_ACTUAL`). `REST_BASE_URL` is the internet-facing REST ALB :8080 (ADR 0018). GHCR is `heavy_rental_web_portal`. Living specs: [`../../heavy-rental-web-portal-pipeline/specification/`](../../heavy-rental-web-portal-pipeline/specification/). Body below is the original Academy two-branch split.
+Academy branches 1–2 **and** paid portal CD are **delivered** (`add-portal-cd-academy-deploy`, `add-portal-cd-paid-deploy`, ADR 0009, Environment `AWS_ACTUAL`). `REST_BASE_URL` is the internet-facing REST ALB :8080 (ADR 0018). GHCR is `heavy_rental_web_portal` (dispatch-only Publish; tar `heavy_rental_web_portal-image.tar.gz`). Paid caller does not `secrets: inherit`. Living specs: [`../../heavy-rental-web-portal-pipeline/specification/`](../../heavy-rental-web-portal-pipeline/specification/). Body below is the original Academy two-branch split.
 
 **Contract:** [`WEB-PORTAL-CD-FEASIBILITY.md`](WEB-PORTAL-CD-FEASIBILITY.md), [`../ANSIBLE-PROCESS.md`](../ANSIBLE-PROCESS.md), AWS study §6.0c / §6.4a / §6.6.  
 **Live estate:** `heavy-rental-project-instructure-and-cloud-deploy`. Infra `apply` does **not** compose the portal. First compose and `/api` proxy are infra `deploy-projects` (`site.yml`) or this app CD.  

@@ -1,12 +1,12 @@
 # Web portal CI family
 
-**Application:** Heavy-Rental/heavy-rental-react-web-portal  
+**Application:** https://github.com/Heavy-Rental/heavy-rental-react-web-portal  
 **Authoring tree:** `heavy-rental-web-portal-pipeline/`  
 **Stack:** React 19 + TypeScript + Vite 8 / Node 22 / npm
 
-This family validates and packages the SPA. Academy **app CD** is [`portal-cd.md`](portal-cd.md).
+This family validates and packages the SPA. It does not create infrastructure or operate production. Academy and paid **app CD** is [`portal-cd.md`](portal-cd.md). A scheduled Security Report pair summarizes existing Code Scanning alerts; it is not a merge gate.
 
-Fast Feedback and Integration reusable YAML `DEFAULT_APP_REPOSITORY` is `SA62-team1/heavy-rental-react-web-portal` (local `act`). Release reusable YAML uses `Heavy-Rental/heavy-rental-react-web-portal`. When a caller runs **in** the Heavy-Rental portal repo, Fast Feedback and Integration CI check out the calling commit (into `app/`). Release always checks out **`master`**.
+Reusable YAML `DEFAULT_APP_REPOSITORY` is `Heavy-Rental/heavy-rental-react-web-portal` on Fast Feedback, Integration CI, and Release. When a caller runs **in** the Heavy-Rental portal repo, Fast Feedback and Integration CI check out the calling commit (into `app/`). Release always checks out **`master`**.
 
 ## GitHub Flow
 
@@ -83,7 +83,7 @@ The nginx image is a React + npm + Vite static SPA (ADR 0007 / 0008). Packaging 
 | Human security report | Combined PDF artifact `security-combined-report-pdf`; download from the PR Checks tab (workflow Summary → Artifacts, or Security Testing job summary) |
 | Human DAST report | Combined PDF artifact `dast-combined-report-pdf` (`dast-reports/combined-dast-report.pdf`); download from the Release run Summary → Artifacts, the DAST job summary link, or the GitHub Release |
 | Code scanning | CodeQL `javascript-typescript` |
-| Package | Seed/scan `.env.production` + `tsc -b` + `vite build --mode api` (empty `VITE_API_TARGET`) → `dist/` zip + always-generated `nginx:1.27-alpine` try_files tar. Publish pushes GHCR `heavy_rental_web_portal:<semver>` + `:latest` and creates the GitHub Release. Scan for `sk_`, localhost, `heavy-rental-rest-api`. |
+| Package | Seed/scan `.env.production` + `tsc -b` + `vite build --mode api` (empty `VITE_API_TARGET`) → `dist/` zip + always-generated `nginx:1.27-alpine` try_files tar. Tar artifact: `heavy_rental_web_portal-image.tar.gz`. Publish (not Packaging) pushes `ghcr.io/<owner>/heavy_rental_web_portal:<semver>` + `:latest` and creates the GitHub Release. The Release caller is `workflow_dispatch` only, so GHCR always runs on a successful dispatch. Scan for `sk_`, localhost, `heavy-rental-rest-api`. |
 
 ## Branch protection (application repo `develop`)
 
@@ -105,6 +105,8 @@ actionlint heavy-rental-web-portal-pipeline/integration_pipeline/integration-pip
 actionlint heavy-rental-web-portal-pipeline/integration_pipeline/portal-ci-caller.yml
 actionlint heavy-rental-web-portal-pipeline/release-pipeline/release-pipeline.yml
 actionlint heavy-rental-web-portal-pipeline/release-pipeline/portal-release-caller.yml
+actionlint heavy-rental-web-portal-pipeline/security-report/security-report-pipeline.yml
+actionlint heavy-rental-web-portal-pipeline/security-report/portal-security-report-caller.yml
 ```
 
 ## Install into the application repo
@@ -116,15 +118,20 @@ actionlint heavy-rental-web-portal-pipeline/release-pipeline/portal-release-call
 .github/workflows/integration-pipeline.yml
 .github/workflows/portal-release-caller.yml
 .github/workflows/release-pipeline.yml
+.github/workflows/portal-security-report-caller.yml
+.github/workflows/security-report-pipeline.yml
 ```
 
 Copy destination names stay hyphenated (`integration-pipeline.yml`) even though this authoring folder is `integration_pipeline/`.
+
+The Security Report pair is a **scheduled/manual summary** of existing Code Scanning alerts (Monday 08:00 UTC + `workflow_dispatch`). It does not scan, is not a `develop` branch-protection check, and does not run on push or pull_request.
 
 ## Pipeline boundaries
 
 | Concern | In this CI family? |
 | --- | --- |
 | Fast Feedback, Integration CI, Release packaging | Yes |
+| Security Report (summarize existing Code Scanning alerts) | Yes — reporting only; not a merge gate |
 | Live Spring / Haystack | No |
 | Academy compose | No — [`portal-cd.md`](portal-cd.md) |
 | Terraform / operate | No — infra project |

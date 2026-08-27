@@ -1,8 +1,8 @@
 # Heavy Rental web portal — GitHub Actions CI and app CD
 
-Workflows and specifications for [Heavy-Rental/heavy-rental-react-web-portal](https://github.com/Heavy-Rental/heavy-rental-react-web-portal) (authoring-tree act fallback: `SA62-team1/heavy-rental-react-web-portal`).
+Workflows and specifications for [Heavy-Rental/heavy-rental-react-web-portal](https://github.com/Heavy-Rental/heavy-rental-react-web-portal).
 
-This tree (`heavy-rental-web-portal-pipeline/`) authors Fast Feedback, Integration CI, Release packaging, and **Academy + paid app CD** (`deploy-pipeline/`). It does not provision the VPC or ASGs (infra project).
+This tree (`heavy-rental-web-portal-pipeline/`) authors Fast Feedback, Integration CI, Release packaging, a scheduled Security Report, and **Academy + paid app CD** (`deploy-pipeline/`). It does not provision the VPC or ASGs (infra project). Copy workflows into the React repo like Release.
 
 Start here: [`specification/README.md`](specification/README.md). App-repo CD checklist: [`docs/PREPARE-PORTAL-REPO.md`](docs/PREPARE-PORTAL-REPO.md).
 
@@ -16,6 +16,7 @@ Start here: [`specification/README.md`](specification/README.md). App-repo CD ch
 | `fast-feedback-ci-pipeline/` | Integration-only feature-branch pipeline |
 | `integration_pipeline/` | PR / `develop` merge gate (**underscore** in this tree) |
 | `release-pipeline/` | Manual `workflow_dispatch` on `master`: QC + image + DAST + public GHCR + GitHub Release |
+| `security-report/` | Weekly/manual Code Scanning summary (not a merge gate) |
 | `deploy-pipeline/` | Academy + paid app CD (discover + compose; copy into the app repo) |
 
 ## GitHub Flow
@@ -51,4 +52,4 @@ Release stops at **packaged artifacts** (`dist/` zip, image tar, public GHCR, Gi
 | Code scanning | CodeQL `javascript-typescript` |
 | Package | `tsc -b` + `vite build --mode api` → `dist/` zip + `nginx:1.27-alpine` tar; Publish pushes GHCR |
 
-Reusable YAML `DEFAULT_APP_REPOSITORY` is `SA62-team1/heavy-rental-react-web-portal` on Fast Feedback and Integration CI (local `act` fallback). Release uses `Heavy-Rental/heavy-rental-react-web-portal`. When Fast Feedback or Integration CI runs **in** `Heavy-Rental/heavy-rental-react-web-portal`, checkout is the calling commit. Release always checks out **`master`**.
+Reusable YAML `DEFAULT_APP_REPOSITORY` is `Heavy-Rental/heavy-rental-react-web-portal` on Fast Feedback, Integration CI, and Release. When Fast Feedback or Integration CI runs **in** `Heavy-Rental/heavy-rental-react-web-portal`, checkout is the calling commit. Release always checks out **`master`**.

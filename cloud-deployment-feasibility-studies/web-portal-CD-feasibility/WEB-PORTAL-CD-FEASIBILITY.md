@@ -30,11 +30,11 @@ Portal ALB stays the only public **:80**. REST has its own public **:8080**. ngi
 
 ### Purpose
 
-Decide how **GitHub Actions** can **re-run the guest compose playbook** on an **already created** `asg-portal` EC2, using the **nginx:1.27-alpine + Vite `dist/` image** (CI Node **22**) portal CI Release already built. Infra CD Terraform created the instance; infra CD Ansible did the first compose (including the `/api` reverse-proxy). This pipeline is a **later, manual** compose run (new image only). No new EC2.
+Decide how **GitHub Actions** can **re-run the guest compose playbook** on an **already created** `asg-portal` EC2, using the **nginx:1.27-alpine + Vite `dist/` image** (CI Node **22**) portal CI Release already built. Infra CD Terraform created the instance. Infra **`apply` / `configure-only`** do **not** compose portal. First-compose is infra **`deploy-projects`** (`site.yml`) or this app CD (`guest_base` + `portal`, including the `/api` reverse-proxy). This pipeline is a **manual** compose run (first image or a later tag). No new EC2.
 
-The Academy workflow (branch 1 discover + branch 2 compose) is in [`../../heavy-rental-web-portal-pipeline/deploy-pipeline/`](../../heavy-rental-web-portal-pipeline/deploy-pipeline/). Infra still does **first** compose on `apply`. This CD **re-runs** `guest_base` + `portal` for a new image or a secret refresh. See [`IMPLEMENTATION-PLAN.md`](IMPLEMENTATION-PLAN.md).
+The Academy workflow (branch 1 discover + branch 2 compose) is in [`../../heavy-rental-web-portal-pipeline/deploy-pipeline/`](../../heavy-rental-web-portal-pipeline/deploy-pipeline/). This CD **runs** `guest_base` + `portal` for a new image or a secret refresh. See [`IMPLEMENTATION-PLAN.md`](IMPLEMENTATION-PLAN.md).
 
-Portal is the **only public** ALB target. The browser talks to the public portal ALB. nginx on `asg-portal` proxies `/api` to the **internal** REST ALB. A Vite **dev server does not run in AWS**.
+Portal is the **only public :80** ALB target. The browser talks to the public portal ALB. nginx on `asg-portal` proxies `/api` to the **internet-facing** REST ALB `:8080`. A Vite **dev server does not run in AWS**.
 
 ### Non-goals
 
@@ -44,8 +44,8 @@ Portal is the **only public** ALB target. The browser talks to the public portal
 - Running `vite` / `npm run dev` as the AWS process
 - Putting REST or Haystack on the public ALB
 - Putting `STRIPE_API_KEY` / `STRIPE_WEBHOOK_SECRET` on the portal or in the image
-- Baking the **internal** REST ALB URL into a public GHCR / Vite `VITE_*` bundle
-- Using portal CI (which has **no** `academy` / `paid` Environments) as CD auth
+- Baking the REST ALB URL into a public GHCR / Vite `VITE_*` bundle
+- Using portal CI as CD auth (Fast Feedback / Integration CI have no Environments; Release Packaging uses `academy` only to bake Stripe `pk_`)
 
 Infra, estate-wide secrets, and operate/stop live in the **AWS infrastructure** study and workflows.
 
@@ -55,8 +55,8 @@ Infra, estate-wide secrets, and operate/stop live in the **AWS infrastructure** 
 
 | Pipeline | Tree / file | Role |
 | --- | --- | --- |
-| **Portal CI** | `heavy-rental-web-portal-pipeline/` | Fast Feedback → Integration → **Release** (`dist/` zip + **Docker tar** + GHCR off PR) |
-| **Infra CD** | `aws-infra-pipeline.example.yml` / paid | VPC, four ASGs, public portal ALB, internal REST/Haystack ALBs, RDS, secret **shells**, `sync-secrets`, `sync-ssh-keys` |
+| **Portal CI** | `heavy-rental-web-portal-pipeline/` | Fast Feedback → Integration → **Release** (`dist/` zip + **`heavy_rental_web_portal-image.tar.gz`** + dispatch-only GHCR). Security Report is scheduled/manual only. |
+| **Infra CD** | `aws-infra-pipeline.example.yml` / paid | VPC, four ASGs, public portal ALB `:80`, internet-facing REST ALB `:8080`, internal Haystack ALB, RDS, secret **shells**, `sync-secrets`, `sync-ssh-keys` |
 | **Portal app CD (this study)** | Live: `heavy-rental-web-portal-pipeline/deploy-pipeline/`. Examples in this folder stay stubs. | Manual deploy of **this** image onto existing `asg-portal` (`resolve-image` → Ansible `--limit portal` → SSM `GET /`). |
 
 CI never applies AWS. Infra CD never rebuilds the SPA. App CD never creates the ASG.
@@ -68,13 +68,14 @@ Infra CD  action=apply
     Terraform     →  creates asg-portal (EC2 InService)
     sync-secrets  →  heavy-rental/portal
                      (REST_BASE_URL + STRIPE_PUBLISHABLE_KEY)
-    Ansible       →  first compose playbook on the guest
-                     (Docker, .env, nginx :80 + /api → REST)
+    configure.yml →  Docker + Neo4j only (does not compose portal)
 
-Later, when CI has a new image:
-Portal app CD  (this study, workflow_dispatch only)
+First compose (either path):
+Infra CD  action=deploy-projects   (site.yml)
+    OR
+Portal app CD  action=deploy       (guest_base + portal)
     discover      →  find existing InService+SSM EC2  (no terraform)
-    compose       →  SAME guest playbook, portal group only
+    compose       →  guest playbook, portal group only
                      docker load/pull CI image
                      inject nginx /api proxy from REST_BASE_URL
                      compose up :80
@@ -91,7 +92,7 @@ From [`../../heavy-rental-web-portal-pipeline/release-pipeline/release-pipeline.
 | Artifact | When | How CD uses it |
 | --- | --- | --- |
 | Vite `dist/` zip `heavy-rental-web-portal-v{version}-build{run}-{sha}.zip` + stable `heavy-rental-web-portal-dist.zip` | Always on Packaging | Optional; image is enough. Zip has `index.html` at archive root (web-server document root) |
-| Image tar `heavy-rental-web-portal-v{version}-build{run}-{sha}.tar.gz` | Always on Packaging | Academy-friendly: download + `docker load` on the instance (or copy to ECR in-region) |
+| Image tar `heavy_rental_web_portal-image.tar.gz` | Always on Packaging | Academy-friendly: download + `docker load` on the instance (or copy to ECR in-region) |
 | GHCR `ghcr.io/<owner>/heavy_rental_web_portal:<semver>` and `:latest` | Publish on `workflow_dispatch` | Academy and paid if GHCR pull works |
 
 Image contract: **nginx:1.27-alpine** serving Vite `dist/` on **`:80`**, SPA `try_files $uri $uri/ /index.html`, hashed `/assets/` cached. Build does **not** start a Node/Vite process, REST, or Stripe. Release **must not** inline `VITE_*` lab URLs or `sk_` into `dist/` (ADR 0007). Stripe `pk_` is allowed.

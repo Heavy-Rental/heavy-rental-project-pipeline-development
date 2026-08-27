@@ -8,6 +8,8 @@
 #   deploy-pipeline/ansible/ → deploy-pipeline/ansible/
 #
 # Portal app CD (paid / AWS_ACTUAL). OIDC only. No Vocareum keys. No Terraform.
+# Do not pass secrets: inherit (Semgrep yaml.github-actions.security.secrets-inherit).
+# Auth is vars.AWS_ROLE_TO_ASSUME + id-token; repository secrets are not required.
 # =============================================================================
 
 name: Web Portal CD (paid)
@@ -85,7 +87,10 @@ jobs:
       aws_environment: AWS_ACTUAL
       image_ref: ${{ inputs.image_ref }}
       image_http_url: ${{ inputs.image_http_url }}
-    secrets: inherit
+    # Paid CD uses GitHub OIDC (vars.AWS_ROLE_TO_ASSUME). Do not inherit
+    # repository secrets; the reusable workflow requires none on this path.
+    # secrets: inherit is Semgrep ERROR yaml.github-actions.security.secrets-inherit.
+    # refuse-non-paid already fails if Environment AWS_ACTUAL has AWS_ACCESS_KEY_ID.
     permissions:
       contents: read
       id-token: write

@@ -28,7 +28,7 @@ Packaging seeds/scans `.env.production`, then `tsc -b` + `vite build --mode api`
 
 Operator checklist: [`samples/.env.production`](samples/.env.production). Copy it to the React repo root as `.env.production`.
 
-GHCR name: `ghcr.io/<owner>/heavy_rental_web_portal` (lowercase). On `Heavy-Rental` that is `ghcr.io/heavy-rental/heavy_rental_web_portal:<x.y.z>` and `:latest`. The version tag is the previous GHCR semver with the patch bumped (first publish is `1.0.0`).
+GHCR name: `ghcr.io/<owner>/heavy_rental_web_portal` (lowercase). On `Heavy-Rental` that is `ghcr.io/heavy-rental/heavy_rental_web_portal:<x.y.z>` and `:latest`. The version tag is the previous GHCR semver with the patch bumped (first publish is `1.0.0`). Packaging uploads `heavy_rental_web_portal-image.tar.gz`; Publish (dispatch-only) pushes GHCR.
 
 | Release trigger | What you get |
 | --- | --- |
@@ -38,7 +38,7 @@ Step-by-step (do not set `GITHUB_TOKEN`, dispatch after merge, public package, `
 
 Academy guests pull **public** GHCR with no token. A `develop` → `master` PR does **not** run Release. You need this dispatch (or `docker load` the tar via `image_http_url` / `IMAGE_HTTP_URL`, or copy the image to ECR).
 
-Fast Feedback / Integration `DEFAULT_APP_REPOSITORY: SA62-team1/heavy-rental-react-web-portal` is only for local `act`. Release YAML defaults to `Heavy-Rental/heavy-rental-react-web-portal`. When Fast Feedback or Integration CI runs **in** the Heavy-Rental portal repo, checkout is the calling commit. On pull_request, Integration Check reuses a successful Fast Feedback run for the PR head SHA instead of repeating `npm ci`. If Fast Feedback is still queued or in progress, Integration Check waits for that run (`gh run watch`); the pending-run jq filter is inlined (do not split it into `PENDING_FILTER`). When Release runs **in** the Heavy-Rental portal repo, checkout is the calling repo (into `app/`) at `master`.
+Fast Feedback, Integration CI, and Release `DEFAULT_APP_REPOSITORY` is `Heavy-Rental/heavy-rental-react-web-portal`. When Fast Feedback or Integration CI runs **in** the Heavy-Rental portal repo, checkout is the calling commit. On pull_request, Integration Check reuses a successful Fast Feedback run for the PR head SHA instead of repeating `npm ci`. If Fast Feedback is still queued or in progress, Integration Check waits for that run (`gh run watch`); the pending-run jq filter is inlined (do not split it into `PENDING_FILTER`). When Release runs **in** the Heavy-Rental portal repo, checkout is still **`master`** (into `app/`), not the calling SHA. That is correct.
 
 ---
 
@@ -46,7 +46,7 @@ Fast Feedback / Integration `DEFAULT_APP_REPOSITORY: SA62-team1/heavy-rental-rea
 
 Typical app `develop` today:
 
-- Present or pending: Fast Feedback, Integration CI, Release (copy the six CI YAML files from this tree)
+- Present or pending: Fast Feedback, Integration CI, Release, Security Report (copy the six GitHub Flow YAML files plus the Security Report pair from this tree)
 - **Missing until you copy:** `deploy-pipeline/` (both CD callers, reusable workflow, `resolve-aws-profile`, `ansible/`)
 
 Copy into the React repo `.github/workflows/`:
@@ -58,7 +58,11 @@ portal-ci-caller.yml
 integration-pipeline.yml
 portal-release-caller.yml
 release-pipeline.yml
+portal-security-report-caller.yml
+security-report-pipeline.yml
 ```
+
+The Security Report pair is scheduled/manual only (Monday 08:00 UTC + `workflow_dispatch`). Do not add it to `develop` branch protection.
 
 Branch protection on `develop` must require **Integration Check** (not **Integration**). Fast Feedback still publishes a check named **Integration**.
 
@@ -124,7 +128,7 @@ Do **not** set `REST_BASE_URL`, `HAYSTACK_BASE_URL`, other `VITE_*`, `VITE_API_T
 
 ### Paid Environment `AWS_ACTUAL`
 
-Create Environment **`AWS_ACTUAL`**. Variable `AWS_ROLE_TO_ASSUME`. **No** Vocareum `AWS_*` secrets. Same `PORTAL_IMAGE` / `AWS_REGION` names. Run **Web Portal CD (paid)** after infra paid `apply`. REST ALB is internet-facing `:8080`.
+Create Environment **`AWS_ACTUAL`**. Variable `AWS_ROLE_TO_ASSUME` (OIDC). **No** Vocareum `AWS_*` secrets. Same `PORTAL_IMAGE` / `IMAGE_HTTP_URL` / `AWS_REGION` / `VITE_STRIPE_PUBLISHABLE_KEY` names as academy, on **this** Environment. Paid CD does **not** `secrets: inherit`. Run **Web Portal CD (paid)** after infra paid `apply`. Guests use `hr-paid-portal`. Ansible SSM uses `heavy-rental-ssm-<account>-actual`. REST ALB is internet-facing `:8080`.
 
 ---
 
@@ -132,7 +136,7 @@ Create Environment **`AWS_ACTUAL`**. Variable `AWS_ROLE_TO_ASSUME`. **No** Vocar
 
 This CD does **not** create the ASG. Before any `deploy`:
 
-1. Infra `action=apply` created `asg-portal` (public ALB `:80`).
+1. Infra `action=apply` created `asg-portal` (public ALB `:80`). Infra `apply` / `configure-only` do **not** compose portal. First compose is infra `deploy-projects` (`site.yml`) or this CD `action=deploy`.
 2. Infra `aws-infra-academy.yml` `sync-secrets` filled **`heavy-rental/portal`** with `REST_BASE_URL=http://<rest_alb_dns>:8080` and Stripe `pk_`. REST SM separately gets `HAYSTACK_BASE_URL`, `APP_CORS_ALLOWED_ORIGINS=http://<portal_alb_dns>`, `sk_` / `whsec_`, JWT, RDS.
 3. Guests are InService and SSM Online (Start Lab if the session ended). Desired=0 → infra, not this CD.
 
