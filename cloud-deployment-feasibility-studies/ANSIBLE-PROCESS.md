@@ -2,7 +2,7 @@
 
 **Status:** Contract. Live playbooks are in `heavy-rental-project-instructure-and-cloud-deploy` (`ansible/`) and each app family's `deploy-pipeline/ansible/`. Example YAML **in this folder** stays fail-closed. As-built index: [`README.md`](README.md).
 
-**As-built:** paid GitHub Environment is **`AWS_ACTUAL`**. REST ALB is **internet-facing :8080**; portal nginx `/api` uses `REST_BASE_URL=http://<rest_alb_dns>:8080`. GHCR tags are `haystack_recommender`, `heavy_rental_rest_api`, `heavy_rental_web_portal`. App CD paid callers are delivered.
+**As-built:** paid GitHub Environment is **`AWS_ACTUAL`**. REST ALB is **internet-facing :8080**; portal nginx `/api` uses `REST_BASE_URL=http://<rest_alb_dns>:8080`. GHCR tags are `haystack_recommender`, `heavy_rental_rest_api`, `heavy_rental_web_portal`. App CD paid callers are delivered. Infra `apply` / `configure-only` run `configure.yml` (Docker + Neo4j); first-compose of portal / REST / Haystack is `deploy-projects` (`site.yml`) or app CD. ALB `tg-rest` / CD verify: `GET :8080/actuator/health` **2xx**. `tg-haystack` / CD verify: `GET :8000/health` **2xx**.
 
 **Sources:** [`AWS-INFRASTRUCTURE-FEASIBILITY.md`](AWS-INFRASTRUCTURE-FEASIBILITY.md) §7.1a, §6.0c, §6.4a, §6.6; Haystack / REST / portal CD studies (same guest playbook, one group).
 
@@ -24,15 +24,20 @@ Infra CD  action=apply
     Terraform        →  EC2 InService (not Ansible)
     sync-secrets     →  fill Secrets Manager (not Ansible)
     sync-ssh-keys    →  PEMs after InService (not Ansible)
-    Ansible          →  first compose on all four groups
+    Ansible          →  configure.yml (Docker all guests; Neo4j compose only)
 
 Infra CD  action=configure-only
     sync-secrets + sync-ssh-keys + Ansible configure.yml
-    (Docker + Compose on all guests; Neo4j compose; no app images)
+    (same as apply Ansible: Docker + Neo4j; no app images)
+
+Infra CD  action=deploy-projects   (later workflow run)
+    sync-secrets + sync-ssh-keys + image preflight + Ansible site.yml
+    (portal + REST + Haystack + Neo4j + rds_logical)
 
 Later, new CI image — app CD (workflow_dispatch):
     discover ASG → same playbook, one group only
     (portal | rest | haystack). No terraform. No neo4j group.
+    Academy and paid callers.
 
 Infra CD  action=stop | destroy
     No Ansible
@@ -71,7 +76,7 @@ Ansible does **not** invent the URL. The **app CD** (or infra first-compose) job
 | `workflow_dispatch` input `image_ref` | Registry tag | Infra: REST **and** Haystack fallback only (portal uses `PORTAL_IMAGE`). Portal **app** CD `action=deploy`: tag if `PORTAL_IMAGE` is empty. |
 | `workflow_dispatch` input `image_http_url` | Optional HTTPS / `s3://` `.tar.gz` | `docker load` on **all** guests. Empty = `vars.IMAGE_HTTP_URL`. Leave empty for normal pulls. |
 
-CI image names (Release; do not rebuild on the guest): portal **`nginx:1.27-alpine`** → `ghcr.io/<owner>/heavy_rental_web_portal` (Node **22** at build); REST **`tomcat:10.1-jdk21-temurin`** → `ghcr.io/<owner>/heavy_rental_rest_api` (Java **21**); Haystack **`python:3.12-slim-bookworm`** → `ghcr.io/<owner>/haystack_recommender`. Portal CD (`heavy-rental-web-portal-pipeline/deploy-pipeline/ansible/`) copies estate `guest_base` + `portal` and re-runs `--limit portal`. REST CD (`heavy-rental-rest-api/deploy-pipeline/ansible/`) copies estate `guest_base` + `rest` and re-runs `--limit rest`. Haystack CD (`haystack-fast-api-pipeline/deploy-pipeline/ansible/`) copies estate `guest_base` + `haystack` and re-runs `--limit haystack` (no Neo4j container). It does **not** replace infra first-compose on `apply`.
+CI image names (Release; do not rebuild on the guest): portal **`nginx:1.27-alpine`** → `ghcr.io/<owner>/heavy_rental_web_portal` (Node **22** at build); REST **`tomcat:10.1-jdk21-temurin`** → `ghcr.io/<owner>/heavy_rental_rest_api` (Java **21**); Haystack **`python:3.12-slim-bookworm`** → `ghcr.io/<owner>/haystack_recommender`. Portal CD (`heavy-rental-web-portal-pipeline/deploy-pipeline/ansible/`) copies estate `guest_base` + `portal` and re-runs `--limit portal`. REST CD (`heavy-rental-rest-api/deploy-pipeline/ansible/`) copies estate `guest_base` + `rest` and re-runs `--limit rest`. Haystack CD (`haystack-fast-api-pipeline/deploy-pipeline/ansible/`) copies estate `guest_base` + `haystack` and re-runs `--limit haystack` (no Neo4j container). It does **not** replace infra first-compose (`action=deploy-projects` / `site.yml`). Infra `apply` does **not** compose portal / REST / Haystack.
 
 Academy pull: public GHCR needs no login. ECR tags (`*.dkr.ecr.*`) get `aws ecr get-login-password` on the guest (`LabRole`). Private GHCR is **not** pulled (no token on the guest) — copy to ECR or load a tar. Prefer a **new tag** each redeploy (`compose up` does not `--pull always`).
 
@@ -109,7 +114,7 @@ Instance still needs outbound HTTPS (same-AZ NAT Gateway or S3 endpoint). Live `
 
 1. Read `heavy-rental/rest` → `POSTGRES_*` / `SPRING_DATASOURCE_*` (plus `POSTGRES_HOSTNAME` / `POSTGRES_DB` / `POSTGRES_USER`), `HAYSTACK_BASE_URL`, Stripe secret + webhook + publishable.
 2. Compose Tomcat on **:8080**, `mem_limit: 1g`, `cpus: 1.0`.
-3. Health: `GET /actuator/health` or `/`.
+3. Health: wait for `GET :8080/actuator/health` **2xx** (ALB `tg-rest` matcher `200-299` on each instance IP). Do **not** use `GET /` — Spring Security returns **401**.
 4. No Bolt. REST **guests** have no public IP; the REST **ALB** is internet-facing :8080 (ADR 0018).
 
 ### 4.3 `haystack` (`asg-haystack`)
@@ -121,7 +126,7 @@ Instance still needs outbound HTTPS (same-AZ NAT Gateway or S3 endpoint). Live `
    - `neo4j-populate` — `256m` / `0.25`
 3. **Must not** start a `neo4j` container. Do not start a pgvector container unless the Haystack RDS cannot load `vector` (credit fallback).
 4. Sync `SOURCE_HOST` = SoR RDS endpoint. `TARGET_HOST` = Haystack RDS endpoint. Populate Bolt = NLB `NEO4J_URI`.
-5. Health: `GET /docs` or `/health` on `:8000`.
+5. Health: wait for `GET :8000/health` **2xx** (ALB `tg-haystack` matcher `200-299` on each instance IP). Do **not** use `GET /` (404) or `/docs` as the ALB check.
 
 ### 4.4 `neo4j` (`asg-neo4j`) — infra / `configure-only` only
 

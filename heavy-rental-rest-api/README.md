@@ -35,7 +35,7 @@ Release does **not** rerun SAST/CodeQL. Packaging writes the WAR and image tar; 
 | Build, test, and package | In scope |
 | Create or change infrastructure | Out of scope (infra project) |
 | Deploy the packaged service | Academy + paid CD in `deploy-pipeline/` (copy into the app repo). Needs a public GHCR/ECR tag from Release |
-| Operate the live system | Infra estate + this CD. See [`docs/BOOTSTRAP.md`](docs/BOOTSTRAP.md) |
+| Operate the live system | Infra estate (`stop` / `destroy` / monitor). This CD can `verify` / `configure-only` / `deploy` compose. See [`docs/BOOTSTRAP.md`](docs/BOOTSTRAP.md) |
 
 ## Toolchain
 

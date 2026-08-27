@@ -27,5 +27,5 @@ Branch 1 (`add-rest-cd-academy-skeleton`) can authenticate and see `asg-rest`. O
 
 - Operators can `action=deploy` a public GHCR / ECR tag (or tar URL) onto both `asg-rest` guests.
 - `action=configure-only` refreshes `heavy-rental/rest` without inventing a Tomcat tag.
-- `action=verify` is SSM `GET :8080`, not discover-only.
+- `action=verify` is SSM `GET :8080/actuator/health` (**2xx**; same as ALB `tg-rest`), not discover-only.
 - **Not in this change:** paid/OIDC, portal/Haystack/Neo4j groups, Terraform, `stop` / `destroy`.

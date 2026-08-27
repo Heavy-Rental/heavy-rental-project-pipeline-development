@@ -25,9 +25,9 @@ Two callers (same reusable jobs):
       ▼
  Discover asg-rest
       │
-      ├── action=verify           skip compose; Health GET :8080
+      ├── action=verify           skip compose; Health GET :8080/actuator/health (2xx)
       ├── action=configure-only   ansible-rest (no resolve-image); needs REST_IMAGE or image_ref
-      └── action=deploy           Resolve CI image → ansible-rest → Health GET :8080
+      └── action=deploy           Resolve CI image → ansible-rest → Health GET :8080/actuator/health (2xx)
 ```
 
 | Action | Compose? | Image required? |
@@ -36,7 +36,7 @@ Two callers (same reusable jobs):
 | `configure-only` | Yes (refresh `.env`) | `REST_IMAGE` or `image_ref` (or tar **and** matching tag). **No stock Tomcat.** |
 | `deploy` | Yes | Same. Prefer a **new** tag. |
 
-`verify` is SSM `GET :8080`. Haystack being down does **not** fail this job by itself.
+`verify` is SSM `GET :8080/actuator/health` and must be **2xx** (same as ALB `tg-rest` matcher `200-299` on `<instance>:8080/actuator/health`). Spring **401** on `GET /` is **not** healthy. Haystack being down does **not** fail this job by itself.
 
 ## Job graph
 
@@ -52,12 +52,12 @@ Assert Environment academy | Assert Environment AWS_ACTUAL
       ├── Resolve CI image     (deploy only)
       ├── Compose playbook     guest_base + rest; --limit rest
       │                        (deploy and configure-only)
-      └── Health GET :8080
+      └── Health GET :8080/actuator/health (2xx)
 ```
 
-Job `name:` values: `Assert Environment academy` / `Assert Environment AWS_ACTUAL` (callers), then `Assert AWS profile`, `Discover asg-rest`, `Resolve CI image`, `Compose playbook on asg-rest`, `Health GET :8080`. Paid caller uses `secrets: inherit` (OIDC / Environment); academy caller does not. That inherit rule is CI-only. The academy caller still sets `id-token: write` so it can `uses:` the shared reusable; Academy authenticates with Vocareum keys, not GitHub OIDC.
+Job `name:` values: `Assert Environment academy` / `Assert Environment AWS_ACTUAL` (callers), then `Assert AWS profile`, `Discover asg-rest`, `Resolve CI image`, `Compose playbook on asg-rest`, `Health GET :8080/actuator/health`. Paid caller uses `secrets: inherit` (OIDC / Environment); academy caller does not. That inherit rule is CI-only. The academy caller still sets `id-token: write` so it can `uses:` the shared reusable; Academy authenticates with Vocareum keys, not GitHub OIDC.
 
-Paid Ansible SSM uses `heavy-rental-ssm-<account>-actual` (not the tfstate bucket). Academy keeps the tfstate bucket for SSM transfer. REST ALB is internet-facing :8080 (infra ADR 0018); guests stay private.
+Paid Ansible SSM uses `heavy-rental-ssm-<account>-actual` (not the tfstate bucket). Academy keeps the tfstate bucket for SSM transfer. REST ALB is internet-facing :8080 (infra ADR 0018); guests stay private. ALB `tg-rest` waits for `GET <instance>:8080/actuator/health` **2xx**.
 
 ## Environment `academy`
 
@@ -76,7 +76,7 @@ The academy **runner** uses Vocareum keys. The academy **EC2** uses `LabRole`.
 
 | Kind | Name | Role |
 | --- | --- | --- |
-| Variable or secret | `AWS_ROLE_TO_ASSUME` | GitHub OIDC. Required on paid |
+| Variable | `AWS_ROLE_TO_ASSUME` | GitHub OIDC (`vars.AWS_ROLE_TO_ASSUME`). Required on paid |
 | Variable | `AWS_REGION` | Defaults to `us-east-1` |
 | Variable | `REST_IMAGE` | Public GHCR or ECR tag (**this** Environment’s copy) |
 | Variable | `IMAGE_HTTP_URL` | Optional HTTPS or `s3://` CI tar |
@@ -90,9 +90,10 @@ Paid caller declares **no** Vocareum key inputs. It fails if Environment is not 
 | `rest-api-cd-academy-caller.yml` | `.github/workflows/` |
 | `rest-api-cd-paid-caller.yml` | `.github/workflows/` |
 | `rest-api-cd-academy.yml` | `.github/workflows/` |
-| `resolve-vocareum-aws/action.yml` | `.github/actions/resolve-vocareum-aws/` |
 | `resolve-aws-profile/action.yml` | `.github/actions/resolve-aws-profile/` |
 | `ansible/` | **`deploy-pipeline/ansible/`** (keep this path) |
+
+Do **not** copy `resolve-vocareum-aws/` (unused; academy masking lives in `resolve-aws-profile`).
 
 ## Local validation (this repo)
 

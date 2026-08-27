@@ -5,7 +5,7 @@
 Academy branches 1–2 **and** paid REST CD are **delivered** (`add-rest-cd-academy-deploy`, `add-rest-cd-paid-deploy`, ADR 0008, Environment `AWS_ACTUAL`). REST ALB is internet-facing :8080 (ADR 0018). GHCR is `heavy_rental_rest_api`. Living specs: [`../../heavy-rental-rest-api/specification/`](../../heavy-rental-rest-api/specification/). Body below is the original Academy two-branch split.
 
 **Contract:** [`REST-API-CD-FEASIBILITY.md`](REST-API-CD-FEASIBILITY.md), [`../ANSIBLE-PROCESS.md`](../ANSIBLE-PROCESS.md), AWS study §6.0c / §6.4a.  
-**Live estate:** `heavy-rental-project-instructure-and-cloud-deploy` (`HR-162` configure). First compose of Tomcat on `asg-rest` already exists there.  
+**Live estate:** `heavy-rental-project-instructure-and-cloud-deploy`. Infra `apply` does **not** compose REST. First compose is infra `deploy-projects` (`site.yml`) or this app CD.  
 **This plan is the delivery split.** Live YAML is in `heavy-rental-rest-api/deploy-pipeline/`.
 
 **Status:** Infra branches 1–3 exist. REST CD **branch 1** (discover), **branch 2** (compose), and **paid caller** are in `deploy-pipeline/`.
@@ -80,7 +80,7 @@ develop
 5. **`assert-lab`:** `sts get-caller-identity`. Output lab state bucket name for later SSM (`heavy-rental-tfstate-${ACCOUNT}-academy`).
 6. **`discover-targets`:** InService IDs on `asg-rest`; keep SSM Online. Fail if none or desired=0. `describe-secret heavy-rental/rest` (do not echo SecretString). Fail if the shell is missing. Do **not** print instance IPs or the internal REST ALB URL.
 7. `deploy` / `configure-only` ansible job **failed closed** on branch 1 (`exit 1` — “branch 2”). **Superseded** by §6.
-8. **`verify`** was discover-only on branch 1. **Superseded** by §6 SSM `GET :8080`.
+8. **`verify`** was discover-only on branch 1. **Superseded** by §6 SSM `GET :8080/actuator/health` **2xx**.
 
 ### Done when (branch 1)
 
@@ -113,7 +113,7 @@ Start Lab → Run workflow → `assert-lab` + `discover-targets` green. No image
 2. Runner: Ansible **14.3.1**, `amazon.aws` **>=11.3.0,<12**, `boto3/botocore>=1.35.0`, Session Manager plugin. Connection **`amazon.aws.aws_ssm`**. S3 bucket for the plugin = lab state bucket (same as infra / portal CD).
 3. **`ansible-playbook … --limit rest`:** `guest_base` + `rest` only. §6.4a `1g` / `1.0`. Fail if `rest_image` empty. No Bolt. No public listener. Stripe `sk_` stays in `heavy-rental/rest` on the guest `.env` — **not** in the image and **not** on `asg-portal`.
 4. **`configure-only`:** skip resolve-image. Use Environment `REST_IMAGE` or Run `image_ref`. Still **fail** if both empty (do not invent a Tomcat tag).
-5. **`verify`:** SSM `GET http://127.0.0.1:8080/actuator/health` or `GET /` (200–302, and 401/403 if the app is up but locked). Do **not** fail solely because Haystack (`HAYSTACK_BASE_URL`) is down. Do **not** print instance IPs or `REST_BASE_URL`. Internal ALB DNS is optional and not required.
+5. **`verify`:** SSM `GET http://127.0.0.1:8080/actuator/health` must be **2xx** (same as ALB `tg-rest` matcher `200-299`). Do **not** treat `GET /` 401 as healthy. Do **not** fail solely because Haystack (`HAYSTACK_BASE_URL`) is down. Do **not** print instance IPs or `REST_BASE_URL`.
 
 ### Done when (branch 2)
 
@@ -129,7 +129,7 @@ Start Lab → Run workflow → `assert-lab` + `discover-targets` green. No image
 | Haystack app CD | Same pattern, `asg-haystack` |
 | `--pull always` / digest pins | Optional hardening |
 
-Infra **`apply`** still first-composes REST. Infra **`configure-only`** does **not** compose REST. After that, use this app CD.
+Infra **`apply`** / **`configure-only`** do **not** compose REST. First-compose is infra **`deploy-projects`** or this app CD. After that, use this app CD for image rolls.
 
 ---
 

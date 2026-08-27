@@ -49,6 +49,7 @@ As-implemented spec of Fast Feedback / Integration Check / Release YAML (PR reus
 - SPDD: [`../spdd/analysis/add-rest-cd-academy-skeleton.md`](../spdd/analysis/add-rest-cd-academy-skeleton.md), [`../spdd/analysis/add-rest-cd-academy-deploy.md`](../spdd/analysis/add-rest-cd-academy-deploy.md), [`../spdd/analysis/add-rest-cd-paid-deploy.md`](../spdd/analysis/add-rest-cd-paid-deploy.md)
 - Walkthrough: [`pipelines/rest-cd.md`](pipelines/rest-cd.md)
 - Operator: [`../docs/BOOTSTRAP.md`](../docs/BOOTSTRAP.md), [`../docs/PREPARE-SPRING-REPO.md`](../docs/PREPARE-SPRING-REPO.md)
+- CD / ALB health: `GET :8080/actuator/health` **2xx** (`tg-rest` matcher `200-299`; not `GET /`)
 - Two CD Actions: [ADR 0008](../docs/adr/0008-two-cd-actions-academy-paid.md)
 
 ## Workflows (implementation)

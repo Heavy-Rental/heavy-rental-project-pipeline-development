@@ -16,4 +16,4 @@ This workflow SHALL NOT run Terraform, create `asg-rest`, or run `stop` / `destr
 - GIVEN the operator selects `verify`
 - WHEN the workflow runs
 - THEN ansible-rest is skipped
-- AND verify still runs SSM `GET :8080`
+- AND verify still runs SSM `GET :8080/actuator/health` (2xx)

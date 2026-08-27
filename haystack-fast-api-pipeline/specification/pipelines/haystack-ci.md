@@ -57,7 +57,7 @@ assert-caller
                       + GitHub Release on master
 ```
 
-Academy CD consumes a public GHCR/ECR tag or the tar. The image must accept infra `heavy-rental/haystack` keys and Profile knobs at runtime (ADR 0008 / 0009). Packaging sanitizes `.env.prod` into `/app/.env` (product knobs only), proves dummy `-e` injection (process env wins), and `GET /docs` or `/health` on `:8000`. Packaging does **not** read Environment `academy`; those vars overlay guest `.env` at CD time only. Packaging does **not** `docker push`; Publish does that after DAST.
+Academy CD consumes a public GHCR/ECR tag or the tar. The image must accept infra `heavy-rental/haystack` keys and Profile knobs at runtime (ADR 0008 / 0009). Packaging sanitizes `.env.prod` into `/app/.env` (product knobs only), proves dummy `-e` injection (process env wins), and `GET /docs` or `/health` on `:8000` (no live Postgres). **CD / ALB `tg-haystack`** waits for `GET :8000/health` **2xx** only. Packaging does **not** read Environment `academy`; those vars overlay guest `.env` at CD time only. Packaging does **not** `docker push`; Publish does that after DAST.
 
 ## Python / Haystack tools (not Java / Android / Node)
 

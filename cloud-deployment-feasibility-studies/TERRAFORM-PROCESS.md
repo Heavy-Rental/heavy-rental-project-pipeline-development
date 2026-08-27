@@ -2,7 +2,7 @@
 
 **Status:** Contract. Live Terraform is in `heavy-rental-project-instructure-and-cloud-deploy`. Example YAML in this folder stays fail-closed. As-built index: [`README.md`](README.md).
 
-**As-built:** paid GitHub Environment is **`AWS_ACTUAL`** (not `paid`). REST ALB is **internet-facing :8080**. Remote lock is S3 **`use_lockfile=true`** (no DynamoDB lock table). Two Actions, separate job graphs.
+**As-built:** paid GitHub Environment is **`AWS_ACTUAL`** (not `paid`). REST ALB is **internet-facing :8080**. Remote lock is S3 **`use_lockfile=true`** (no DynamoDB lock table). Two Actions, separate job graphs. `apply` Ansible is `configure.yml` (Neo4j only); first-compose of the three apps is later `deploy-projects`. ALB `tg-rest` waits for `GET <instance>:8080/actuator/health` **2xx**; `tg-haystack` waits for `GET <instance>:8000/health` **2xx**.
 
 **Sources:** [`AWS-INFRASTRUCTURE-FEASIBILITY.md`](AWS-INFRASTRUCTURE-FEASIBILITY.md) §7.0–§7.2d; [`aws-infra-pipeline.example.yml`](aws-infra-pipeline.example.yml); [`aws-infra-paid-pipeline.example.yml`](aws-infra-paid-pipeline.example.yml).
 
@@ -46,6 +46,8 @@ Academy: **Start Lab** then paste AWS Details on the form. If `sts` fails (`Expi
 | `apply` | Job `terraform` | `init` → `plan` → `apply` |
 | `destroy` | Job **`destroy`** (not the plan/apply job) | `confirm_destroy == destroy` → `init` → `destroy -auto-approve` |
 | `configure-only` | **Skipped** | `sync-secrets` + `sync-ssh-keys` + Ansible `configure.yml` (Docker + Neo4j) |
+| `deploy-projects` | **Skipped** | Later run after apply/configure-only: image preflight + Ansible `site.yml` |
+| `bootstrap` | Backend stack only | `terraform/backend/` S3 bucket (`use_lockfile`). Not the estate |
 | `stop` | **Skipped** | AWS CLI: ASG desired=0 + `rds stop-db-instance` on **both** RDS identifiers (not `terraform destroy`) |
 
 Do **not** `apply` on push or pull_request. A later optional `plan` on a trusted branch is out of the stub.
@@ -75,7 +77,8 @@ Job terraform   if: action == plan || apply
   Not Terraform — later jobs on apply only:
      sync-secrets      put-secret-value from outputs + GitHub Environment app secrets
      sync-ssh-keys     wait InService; PEMs  (no tls_private_key in .tf)
-     ansible           guest compose  (see ANSIBLE-PROCESS.md)
+     ansible           configure.yml (Docker + Neo4j only; see ANSIBLE-PROCESS.md)
+                       Portal / REST / Haystack: later action=deploy-projects (site.yml) or app CD
 ```
 
 `configure-aws-credentials` and `checkout` are **Actions** steps. `init` / `plan` / `apply` are the **Terraform** process.

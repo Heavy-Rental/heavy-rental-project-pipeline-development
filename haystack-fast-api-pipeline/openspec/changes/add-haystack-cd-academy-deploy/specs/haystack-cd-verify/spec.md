@@ -3,7 +3,7 @@
 ## ADDED Requirements
 
 ### Requirement: SSM health on Haystack :8000
-Verify SHALL SSM `GET http://127.0.0.1:8000/docs` or `/health` (200–302) on every InService + SSM Online `asg-haystack` guest.
+Verify SHALL SSM `GET http://127.0.0.1:8000/health` and accept HTTP **2xx only** (same as ALB `tg-haystack` matcher `200-299` on `<instance>:8000/health`). `GET /docs` and `GET /` SHALL NOT count as healthy for this check.
 
 #### Scenario: uvicorn answers
 - THEN the job succeeds even if SoR RDS or Bolt is down

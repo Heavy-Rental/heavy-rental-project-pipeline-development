@@ -13,3 +13,5 @@ context: |
   that lives in the application repository under openspec/.
   Infrastructure setup (VPC, ASGs, RDS, Neo4j) and operate (stop / destroy)
   are NOT specified here — they belong to the infra project.
+  ALB tg-haystack health is GET <instance>:8000/health matcher 200-299 (2xx).
+  App CD verify uses the same path; GET / and /docs are not the ALB check.

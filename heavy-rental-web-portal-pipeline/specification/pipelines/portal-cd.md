@@ -16,15 +16,18 @@ Two callers (same reusable jobs):
   portal-cd-paid-caller.yml        Environment AWS_ACTUAL + OIDC, no Vocareum keys
       │
       ▼
- assert               academy: refuse non-academy, resolve keys (masked), sts
-                      paid: refuse non-AWS_ACTUAL, OIDC, no AWS_ACCESS_KEY_ID
+ Assert Environment academy | Assert Environment AWS_ACTUAL
       │
       ▼
- discover-targets    SSM inventory asg-portal
+ Assert AWS profile          academy: Vocareum keys (masked) + sts
+                             paid: OIDC, no AWS_ACCESS_KEY_ID
       │
-      ├── action=verify           skip compose; SSM GET / on :80
+      ▼
+ Discover asg-portal
+      │
+      ├── action=verify           skip compose; Health GET / (200–302)
       ├── action=configure-only   refresh .env + /api; stock nginx allowed
-      └── action=deploy           resolve-image → ansible portal → verify
+      └── action=deploy           Resolve CI image → ansible-portal → Health GET /
 ```
 
 | Action | Compose? | Image required? |
@@ -33,20 +36,26 @@ Two callers (same reusable jobs):
 | `configure-only` | Yes (refresh guest `.env` + `/api`; does **not** run `npm` or rebuild the image) | `PORTAL_IMAGE` or `image_ref` **or stock `nginx`** |
 | `deploy` | Yes | `PORTAL_IMAGE` or `image_ref` (or tar **and** matching tag). Stock nginx **forbidden**. |
 
-`verify` is SSM `GET /` on `:80`. `/api` being down does **not** fail this job by itself.
+`verify` is SSM `GET /` on `:80` and accepts **200 / 301 / 302** (same path as ALB `tg-portal`; ALB matcher is `200-399`). `/api` being down does **not** fail this job by itself. REST ALB health is infra `tg-rest` (`GET :8080/actuator/health` **2xx**), not this family’s check.
 
 ## Job graph
 
 ```
-assert (academy Vocareum | paid OIDC)
+Assert Environment academy | Assert Environment AWS_ACTUAL
       │
       ▼
- discover-targets
+ Assert AWS profile
       │
-      ├── resolve-image    (deploy only; stock nginx forbidden)
-      ├── ansible-portal   guest_base + portal only; --limit portal
-      └── verify           SSM GET / on :80
+      ▼
+ Discover asg-portal
+      │
+      ├── Resolve CI image     (deploy only; stock nginx forbidden)
+      ├── Compose playbook     guest_base + portal only; --limit portal
+      │                        (deploy and configure-only)
+      └── Health GET /         (200–302)
 ```
+
+Job `name:` values: `Assert Environment academy` / `Assert Environment AWS_ACTUAL` (callers), then `Assert AWS profile`, `Discover asg-portal`, `Resolve CI image`, `Compose playbook on asg-portal`, `Health GET /`. Paid caller uses `secrets: inherit` (OIDC / Environment); academy caller does not. That inherit rule is CI-only. The academy caller still sets `id-token: write` so it can `uses:` the shared reusable; Academy authenticates with Vocareum keys, not GitHub OIDC.
 
 Paid Ansible SSM uses `heavy-rental-ssm-<account>-actual` (not the tfstate bucket). Academy keeps the tfstate bucket for SSM transfer. `REST_BASE_URL` is the **internet-facing** REST ALB (`http://<rest_alb_dns>:8080`, infra ADR 0018).
 
@@ -70,7 +79,7 @@ The academy **runner** uses Vocareum keys. The academy **EC2** uses `LabRole`.
 
 | Kind | Name | Role |
 | --- | --- | --- |
-| Variable or secret | `AWS_ROLE_TO_ASSUME` | GitHub OIDC. Required on paid |
+| Variable | `AWS_ROLE_TO_ASSUME` | GitHub OIDC (`vars.AWS_ROLE_TO_ASSUME`). Required on paid |
 | Variable | `AWS_REGION` | Defaults to `us-east-1` |
 | Variable | `PORTAL_IMAGE` | Public GHCR or ECR tag. Empty on `configure-only` → stock `nginx` |
 | Variable | `IMAGE_HTTP_URL` | Optional HTTPS or `s3://` CI tar |
@@ -97,9 +106,10 @@ Infra `aws-infra-academy.yml` `sync-secrets` must have filled `heavy-rental/port
 | `portal-cd-academy-caller.yml` | `.github/workflows/` |
 | `portal-cd-paid-caller.yml` | `.github/workflows/` |
 | `web-portal-cd-academy.yml` | `.github/workflows/` |
-| `resolve-vocareum-aws/action.yml` | `.github/actions/resolve-vocareum-aws/` |
 | `resolve-aws-profile/action.yml` | `.github/actions/resolve-aws-profile/` |
 | `ansible/` | **`deploy-pipeline/ansible/`** (keep this path) |
+
+Do **not** copy `resolve-vocareum-aws/` (unused; academy masking lives in `resolve-aws-profile`).
 
 ## Local validation (this repo)
 

@@ -21,7 +21,7 @@ Everyday operate after install (academy inventory, every-run steps, do-nots): [`
 | App (`develop`) | Release / CD contract |
 | --- | --- |
 | Python **3.12**, `uv.lock`, `pyproject.toml`, `app/main.py` | `python:3.12-slim-bookworm` + uv + uvicorn `app.main:app` |
-| `GET /docs`, `GET /health` on **`:8000`** | Health `GET :8000/docs` or `/health` (200–302). `/health` returns 200 even if Postgres is down (`status=degraded`) |
+| `GET /docs`, `GET /health` on **`:8000`** | ALB `tg-haystack` waits for `GET <instance>:8000/health` **2xx** (matcher `200-299`). `/docs` is OpenAPI only. `/health` returns 200 even if Postgres is down (`status=degraded`) |
 | App `Dockerfile` ignored | Release **always** generates the slim-bookworm + uvicorn image. Runnable with `docker run -p 8000:8000 -e …` (Docker Desktop or any Engine) |
 | Pricing artifacts under `app/services/pricing/artifacts/` | Copied with `COPY app ./app` |
 
@@ -243,7 +243,7 @@ Same sequence as [`BOOTSTRAP.md`](BOOTSTRAP.md) “Every run”:
 
 1. Instructure → Start Lab → AWS Details.
 2. Actions → **Haystack CD (Academy)** → Environment `academy` → paste the three keys (or use Environment fallback).
-3. `action=verify` — assert-lab + discover + SSM `GET :8000/docs` or `/health` (SoR/Bolt down does not fail this job by itself if uvicorn answers).
+3. `action=verify` — assert-lab + discover + SSM `GET :8000/health` must be **2xx** (same as ALB `tg-haystack` matcher `200-299`). SoR/Bolt down does not fail this job by itself if `/health` is 2xx.
 4. `action=deploy` with a **new** public GHCR or ECR tag (or tar URL + matching tag). Prefer a **new tag**.
 5. `action=configure-only` refreshes guest `.env` from `heavy-rental/haystack`, adds Postgres aliases / `FLEET_BACKEND=sql` / `NEO4J_BACKEND=bolt` if missing, overlays non-empty academy Profile vars (still needs `HAYSTACK_IMAGE` or `image_ref` — no stock uvicorn).
 

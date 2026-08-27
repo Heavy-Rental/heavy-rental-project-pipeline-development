@@ -5,7 +5,7 @@
 Academy branches 1–2 **and** paid portal CD are **delivered** (`add-portal-cd-academy-deploy`, `add-portal-cd-paid-deploy`, ADR 0009, Environment `AWS_ACTUAL`). `REST_BASE_URL` is the internet-facing REST ALB :8080 (ADR 0018). GHCR is `heavy_rental_web_portal`. Living specs: [`../../heavy-rental-web-portal-pipeline/specification/`](../../heavy-rental-web-portal-pipeline/specification/). Body below is the original Academy two-branch split.
 
 **Contract:** [`WEB-PORTAL-CD-FEASIBILITY.md`](WEB-PORTAL-CD-FEASIBILITY.md), [`../ANSIBLE-PROCESS.md`](../ANSIBLE-PROCESS.md), AWS study §6.0c / §6.4a / §6.6.  
-**Live estate:** `heavy-rental-project-instructure-and-cloud-deploy` (`HR-162` configure). First compose and `/api` proxy already exist there.  
+**Live estate:** `heavy-rental-project-instructure-and-cloud-deploy`. Infra `apply` does **not** compose the portal. First compose and `/api` proxy are infra `deploy-projects` (`site.yml`) or this app CD.  
 **This plan is the delivery split.** Live YAML is in `heavy-rental-web-portal-pipeline/deploy-pipeline/`.
 
 **Status:** Infra branches 1–3 exist. Portal CD **branch 1** (discover), **branch 2** (compose), and **paid caller** are in `deploy-pipeline/`.
@@ -126,7 +126,7 @@ Start Lab → Run workflow → `assert-lab` + `discover-targets` green. No image
 | REST / Haystack app CD | Same pattern, different group |
 | `--pull always` / digest pins | Optional hardening |
 
-Infra **`apply`** still first-composes the portal. Infra **`configure-only`** does **not** compose the portal. After that, use this app CD.
+Infra **`apply`** / **`configure-only`** do **not** compose the portal. First-compose is infra **`deploy-projects`** or this app CD. After that, use this app CD for image rolls.
 
 ---
 
