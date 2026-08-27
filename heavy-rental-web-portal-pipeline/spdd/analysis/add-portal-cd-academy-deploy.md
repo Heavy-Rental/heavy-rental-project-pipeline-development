@@ -4,7 +4,7 @@
 
 ## Problem
 
-Branch 1 can see `asg-portal` but cannot load a CI nginx image or refresh `/api`. Compose still only exists on infra CD.
+Branch 1 can see `asg-portal` but cannot load a CI nginx image or refresh `/api`. As-built first-compose is infra `deploy-projects` or this CD (not infra `apply`).
 
 ## Strategy
 

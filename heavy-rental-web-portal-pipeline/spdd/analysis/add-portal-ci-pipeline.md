@@ -38,11 +38,11 @@ Portal Fast Feedback / Integration / Release YAML already exists. Haystack and m
 
 ## Strategy
 
-Specify as-implemented behavior. Keep the six CI YAML files as the implementation.
+Specify as-implemented behavior. Keep the six CI YAML files plus the Security Report pair as the implementation. The Security Report pair is reporting-only (not a merge gate).
 
 ## Success
 
-- Specs match job names (`Integration Check` on CI), Node 22, mock `127.0.0.1:4010`, and skip-clean REST tests.
+- Six CI YAML files remain the implementation; specs match job names (`Integration Check` on CI), Node 22, mock `127.0.0.1:4010`, and skip-clean REST tests. Security Report is documented as reporting-only.
 - Release is `workflow_dispatch` only: Integration → QC → Packaging → DAST → Publish.
 - `specification/` indexes CI and CD.
 - `PREPARE-PORTAL-REPO.md` exists.

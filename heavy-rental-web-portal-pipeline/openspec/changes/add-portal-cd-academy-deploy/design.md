@@ -2,7 +2,7 @@
 
 ## Context
 
-Study `WEB-PORTAL-CD-FEASIBILITY.md` §8 / `IMPLEMENTATION-PLAN.md` §6. Infra `HR-162` already first-composes portal (`guest_base` + `portal`, `/api` → `REST_BASE_URL`). Branch 1 discovers `asg-portal`. This change re-runs that playbook from portal CD.
+Study `WEB-PORTAL-CD-FEASIBILITY.md` §8 / `IMPLEMENTATION-PLAN.md` §6. As-built: infra `apply` / `configure-only` do **not** compose portal; first-compose is infra `deploy-projects` (`site.yml`) or this app CD (`guest_base` + `portal`, `/api` → `REST_BASE_URL`). Branch 1 discovers `asg-portal`. This change re-runs that playbook from portal CD. The REST ALB is internet-facing `:8080`.
 
 ## Decisions
 

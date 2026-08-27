@@ -2,14 +2,20 @@
 # Specs live next to the workflows they describe.
 schema: spec-driven
 context: |
-  This folder specifies GitHub Actions pipelines for the React web portal
-  (Heavy-Rental/heavy-rental-react-web-portal; act fallback SA62-team1/...).
+  This folder specifies GitHub Actions pipelines for
+  Heavy-Rental/heavy-rental-react-web-portal.
   Two families live here:
     1. CI — Fast Feedback, Integration CI, and Release packaging
        (openspec/changes/add-portal-ci-pipeline/). As-implemented of existing YAML.
+       Security Report is a scheduled/manual Code Scanning summary, not a merge gate.
     2. App CD — discover asg-portal and compose (academy Vocareum +
        paid OIDC callers: add-portal-cd-academy-skeleton,
        add-portal-cd-academy-deploy, add-portal-cd-paid-deploy).
+       Paid caller does not secrets: inherit.
   The Integration CI authoring path is integration_pipeline/ (underscore).
   Product behaviour for the SPA is NOT specified here.
   Infrastructure setup and operate belong to the infra project.
+  Fast Feedback, Integration CI, and Release DEFAULT_APP_REPOSITORY is
+  Heavy-Rental/heavy-rental-react-web-portal. Release checkout is always master.
+  When Fast Feedback / Integration CI run in the Heavy-Rental portal repo,
+  checkout is the calling commit.

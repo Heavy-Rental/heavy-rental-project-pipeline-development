@@ -59,7 +59,7 @@ Org check (once): Heavy-Rental → Settings → Actions → General → Workflow
 
 If you have a Release run but guests cannot pull GHCR:
 
-1. Download artifact `web-portal-release-docker-image`.
+1. Download artifact `web-portal-release-docker-image` (`heavy_rental_web_portal-image.tar.gz`).
 2. Upload the `.tar.gz` somewhere the lab can read (`s3://` or HTTPS).
 3. Set `IMAGE_HTTP_URL` / `image_http_url` **and** a compose tag that matches the loaded image name (`PORTAL_IMAGE` or `image_ref`).
 

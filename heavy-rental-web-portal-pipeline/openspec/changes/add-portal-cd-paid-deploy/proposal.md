@@ -8,7 +8,7 @@ Portal CD was Academy-only (ADR 0001). Infra paid (`aws-infra-paid.yml`, Environ
 
 ## What Changes
 
-- Paid caller with OIDC, no Vocareum inputs, Environment `AWS_ACTUAL`.
+- Paid caller with OIDC, no Vocareum inputs, Environment `AWS_ACTUAL`. No `secrets: inherit` (`vars.AWS_ROLE_TO_ASSUME` + `id-token`).
 - Shared reusable jobs (today’s academy YAML) accept academy | AWS_ACTUAL.
 - Ansible SSM on paid uses `heavy-rental-ssm-<account>-actual`, not tfstate.
 - ADR 0001 updated; ADR 0009 two CD Actions.

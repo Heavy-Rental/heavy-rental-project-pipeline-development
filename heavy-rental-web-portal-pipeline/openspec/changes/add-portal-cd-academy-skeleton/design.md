@@ -2,7 +2,7 @@
 
 ## Context
 
-Study `WEB-PORTAL-CD-FEASIBILITY.md` §5 / `IMPLEMENTATION-PLAN.md` §5. Infra `HR-162` already composes portal. This repo’s Release pipeline builds the image (`ghcr.io/<owner>/heavy_rental_web_portal:<semver>` via Publish after DAST) and a `.tar.gz` artifact.
+Study `WEB-PORTAL-CD-FEASIBILITY.md` §5 / `IMPLEMENTATION-PLAN.md` §5. Keep this file as the branch-1 record. Do not treat “verify is discover-only” or “compose is branch 2” as current behavior. As-built first-compose is infra `deploy-projects` or this app CD (not infra `apply`). This repo’s Release pipeline builds the image (`ghcr.io/<owner>/heavy_rental_web_portal:<semver>` via dispatch-only Publish after DAST) and `heavy_rental_web_portal-image.tar.gz`. The REST ALB is internet-facing `:8080`.
 
 ## Decisions
 

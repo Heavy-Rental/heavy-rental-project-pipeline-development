@@ -1,7 +1,7 @@
 # Portal app CD (Academy) — STUDY STUB (exit 1). Not live YAML.
 # Live workflow: ../../heavy-rental-web-portal-pipeline/deploy-pipeline/
-# Order: infra Terraform creates EC2 → infra Ansible first compose
-#        → THIS workflow re-runs compose on asg-portal with a new CI nginx image.
+# Order: infra Terraform creates EC2. Infra apply does not compose portal.
+#        First compose is infra deploy-projects or THIS workflow (action=deploy).
 # nginx /api → REST_BASE_URL (internet-facing REST ALB :8080). No Vite server. No sk_ on portal.
 # Vocareum-only. Paid is web-portal-cd-paid (OIDC — no key fields).
 # Paste aws_access_key_id / secret / session_token on Run workflow (they change every Start Lab)

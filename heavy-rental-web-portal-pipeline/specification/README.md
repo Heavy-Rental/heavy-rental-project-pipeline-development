@@ -4,7 +4,7 @@ This folder is the **human index** for the GitHub Actions family authored in `he
 
 The React **product** specification is **not** here. It lives in the application repository.
 
-Infrastructure setup (VPC, ASGs) is **not** specified here. It belongs to the infra project. This tree authors **CI + Release packaging** and **Academy + paid app CD**.
+Infrastructure setup (VPC, ASGs) is **not** specified here. It belongs to the infra project. This tree authors **CI + Release packaging**, a scheduled **Security Report**, and **Academy + paid app CD**.
 
 The Integration CI authoring path is `integration_pipeline/` (underscore), not `integration-pipeline/`.
 
@@ -13,6 +13,7 @@ The Integration CI authoring path is `integration_pipeline/` (underscore), not `
 | Concern | Specified here? |
 | --- | --- |
 | Fast Feedback, Integration CI, Release packaging | Yes — CI family |
+| Security Report (summarize existing Code Scanning alerts) | Yes — reporting only; not a merge gate |
 | Academy and paid app CD (discover `asg-portal` + compose) | Yes — CD family |
 | Create or change infrastructure | No — infra project |
 | Operate the live system (`stop` / `destroy`) | No — infra project after go-live |
@@ -31,7 +32,7 @@ Conflict order: **OpenSpec scenarios → OpenSPDD Safeguards → ADR → YAML**.
 
 ### CI family — [`../openspec/changes/add-portal-ci-pipeline/`](../openspec/changes/add-portal-ci-pipeline/)
 
-As-implemented spec of Fast Feedback / Integration Check / Release YAML (PR reuses Fast Feedback; inlined pending-run jq). Release is `workflow_dispatch` only (Packaging → DAST → Publish GHCR + GitHub Release).
+As-implemented spec of Fast Feedback / Integration Check / Release YAML (PR reuses Fast Feedback; inlined pending-run jq). Fast Feedback, Integration CI, and Release `DEFAULT_APP_REPOSITORY` is `Heavy-Rental/heavy-rental-react-web-portal`. Release is `workflow_dispatch` only (Packaging → DAST → Publish GHCR + GitHub Release). Security Report is a scheduled/manual Code Scanning summary, not a merge gate.
 
 - Proposal: [`proposal.md`](../openspec/changes/add-portal-ci-pipeline/proposal.md)
 - Design: [`design.md`](../openspec/changes/add-portal-ci-pipeline/design.md)
@@ -59,5 +60,6 @@ As-implemented spec of Fast Feedback / Integration Check / Release YAML (PR reus
 | Fast feedback | [`../fast-feedback-ci-pipeline/fast-feedback-pipeline.yml`](../fast-feedback-ci-pipeline/fast-feedback-pipeline.yml) | [`portal-fast-feedback-caller.yml`](../fast-feedback-ci-pipeline/portal-fast-feedback-caller.yml) |
 | Integration CI | [`../integration_pipeline/integration-pipeline.yml`](../integration_pipeline/integration-pipeline.yml) | [`portal-ci-caller.yml`](../integration_pipeline/portal-ci-caller.yml) |
 | Release | [`../release-pipeline/release-pipeline.yml`](../release-pipeline/release-pipeline.yml) | [`portal-release-caller.yml`](../release-pipeline/portal-release-caller.yml) |
+| Security Report | [`../security-report/security-report-pipeline.yml`](../security-report/security-report-pipeline.yml) | [`portal-security-report-caller.yml`](../security-report/portal-security-report-caller.yml) |
 | Academy CD | [`../deploy-pipeline/web-portal-cd-academy.yml`](../deploy-pipeline/web-portal-cd-academy.yml) | [`portal-cd-academy-caller.yml`](../deploy-pipeline/portal-cd-academy-caller.yml) |
 | Paid CD | same reusable | [`portal-cd-paid-caller.yml`](../deploy-pipeline/portal-cd-paid-caller.yml) |
