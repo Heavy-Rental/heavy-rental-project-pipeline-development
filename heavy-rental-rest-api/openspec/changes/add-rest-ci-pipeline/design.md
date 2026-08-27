@@ -19,7 +19,7 @@ The Spring REST API already has reusable-caller Fast Feedback, Integration CI, a
 
 - Hitting live Academy RDS from CI
 - Terraform / compose / operate
-- Unifying Release `DEFAULT_APP_REPOSITORY` (`Heavy-Rental/...`) with Fast Feedback / Integration CI (`SA62-team1/...` act fallback)
+- Unifying Integration CI / Release `DEFAULT_APP_REPOSITORY` (`Heavy-Rental/...`) with Fast Feedback (`SA62-team1/...` act fallback)
 - Changing Release to pass a caller secrets map (Release QC still reads Environment `production`)
 
 ## Decisions

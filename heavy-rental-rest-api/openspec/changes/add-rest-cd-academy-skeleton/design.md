@@ -1,6 +1,6 @@
 # Design: REST CD Academy skeleton
 
-**Superseded** for compose and verify by [`../add-rest-cd-academy-deploy/`](../add-rest-cd-academy-deploy/) and for paid/OIDC by [`../add-rest-cd-paid-deploy/`](../add-rest-cd-paid-deploy/). Keep this file as the branch-1 record. Do not treat “verify is discover-only” or “compose is branch 2” as current behavior.
+**Superseded** for compose and verify by [`../add-rest-cd-academy-deploy/`](../add-rest-cd-academy-deploy/) and for paid/OIDC by [`../add-rest-cd-paid-deploy/`](../add-rest-cd-paid-deploy/). Keep this file as the branch-1 record. Do not treat “verify is discover-only” or “compose is branch 2” as current behavior. As-built first-compose is infra `deploy-projects` or this app CD (not infra `apply`). The REST ALB is internet-facing `:8080`; do not print the ALB URL.
 
 ## Context
 
@@ -10,7 +10,7 @@ Study `REST-API-CD-FEASIBILITY.md` §5 / `IMPLEMENTATION-PLAN.md` §5. Infra `HR
 
 1. Academy caller only. Environment must be `academy`. (Paid is a later change; the reusable later accepts `AWS_ACTUAL`.)
 2. Vocareum keys from `$GITHUB_EVENT_PATH` or Environment `academy`. Mask. Never interpolate `${{ inputs.aws_* }}`.
-3. Discover `asg-rest` via AWS API. No instance-ID inputs. Do not print instance IPs or the internal REST ALB URL.
+3. Discover `asg-rest` via AWS API. No instance-ID inputs. Do not print instance IPs or the REST ALB URL.
 4. Compose / GHCR pull is branch 2. `verify` on this branch is discover-only (no `GET :8080`).
 
 ## Risks

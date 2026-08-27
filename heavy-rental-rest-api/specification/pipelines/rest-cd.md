@@ -2,9 +2,9 @@
 
 **Application:** https://github.com/Heavy-Rental/heavy-rental-spring-rest-api  
 **Authoring tree:** `heavy-rental-rest-api/deploy-pipeline/`  
-**Consumes:** public GHCR/ECR tag or Release image tar from the CI family ([`rest-ci.md`](rest-ci.md))
+**Consumes:** public GHCR/ECR tag or Release image tar (`heavy_rental_rest_api-image.tar.gz`) from the CI family ([`rest-ci.md`](rest-ci.md))
 
-This family discovers `asg-rest` and can re-run REST compose. It does **not** run Terraform or create the ASG. Infra `apply` + `sync-secrets` must already have created the guests and `heavy-rental/rest`. The Release image is env-only (ADR 0007); CD maps SM → `.env` and must not expect JDBC URLs inside the image.
+This family discovers `asg-rest` and can re-run REST compose. It does **not** run Terraform or create the ASG. Infra `apply` + `sync-secrets` must already have created the guests and `heavy-rental/rest`. First-compose is infra `deploy-projects` (`site.yml`) or this CD (`action=deploy`); infra `apply` / `configure-only` do **not** compose REST. The Release image is env-only (ADR 0007); CD maps SM → `.env` and must not expect JDBC URLs inside the image.
 
 Operator checklist: [`../../docs/PREPARE-SPRING-REPO.md`](../../docs/PREPARE-SPRING-REPO.md). Everyday operate: [`../../docs/BOOTSTRAP.md`](../../docs/BOOTSTRAP.md).
 

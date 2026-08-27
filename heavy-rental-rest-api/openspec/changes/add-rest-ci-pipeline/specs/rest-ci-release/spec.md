@@ -55,7 +55,7 @@ Packaging SHALL always generate and build an image from `tomcat:10.1-jdk21-temur
 #### Scenario: Image tar is non-empty
 - GIVEN `docker build` succeeds
 - WHEN Packaging saves the image
-- THEN a gzipped tar artifact exists and is non-empty
+- THEN a gzipped tar artifact `heavy_rental_rest_api-image.tar.gz` exists and is non-empty
 
 ### Requirement: DAST scans the packaged image
 DAST SHALL run only after Packaging succeeds. It SHALL load the image tar, start the container, run OWASP ZAP baseline and Dastardly as gates, run Nuclei as report-only, and upload `dast-reports/` plus artifact `dast-combined-report-pdf` (`dast-reports/combined-dast-report.pdf`). ZAP exit ≥ 2 or a non-zero Dastardly exit SHALL fail the job. Nuclei SHALL NOT fail the job.

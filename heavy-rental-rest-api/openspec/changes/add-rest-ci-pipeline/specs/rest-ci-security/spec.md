@@ -78,7 +78,7 @@ Security Testing SHALL combine present scanner outputs under `security-reports/`
 - AND a check named `Security combined report (PDF)` is created when the Checks API accepts the request
 
 ### Requirement: Publish SARIF
-Security Testing SHALL upload Semgrep SARIF/JSON/text (including `semgrep-gha.sarif`) and Trivy SARIF files as a workflow artifact and SHALL attempt to publish SARIF to GitHub Code Scanning (application Semgrep, GHA Semgrep, and Trivy). A Code Scanning upload failure SHALL NOT fail the job.
+Security Testing SHALL upload Semgrep SARIF (`semgrep.sarif`, `semgrep-gha.sarif`) and Trivy SARIF (`trivy-fs.sarif`) as a workflow artifact and SHALL attempt to publish those SARIF files to GitHub Code Scanning (application Semgrep, GHA Semgrep, and Trivy). It SHALL NOT require `semgrep.json` or `semgrep.txt`. A Code Scanning upload failure SHALL NOT fail the job.
 
 #### Scenario: Code Scanning optional
 - GIVEN SARIF files exist and the Code Scanning API rejects the upload

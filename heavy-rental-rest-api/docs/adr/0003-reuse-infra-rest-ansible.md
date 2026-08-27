@@ -6,7 +6,7 @@
 
 ## Context
 
-`IMPLEMENTATION-PLAN.md` §2 / §6 requires `guest_base` + `rest` with `--limit rest`. Inventing a second compose file would drift from the estate first-compose.
+`IMPLEMENTATION-PLAN.md` §2 / §6 requires `guest_base` + `rest` with `--limit rest`. Inventing a second compose file would drift from the estate `deploy-projects` / REST CD compose. Infra `apply` / `configure-only` do **not** compose REST.
 
 ## Decision
 

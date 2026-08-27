@@ -4,7 +4,7 @@
 
 ## Problem
 
-Branch 1 can see `asg-rest` but cannot load a CI Tomcat image or refresh `.env`. Compose still only exists on infra CD.
+Branch 1 can see `asg-rest` but cannot load a CI Tomcat image or refresh `.env`. As-built first-compose is infra `deploy-projects` or this CD (not infra `apply`).
 
 ## Strategy
 

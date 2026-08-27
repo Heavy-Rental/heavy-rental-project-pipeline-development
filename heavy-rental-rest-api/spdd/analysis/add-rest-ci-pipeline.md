@@ -40,11 +40,11 @@ REST Fast Feedback / Integration / Release YAML already exists. Haystack and mob
 
 1. Specify as-implemented behavior in OpenSpec (including `rest-ci-scope`).
 2. Bind implementation in this analysis + Canvas (negative space).
-3. Keep the six CI YAML files as the implementation.
+3. Keep the six CI YAML files plus the Security Report pair as the implementation. The Security Report pair is reporting-only (not a merge gate).
 
 ## Success
 
-- Six YAML files remain the implementation; specs match job names (`Integration Check` on CI) and secret names.
+- Six CI YAML files remain the implementation; specs match job names (`Integration Check` on CI) and secret names. Security Report is documented as reporting-only.
 - `specification/` indexes CI and CD.
 - ADRs 0004–0007 record CI decisions (0007 = env-driven image); 0001–0003 and 0008 remain CD.
 - Packaging refuses baked guest/CI-DB env and proves dummy `SPRING_DATASOURCE_URL` / `POSTGRES_HOST` / `HAYSTACK_BASE_URL` / Stripe / JWT.

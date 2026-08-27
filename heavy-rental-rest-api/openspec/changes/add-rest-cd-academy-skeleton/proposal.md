@@ -1,5 +1,7 @@
 # Proposal: REST CD Academy skeleton
 
+**As-built:** Compose is delivered (`add-rest-cd-academy-deploy`). First-compose is infra `deploy-projects` (`site.yml`) or this app CD (not infra `apply`). GHCR is Release Publish on `workflow_dispatch` only. Keep this file as the branch-1 record.
+
 ## Why
 
 Infra CD already creates `asg-rest` and first-composes Tomcat. REST CI already builds `tomcat:10.1-jdk21-temurin` + `ROOT.war` and pushes GHCR (non-PR) plus a Release tar. There is no REST **app CD** workflow that can authenticate to Vocareum and discover those guests without Terraform.
