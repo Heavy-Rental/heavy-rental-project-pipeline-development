@@ -10,9 +10,10 @@ Haystack CD has two destinations. Academy cannot create OIDC. Paid must not rece
 
 ## Decision
 
-The first Haystack CD workflow is **Academy only** (`haystack-cd-academy.yml`). Environment must be `academy`. Paid/OIDC is a later workflow.
+The **academy caller** (`haystack-cd-academy-caller.yml`) is Vocareum-only. Environment must be `academy`. The reusable file `haystack-cd-academy.yml` is **shared** by academy and paid callers (ADR 0010). Paid/OIDC is `haystack-cd-paid-caller.yml` with Environment `AWS_ACTUAL`.
 
 ## Consequences
 
-- Same Environment secret names as infra CD.
-- Pointing this workflow at `paid` fails closed.
+- Same Environment secret names as infra CD on the academy caller.
+- Pointing the academy caller at a non-`academy` Environment fails closed.
+- Pointing the paid caller at `academy` fails closed.

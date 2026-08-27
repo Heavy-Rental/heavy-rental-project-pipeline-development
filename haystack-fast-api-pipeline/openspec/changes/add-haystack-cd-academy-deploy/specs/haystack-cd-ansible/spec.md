@@ -53,4 +53,4 @@ Haystack CD SHALL pass `SOURCE_HOST` / `SOURCE_PORT` / `SOURCE_DATABASE` and `TA
 #### Scenario: Modules missing from the current app image
 - GIVEN the image has no `postgres_haystack_sync` / `neo4j_populate` packages
 - THEN those services may crash-loop
-- AND `verify` is still green if `GET :8000/docs` or `/health` is 200–302
+- AND `verify` is still green if `GET :8000/health` is 2xx

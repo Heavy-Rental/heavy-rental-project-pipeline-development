@@ -29,6 +29,8 @@ Haystack, REST, and portal Release publish a public GHCR image and a GitHub Rele
 
 Haystack, REST, and portal CD each have **two callers**: Environment `academy` (Vocareum) and Environment `AWS_ACTUAL` (OIDC). Copy caller + reusable pairs into the application repo `.github/workflows/`.
 
+App CD `verify` uses the same **paths** as estate ALB probes: REST `GET :8080/actuator/health` **2xx** (ALB matcher `200-299`); Haystack `GET :8000/health` **2xx** (ALB matcher `200-299`); portal `GET :80/` **200 / 301 / 302** (ALB `tg-portal` matcher is `200-399`). Portal **Release Packaging** uses Environment `academy` only to bake Stripe `pk_`; that is not CD auth.
+
 ## Families
 
 | Family | Application | Human index |

@@ -78,7 +78,7 @@ The nginx image is a React + npm + Vite static SPA (ADR 0007 / 0008). Packaging 
 | QC | `npm run lint` (ESLint) + `npx tsc -b --pretty false` |
 | REST tests | `mock:server` / `api:mock` / `start:mock` + `test:api` / `test:endpoints` / `test:rest` |
 | Mock URL | `http://127.0.0.1:4010` (`MOCK_API_*`) |
-| SAST | Semgrep `p/typescript` `p/react` `p/javascript` `p/nodejs` + OWASP / audit / secrets / CWE Top 25 / Gitleaks / SQL injection / JWT / insecure-transport, plus custom ERROR rules for plaintext credentials in `.env`/YAML and JS/TS assignments. Reports: `semgrep.sarif` + `semgrep.json` + `semgrep.txt` (all severities); gate is ERROR-only |
+| SAST | Semgrep `p/typescript` `p/react` `p/javascript` `p/nodejs` + OWASP / audit / secrets / CWE Top 25 / Gitleaks / SQL injection / JWT / insecure-transport, plus custom ERROR rules for plaintext credentials in `.env`/YAML and JS/TS assignments. Reports: `semgrep.sarif` (all severities); gate is ERROR-only |
 | SCA | npm audit (high/critical fails) converted to SARIF + Trivy FS (unfixed CRITICAL fails) |
 | Human security report | Combined PDF artifact `security-combined-report-pdf`; download from the PR Checks tab (workflow Summary → Artifacts, or Security Testing job summary) |
 | Human DAST report | Combined PDF artifact `dast-combined-report-pdf` (`dast-reports/combined-dast-report.pdf`); download from the Release run Summary → Artifacts, the DAST job summary link, or the GitHub Release |

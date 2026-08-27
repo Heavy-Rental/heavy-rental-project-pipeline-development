@@ -5,7 +5,7 @@
 Academy branches 1–2 **and** paid Haystack CD are **delivered** (`add-haystack-cd-academy-deploy`, `add-haystack-cd-paid-deploy`, ADR 0010, Environment `AWS_ACTUAL`). GHCR is `haystack_recommender`. Release is `workflow_dispatch` only. Living specs: [`../../haystack-fast-api-pipeline/specification/`](../../haystack-fast-api-pipeline/specification/). Body below is the original Academy two-branch split.
 
 **Contract:** [`HAYSTACK-CD-FEASIBILITY.md`](HAYSTACK-CD-FEASIBILITY.md), [`../ANSIBLE-PROCESS.md`](../ANSIBLE-PROCESS.md) §4.3, AWS study §6.0c / §6.4a.  
-**Live estate:** `heavy-rental-project-instructure-and-cloud-deploy` (`HR-162` configure). First compose on `asg-haystack` (uvicorn + sync + populate, **no** Neo4j container) already exists there.  
+**Live estate:** `heavy-rental-project-instructure-and-cloud-deploy`. Infra `apply` does **not** compose Haystack. First compose is infra `deploy-projects` (`site.yml`) or this app CD (uvicorn + sync + populate, **no** Neo4j container).  
 **This plan is the delivery split.** Live YAML is in `haystack-fast-api-pipeline/deploy-pipeline/`.
 
 **Status:** Infra branches 1–3 exist. Haystack CD **branch 1** (discover), **branch 2** (compose), and **paid caller** are in `deploy-pipeline/`.
@@ -81,7 +81,7 @@ develop
 5. **`assert-lab`:** `sts get-caller-identity`. Output lab state bucket name for later SSM (`heavy-rental-tfstate-${ACCOUNT}-academy`).
 6. **`discover-targets`:** InService IDs on `asg-haystack`; keep SSM Online. Fail if none or desired=0. `describe-secret heavy-rental/haystack` (do not echo SecretString). Fail if the shell is missing. Do **not** print instance IPs or the internal Haystack ALB URL.
 7. `deploy` / `configure-only` ansible job **failed closed** on branch 1. **Superseded** by §6.
-8. **`verify`** was discover-only on branch 1. **Superseded** by §6 SSM `GET :8000`.
+8. **`verify`** was discover-only on branch 1. **Superseded** by §6 SSM `GET :8000/health` **2xx**.
 
 ### Done when (branch 1)
 
@@ -114,7 +114,7 @@ Start Lab → Run workflow → `assert-lab` + `discover-targets` green. No image
 2. Runner: Ansible **14.3.1**, `amazon.aws` **>=11.3.0,<12**, `boto3/botocore>=1.35.0`, Session Manager plugin. Connection **`amazon.aws.aws_ssm`**. S3 bucket for the plugin = lab state bucket (same as infra / portal / REST CD).
 3. **`ansible-playbook … --limit haystack`:** `guest_base` + `haystack` only. §6.4a: uvicorn `768m` / `1.0`, sync `256m` / `0.25`, populate `256m` / `0.25`. Fail if `haystack_image` empty. **Must not** start a `neo4j` service. Sync `SOURCE_HOST` = SoR RDS; `TARGET_HOST` = Haystack RDS; Bolt = NLB `NEO4J_URI`. Optional `LLM_API_KEY` from SM only — never bake it into the image.
 4. **`configure-only`:** skip resolve-image. Use Environment `HAYSTACK_IMAGE` or Run `image_ref`. Still **fail** if both empty.
-5. **`verify`:** SSM `GET http://127.0.0.1:8000/docs` or `GET /health` (200–302). Do **not** fail solely because SoR RDS or Bolt is down if uvicorn answers. Do **not** print instance IPs or the internal ALB DNS.
+5. **`verify`:** SSM `GET http://127.0.0.1:8000/health` must be **2xx** (same as ALB `tg-haystack` matcher `200-299`). Do **not** treat `/docs` as the ALB check. Do **not** fail solely because SoR RDS or Bolt is down if `/health` is 2xx. Do **not** print instance IPs or the internal ALB DNS.
 
 ### Done when (branch 2)
 
@@ -129,7 +129,7 @@ Start Lab → Run workflow → `assert-lab` + `discover-targets` green. No image
 | Paid Haystack CD (`haystack-cd-paid-caller.yml`) | **Delivered** — OIDC; no Vocareum keys |
 | `--pull always` / digest pins | Optional hardening |
 
-Infra **`apply`** still first-composes Haystack. Infra **`configure-only`** does **not** compose Haystack. After that, use this app CD.
+Infra **`apply`** / **`configure-only`** do **not** compose Haystack. First-compose is infra **`deploy-projects`** or this app CD. After that, use this app CD for image rolls.
 
 The live app repo is **not** ready to deploy (no Release/CD on `develop`, no GHCR image, sidecar modules missing). See [`PREPARE-HAYSTACK-REPO.md`](../../haystack-fast-api-pipeline/docs/PREPARE-HAYSTACK-REPO.md).
 

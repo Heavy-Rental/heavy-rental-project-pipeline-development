@@ -5,10 +5,11 @@
 # Also copy:
 #   deploy-pipeline/web-portal-cd-academy.yml
 #     → .github/workflows/web-portal-cd-academy.yml
-#   deploy-pipeline/resolve-vocareum-aws/action.yml
-#     → .github/actions/resolve-vocareum-aws/action.yml
+#   deploy-pipeline/resolve-aws-profile/action.yml
+#     → .github/actions/resolve-aws-profile/action.yml
 #   deploy-pipeline/ansible/
 #     → deploy-pipeline/ansible/   (keep this path)
+# Do not copy resolve-vocareum-aws/ — portal CD uses resolve-aws-profile.
 #
 # Portal app CD (Academy) — branch 2 compose (HR-165).
 # Not CI. Not terraform. Re-runs guest_base + portal on existing asg-portal.

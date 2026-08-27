@@ -28,11 +28,7 @@ Compose `env_file` on the guest is the SM map (plus aliases and overlay). Proces
 
 ## GitHub Environment `academy`
 
-This Environment is the Haystack **project** production-style config store (Vocareum). Infra still owns RDS hosts and Bolt NLB. Do **not** point CD at CI Environments `integration` or `production`.
-
-## GitHub Environment `AWS_ACTUAL` (paid)
-
-Create Environment **`AWS_ACTUAL`**. Variable `AWS_ROLE_TO_ASSUME` (OIDC). Same `HAYSTACK_IMAGE` and Profile overlay names. Optional secret `LLM_API_KEY`. **No** `AWS_ACCESS_KEY_ID`. Run **Haystack CD (paid)** after infra paid `apply`. Ansible SSM uses `heavy-rental-ssm-<account>-actual`. No neo4j container.
+This Environment is the Haystack **project** production-style config store (Vocareum). Infra still owns RDS hosts and Bolt NLB. Do **not** point CD at CI Environments `integration` or `production`. Full inventory: [`PREPARE-HAYSTACK-REPO.md`](PREPARE-HAYSTACK-REPO.md) §5.
 
 ### Secrets (runner only — optional fallback)
 
@@ -49,6 +45,10 @@ Create Environment **`AWS_ACTUAL`**. Variable `AWS_ROLE_TO_ASSUME` (OIDC). Same 
 | `HAYSTACK_IMAGE` | Required for `deploy` / `configure-only` unless `image_ref` is set | Public GHCR or ECR tag. **No stock uvicorn.** |
 | `IMAGE_HTTP_URL` | Optional | HTTPS or `s3://` CI `.tar.gz` for `docker load` |
 | Profile knobs (optional) | Empty = keep SM / image `/app/.env` | **Not baked into the image.** See below. `APP_NAME`, `APP_ENV`, `LOG_LEVEL`, `NEED_DECOMPOSER`, `LLM_BASE_URL`, `LLM_MODEL`, `LLM_TIMEOUT_SECONDS`, `LLM_TEMPERATURE`, `INDEXING_EMBEDDER`, `INDEXING_EMBEDDING_DIM`, `INDEXING_SPLIT_LENGTH`, `INDEXING_SPLIT_OVERLAP`, `INDEXING_OPENAI_EMBEDDING_MODEL`, `INDEXING_ST_MODEL`, `INDEXING_DOCUMENT_STORE`, `INDEXING_CHUNK_TTL_SECONDS`, `IDEMPOTENCY_TTL_SECONDS`, `INDEXING_VIA_AGENT_GATE`, `FLEET_BACKEND`, `PRICING_SCHEMA`, `NEO4J_BACKEND`, `NEO4J_POPULATE_TIMEOUT_SECONDS`, `RECOMMEND_VIA_AGENT_GRAPH`, `RECOMMEND_FANOUT_CAP`, `KG_ARTIFACT_DIR`, `KG_APPLY_TRANSFORMS`, `PROJECT_AGENT_MODE`, `PROJECT_AGENT_TOP_K` |
+
+## GitHub Environment `AWS_ACTUAL` (paid)
+
+Create Environment **`AWS_ACTUAL`**. Variable `AWS_ROLE_TO_ASSUME` (OIDC). Same `HAYSTACK_IMAGE`, `IMAGE_HTTP_URL`, and Profile overlay names as academy, on **this** Environment. Optional secret `LLM_API_KEY`. **No** `AWS_ACCESS_KEY_ID`. Run **Haystack CD (paid)** after infra paid `apply`. Ansible SSM uses `heavy-rental-ssm-<account>-actual`. No neo4j container.
 
 ### Setting a Profile variable does **not** change the Docker image
 
@@ -74,7 +74,7 @@ Infra must already have applied the estate and `sync-secrets` (`heavy-rental/hay
 
 1. Instructure → Start Lab → AWS Details.
 2. Actions → **Haystack CD (Academy)** → Environment `academy` → paste Vocareum keys (or Environment fallback).
-3. `action=verify` — assert-lab + discover + SSM `GET :8000/docs` or `/health` (SoR/Bolt down does not fail this job by itself if uvicorn answers).
+3. `action=verify` — assert-lab + discover + SSM `GET :8000/health` must be **2xx** (same as ALB `tg-haystack` matcher `200-299`). SoR/Bolt down does not fail this job by itself if `/health` is 2xx.
 4. `action=deploy` — **new** public GHCR or ECR tag (or tar URL + matching tag). Prefer a **new tag** (`compose up` is not `--pull always`).
 5. `action=configure-only` — refresh guest `.env` from `heavy-rental/haystack`, add Postgres aliases / `FLEET_BACKEND=sql` / `NEO4J_BACKEND=bolt` if missing, overlay non-empty academy Profile vars. Still needs `HAYSTACK_IMAGE` or `image_ref`. No stock uvicorn.
 

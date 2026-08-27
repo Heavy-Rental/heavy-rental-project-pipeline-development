@@ -10,7 +10,7 @@ Release already builds a Tomcat image. Academy compose is a different workflow (
 
 ## Decision
 
-CI workflows end at WAR + image tar (GHCR push off PR). They do not run Ansible or SSM compose. Deploy lives in the CD family ([ADR 0001](0001-rest-cd-academy-only.md)).
+CI workflows do **not** run Ansible or SSM compose. Deploy lives in the CD family ([ADR 0001](0001-rest-cd-academy-only.md)). Fast Feedback and Integration CI stop at gates (no image tar). Release continues **Packaging → DAST → Publish** (public GHCR + GitHub Release) on `workflow_dispatch` only; it does not subscribe to `on: release` or a `develop`→`master` PR.
 
 ## Consequences
 

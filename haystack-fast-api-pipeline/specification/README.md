@@ -50,6 +50,7 @@ Conflict order: **OpenSpec scenarios → OpenSPDD Safeguards → ADR → YAML**.
 - SPDD: [`../spdd/analysis/add-haystack-cd-academy-skeleton.md`](../spdd/analysis/add-haystack-cd-academy-skeleton.md), [`../spdd/analysis/add-haystack-cd-academy-deploy.md`](../spdd/analysis/add-haystack-cd-academy-deploy.md), [`../spdd/analysis/add-haystack-cd-paid-deploy.md`](../spdd/analysis/add-haystack-cd-paid-deploy.md)
 - Walkthrough: [`pipelines/haystack-cd.md`](pipelines/haystack-cd.md)
 - Operator: [`../docs/BOOTSTRAP.md`](../docs/BOOTSTRAP.md), [`../docs/PREPARE-HAYSTACK-REPO.md`](../docs/PREPARE-HAYSTACK-REPO.md)
+- CD / ALB health: `GET :8000/health` **2xx** (`tg-haystack` matcher `200-299`)
 - Two CD Actions: [ADR 0010](../docs/adr/0010-two-cd-actions-academy-paid.md)
 
 ## Workflows (implementation)

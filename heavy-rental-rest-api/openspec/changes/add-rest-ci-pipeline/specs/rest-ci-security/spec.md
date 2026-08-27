@@ -10,15 +10,13 @@ Static and supply-chain scanning of the Java / Spring application. Standard repo
 Security Testing SHALL run only after Integration Check succeeds, in parallel with Quality Control, and SHALL scan the same application source.
 
 ### Requirement: Semgrep Java SAST
-Security Testing SHALL run two Semgrep passes. The application pass SHALL use Java, OWASP Top Ten, security-audit, secrets, CWE Top 25, FindSecBugs, Gitleaks, SQL injection, JWT, and insecure-transport rulesets, plus custom ERROR-severity rules that flag hard-coded credentials in Spring properties/YAML, `${VAR:plaintext}` credential defaults, JDBC URLs with embedded user:password, hard-coded Java password/secret assignments, fully exposed Actuator endpoints, and globally disabled Spring Security. The application pass SHALL exclude `.github/**` so `p/secrets` and `p/gitleaks` do not flag reusable-workflow secrets-context maps. The GitHub Actions pass SHALL scan `.github/**` with `p/github-actions` plus custom rules that flag `secrets: inherit` (ERROR, except `rest-api-cd-paid-caller.yml`) and hard-coded workflow credentials, and SHALL allow explicit GitHub secrets-context maps and `persist-credentials`. It SHALL always attempt to write `semgrep.sarif` and `semgrep-gha.sarif` (and application `semgrep.json` / `semgrep.txt`) covering all severities (not only ERROR). It SHALL fail the job only when ERROR-severity findings exist on either pass (or Semgrep cannot complete the gate scan). It SHALL NOT use the removed `p/spring` ruleset as a required config.
+Security Testing SHALL run two Semgrep passes. The application pass SHALL use Java, OWASP Top Ten, security-audit, secrets, CWE Top 25, FindSecBugs, Gitleaks, SQL injection, JWT, and insecure-transport rulesets, plus custom ERROR-severity rules that flag hard-coded credentials in Spring properties/YAML, `${VAR:plaintext}` credential defaults, JDBC URLs with embedded user:password, hard-coded Java password/secret assignments, fully exposed Actuator endpoints, and globally disabled Spring Security. The application pass SHALL exclude `.github/**` so `p/secrets` and `p/gitleaks` do not flag reusable-workflow secrets-context maps. The GitHub Actions pass SHALL scan `.github/**` with `p/github-actions` plus custom rules that flag `secrets: inherit` (ERROR, except `rest-api-cd-paid-caller.yml`) and hard-coded workflow credentials, and SHALL allow explicit GitHub secrets-context maps and `persist-credentials`. It SHALL always attempt to write `semgrep.sarif` and `semgrep-gha.sarif` covering all severities (not only ERROR). The ERROR-only gate SHALL print text findings to the job log; it SHALL NOT require `semgrep.json` or `semgrep.txt` files. It SHALL fail the job only when ERROR-severity findings exist on either pass (or Semgrep cannot complete the gate scan). It SHALL NOT use the removed `p/spring` ruleset as a required config.
 
 #### Scenario: SARIF written on clean scan
 - GIVEN Semgrep finds no ERROR-severity issues
 - WHEN Security Testing runs
 - THEN `security-reports/semgrep.sarif` exists
 - AND `security-reports/semgrep-gha.sarif` exists
-- AND `security-reports/semgrep.json` exists
-- AND `security-reports/semgrep.txt` exists
 - AND the Semgrep gate step succeeds
 
 #### Scenario: explicit secrets map is not a finding
@@ -30,7 +28,7 @@ Security Testing SHALL run two Semgrep passes. The application pass SHALL use Ja
 #### Scenario: full report when ERROR gate fails
 - GIVEN Semgrep reports at least one ERROR-severity finding
 - WHEN the Semgrep gate fails
-- THEN `semgrep.sarif`, `semgrep.json`, and `semgrep.txt` are still uploaded when present
+- THEN `semgrep.sarif` and `semgrep-gha.sarif` are still uploaded when present
 
 #### Scenario: ERROR findings fail the job
 - GIVEN Semgrep reports at least one ERROR-severity finding

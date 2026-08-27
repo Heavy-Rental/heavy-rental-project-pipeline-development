@@ -10,13 +10,13 @@ Static and supply-chain scanning of the TypeScript / React application. Standard
 Security Testing SHALL run only after Integration Check succeeds, in parallel with Quality Control, and SHALL scan the same application source.
 
 ### Requirement: Semgrep TypeScript / React SAST
-Security Testing SHALL run Semgrep with TypeScript, React, JavaScript, Node.js, OWASP Top Ten, security-audit, secrets, CWE Top 25, Gitleaks, SQL injection, JWT, and insecure-transport rulesets, plus custom ERROR-severity rules that flag hard-coded credentials in `.env`/properties/YAML and hard-coded secret assignments in JavaScript/TypeScript. It SHALL always attempt to write `semgrep.sarif`, `semgrep.json`, and `semgrep.txt` covering all severities (not only ERROR). It SHALL fail the job only when ERROR-severity findings exist.
+Security Testing SHALL run Semgrep with TypeScript, React, JavaScript, Node.js, OWASP Top Ten, security-audit, secrets, CWE Top 25, Gitleaks, SQL injection, JWT, and insecure-transport rulesets, plus custom ERROR-severity rules that flag hard-coded credentials in `.env`/properties/YAML and hard-coded secret assignments in JavaScript/TypeScript. It SHALL always attempt to write `semgrep.sarif` covering all severities (not only ERROR). The ERROR-only gate SHALL print text findings to the job log; it SHALL NOT require `semgrep.json` or `semgrep.txt` files. It SHALL fail the job only when ERROR-severity findings exist.
 
 #### Scenario: ERROR findings fail the job
 - GIVEN Semgrep reports at least one ERROR-severity finding
 - WHEN the Semgrep gate runs
 - THEN the job fails
-- AND `semgrep.sarif`, `semgrep.json`, and `semgrep.txt` are still uploaded when present
+- AND `semgrep.sarif` is still uploaded when present
 
 #### Scenario: plaintext password in env or properties
 - GIVEN a production `.env` or properties file contains `password=` / `secret=` / `api-key=` with a literal value (not `${ENV}`)

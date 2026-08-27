@@ -11,4 +11,4 @@ This workflow SHALL NOT run Terraform or `stop` / `destroy`. It SHALL NOT play p
 
 #### Scenario: Verify does not compose
 - THEN ansible-haystack is skipped
-- AND verify still runs SSM `GET :8000`
+- AND verify still runs SSM `GET :8000/health` (2xx)

@@ -12,12 +12,13 @@ This file is a **design record**. Living specs: [`../../heavy-rental-rest-api/sp
 | GHCR `heavy-rental-rest-api` | **`ghcr.io/<owner>/heavy_rental_rest_api:<semver>`** + `:latest` |
 | GHCR not pushed on develop→master PR | Release is **`workflow_dispatch` only**; Publish always pushes public GHCR on success |
 | REST Release secrets `REST_API_CLOUD_DB_*` | QC uses `REST_API_DB_*` (local Docker Postgres). CD does not read those names |
+| Infra `apply` first-composes REST | Infra **`apply` / `configure-only`** run `configure.yml` (Docker + Neo4j only). First-compose is infra **`deploy-projects`** (`site.yml`) or this app CD |
 
 **Status:** Study + as-built table. Example workflows are stubs.
 
 **Destinations:** same two AWS accounts as [`../AWS-INFRASTRUCTURE-FEASIBILITY.md`](../AWS-INFRASTRUCTURE-FEASIBILITY.md) — **Academy** and **Paid**. Environments `academy` / `AWS_ACTUAL`. One run must never touch the other.
 
-**Manually triggered after the estate is up.** It does **not** create the VPC, `asg-rest`, the REST ALB, or RDS. If `asg-rest` is missing, **fail** and run infra CD `action=apply` first. Live Academy workflow (discover **and** compose) is in `heavy-rental-rest-api/deploy-pipeline/`. Infra **`apply`** still first-composes REST. Infra **`configure-only`** does **not** compose REST — use this app CD (or `apply` for first compose).
+**Manually triggered after the estate is up.** It does **not** create the VPC, `asg-rest`, the REST ALB, or RDS. If `asg-rest` is missing, **fail** and run infra CD `action=apply` first. Live Academy workflow (discover **and** compose) is in `heavy-rental-rest-api/deploy-pipeline/`. Infra **`apply`** / **`configure-only`** do **not** compose REST (`configure.yml` is Docker + Neo4j only). First-compose is infra **`deploy-projects`** (`site.yml`) or this app CD.
 
 **The hard problem** is discovering the **private** EC2 (no public IP; IDs change after Start Lab). Do not type instance IDs on the form.
 
@@ -47,7 +48,7 @@ The Academy workflow (branch 1 discover + branch 2 compose) is in [`../../heavy-
 | --- | --- | --- |
 | **REST CI** | `heavy-rental-rest-api/` | Fast Feedback → Integration → **Release** (WAR + **Docker tar** + GHCR off PR) |
 | **Infra CD** | `aws-infra-*.example.yml` | VPC, four ASGs, ALBs, RDS, SM, first compose |
-| **REST app CD (this study)** | Live: `heavy-rental-rest-api/deploy-pipeline/`. Examples in this folder stay stubs. | Manual deploy of **this** image onto existing `asg-rest` (`resolve-image` → Ansible `--limit rest` → SSM `GET :8080`). |
+| **REST app CD (this study)** | Live: `heavy-rental-rest-api/deploy-pipeline/`. Examples in this folder stay stubs. | Manual deploy of **this** image onto existing `asg-rest` (`resolve-image` → Ansible `--limit rest` → SSM `GET :8080/actuator/health` **2xx**). |
 
 ### 2.1 Sequence
 
@@ -78,7 +79,7 @@ From `heavy-rental-rest-api/release-pipeline/release-pipeline.yml`:
 
 Image contract: **`tomcat:10.1-jdk21-temurin`** serving `ROOT.war` on **`:8080`**. Java **21**. Build does **not** start Postgres or Haystack. Release **refuses** baked `POSTGRES_*` / `SPRING_DATASOURCE_*` / `HAYSTACK_*` / Stripe / JWT and proves dummy runtime env (ADR 0007). `spring-datasource.env` is a workflow artifact (no password), **not** in the image.
 
-Port **8080**. Health `GET /actuator/health` or `/`. Password is **not** in the image; CD uses Secrets Manager (`heavy-rental/rest`).
+Port **8080**. Health wait `GET :8080/actuator/health` must be **2xx** (ALB `tg-rest` matcher `200-299`). `GET /` is Spring **401** and is **not** healthy. Password is **not** in the image; CD uses Secrets Manager (`heavy-rental/rest`).
 
 CI Environments: **`integration`** and **`production`** both use `REST_API_DB_*` (local Docker Postgres). Those names are **not** CD `POSTGRES_*` / `SPRING_DATASOURCE_PASSWORD`. See AWS study §6.0c.
 
@@ -123,7 +124,7 @@ aws secretsmanager describe-secret --secret-id heavy-rental/rest
 #   get-secret-value heavy-rental/rest → .env
 #   docker load < rest-api-*.tar.gz   OR  docker pull ghcr.io/...
 #   compose up Tomcat :8080  mem_limit 1g cpus 1.0
-#   curl -sfS http://127.0.0.1:8080/actuator/health || curl -sfS http://127.0.0.1:8080/
+#   curl -sfS http://127.0.0.1:8080/actuator/health   # wait for 2xx (tg-rest); GET / is 401
 ```
 
 Optional read-only `terraform output` from **infra** state. Never `terraform apply`.

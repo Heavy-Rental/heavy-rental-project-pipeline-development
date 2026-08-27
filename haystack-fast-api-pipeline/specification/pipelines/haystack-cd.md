@@ -25,9 +25,9 @@ Two callers (same reusable jobs):
       ▼
  Discover asg-haystack
       │
-      ├── action=verify           skip compose; Health GET :8000
+      ├── action=verify           skip compose; Health GET :8000/health (2xx)
       ├── action=configure-only   ansible-haystack (no resolve-image); needs HAYSTACK_IMAGE or image_ref
-      └── action=deploy           Resolve CI image → ansible-haystack → Health GET :8000
+      └── action=deploy           Resolve CI image → ansible-haystack → Health GET :8000/health (2xx)
 ```
 
 | Action | Compose? | Image required? |
@@ -36,7 +36,7 @@ Two callers (same reusable jobs):
 | `configure-only` | Yes (refresh guest `.env` + overlay; does **not** rebuild the image) | `HAYSTACK_IMAGE` or `image_ref` (or tar **and** matching tag). **No stock uvicorn.** |
 | `deploy` | Yes | Same as configure-only. Prefer a **new** tag. |
 
-`verify` waits on uvicorn `:8000` only. Sidecar crash-loops (`postgres-haystack-sync`, `neo4j-populate`) do not fail the job.
+`verify` is SSM `GET :8000/health` and must be **2xx** (same as ALB `tg-haystack` matcher `200-299` on `<instance>:8000/health`). `GET /` (404) and `/docs` are **not** the ALB check. Sidecar crash-loops (`postgres-haystack-sync`, `neo4j-populate`) do not fail the job.
 
 ## Sync env (SoR → Haystack RDS)
 
@@ -68,12 +68,12 @@ Assert Environment academy | Assert Environment AWS_ACTUAL
       ├── Resolve CI image     (deploy only)
       ├── Compose playbook     guest_base + haystack; --limit haystack
       │                        (deploy and configure-only)
-      └── Health GET :8000
+      └── Health GET :8000/health (2xx)
 ```
 
-Job `name:` values: `Assert Environment academy` / `Assert Environment AWS_ACTUAL` (callers), then `Assert AWS profile`, `Discover asg-haystack`, `Resolve CI image`, `Compose playbook on asg-haystack`, `Health GET :8000`. Paid caller uses `secrets: inherit` (OIDC / Environment); academy caller does not. That inherit rule is CI-only. The academy caller still sets `id-token: write` so it can `uses:` the shared reusable; Academy authenticates with Vocareum keys, not GitHub OIDC.
+Job `name:` values: `Assert Environment academy` / `Assert Environment AWS_ACTUAL` (callers), then `Assert AWS profile`, `Discover asg-haystack`, `Resolve CI image`, `Compose playbook on asg-haystack`, `Health GET :8000/health`. Paid caller uses `secrets: inherit` (OIDC / Environment); academy caller does not. That inherit rule is CI-only. The academy caller still sets `id-token: write` so it can `uses:` the shared reusable; Academy authenticates with Vocareum keys, not GitHub OIDC.
 
-Paid Ansible SSM uses `heavy-rental-ssm-<account>-actual` (not the tfstate bucket). Academy keeps the tfstate bucket for SSM transfer.
+Paid Ansible SSM uses `heavy-rental-ssm-<account>-actual` (not the tfstate bucket). Academy keeps the tfstate bucket for SSM transfer. ALB `tg-haystack` waits for `GET <instance>:8000/health` **2xx**.
 
 `deploy-pipeline/resolve-vocareum-aws/action.yml` exists as the academy-only key helper. Haystack CD does **not** `uses:` it — `resolve-aws-profile` already masks Vocareum keys. Do not copy it into the app repo.
 
@@ -96,7 +96,7 @@ The academy **runner** uses Vocareum keys. The academy **EC2** uses `LabRole`. D
 
 | Kind | Name | Role |
 | --- | --- | --- |
-| Variable or secret | `AWS_ROLE_TO_ASSUME` | GitHub OIDC. Required on paid |
+| Variable | `AWS_ROLE_TO_ASSUME` | GitHub OIDC (`vars.AWS_ROLE_TO_ASSUME`). Required on paid |
 | Variable | `AWS_REGION` | Defaults to `us-east-1` |
 | Variable | `HAYSTACK_IMAGE` | Public GHCR or ECR tag (**this** Environment’s copy) |
 | Variable | `IMAGE_HTTP_URL` | Optional HTTPS or `s3://` CI tar |

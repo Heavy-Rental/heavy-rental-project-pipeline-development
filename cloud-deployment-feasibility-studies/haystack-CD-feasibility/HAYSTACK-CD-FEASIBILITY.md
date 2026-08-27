@@ -11,6 +11,8 @@ This file is a **design record**. Living specs: [`../../haystack-fast-api-pipeli
 | GHCR `haystack-fast-api` | **`ghcr.io/<owner>/haystack_recommender:<semver>`** + `:latest` |
 | GHCR only off PR / published Release | Release is **`workflow_dispatch` only**; Publish always pushes public GHCR on success |
 | Example YAML is the workflow | Live: [`../../haystack-fast-api-pipeline/deploy-pipeline/`](../../haystack-fast-api-pipeline/deploy-pipeline/). Examples in this folder stay stubs |
+| Infra `apply` first-composes Haystack | Infra **`apply` / `configure-only`** run `configure.yml` (Docker + Neo4j only). First-compose is infra **`deploy-projects`** (`site.yml`) or this app CD |
+| Image tar `haystack-fast-api-v{version}-…` | Packaging artifact is **`haystack_recommender-image.tar.gz`** |
 
 Haystack ALB stays **internal**. REST ALB is internet-facing :8080 (does not change Haystack CD).
 
@@ -18,7 +20,7 @@ Haystack ALB stays **internal**. REST ALB is internet-facing :8080 (does not cha
 
 **Destinations:** same two AWS accounts as [`../AWS-INFRASTRUCTURE-FEASIBILITY.md`](../AWS-INFRASTRUCTURE-FEASIBILITY.md) — **Academy** (Vocareum) and **Paid**. Separate GitHub Environments (`academy`, `AWS_ACTUAL`), separate callers. One run must never touch the other.
 
-**This CD is manually triggered after the cloud estate is already up.** It does **not** create the VPC, ASGs, ALBs, RDS, or Neo4j. If `asg-haystack` is missing (or no guest is InService), the run **fails** and the operator runs infra CD `action=apply` first. Infra leaves **desired=2**, a **Haystack RDS**, and `NEO4J_URI` pointing at the **Bolt NLB**. Live Academy workflow (discover **and** compose) is in `haystack-fast-api-pipeline/deploy-pipeline/`. Infra **`apply`** still first-composes Haystack. Infra **`configure-only`** does **not** compose Haystack. App-repo readiness: [`../../haystack-fast-api-pipeline/docs/PREPARE-HAYSTACK-REPO.md`](../../haystack-fast-api-pipeline/docs/PREPARE-HAYSTACK-REPO.md).
+**This CD is manually triggered after the cloud estate is already up.** It does **not** create the VPC, ASGs, ALBs, RDS, or Neo4j. If `asg-haystack` is missing (or no guest is InService), the run **fails** and the operator runs infra CD `action=apply` first. Infra leaves **desired=2**, a **Haystack RDS**, and `NEO4J_URI` pointing at the **Bolt NLB**. Live Academy workflow (discover **and** compose) is in `haystack-fast-api-pipeline/deploy-pipeline/`. Infra **`apply`** / **`configure-only`** do **not** compose Haystack (`configure.yml` is Docker + Neo4j only). First-compose is infra **`deploy-projects`** (`site.yml`) or this app CD. App-repo readiness: [`../../haystack-fast-api-pipeline/docs/PREPARE-HAYSTACK-REPO.md`](../../haystack-fast-api-pipeline/docs/PREPARE-HAYSTACK-REPO.md).
 
 **The hard problem is not “how to start uvicorn.”** It is **how the runner learns which EC2s to deploy to** (private app subnets, no public IP, IPs change after Start Lab).
 
@@ -50,7 +52,7 @@ Infra, estate-wide secrets, and operate/stop live in the **AWS infrastructure** 
 | --- | --- | --- |
 | **Haystack CI** | `haystack-fast-api-pipeline/` | Fast Feedback → Integration → **Release** (wheel + **Docker tar** + GHCR off PR) |
 | **Infra CD** | `aws-infra-pipeline.example.yml` / paid | VPC, four ASGs, ALBs, RDS, secret **shells**, `sync-secrets`, `sync-ssh-keys` |
-| **Haystack app CD (this study)** | Live: `haystack-fast-api-pipeline/deploy-pipeline/`. Examples in this folder stay stubs. | Manual deploy of **this** image onto existing `asg-haystack` (`resolve-image` → Ansible `--limit haystack` → SSM `GET :8000`). |
+| **Haystack app CD (this study)** | Live: `haystack-fast-api-pipeline/deploy-pipeline/`. Examples in this folder stay stubs. | Manual deploy of **this** image onto existing `asg-haystack` (`resolve-image` → Ansible `--limit haystack` → SSM `GET :8000/health` **2xx**). |
 
 CI never applies AWS. Infra CD never rebuilds Haystack. App CD never creates the ASG.
 
@@ -76,7 +78,7 @@ Haystack app CD **is** the compose playbook (Ansible or AWS CLI + SSM). It is **
 
 ## 3. What CI already produces
 
-From [`haystack-fast-api-pipeline/specification/pipelines/haystack-ci.md`](../haystack-fast-api-pipeline/specification/pipelines/haystack-ci.md) and the Release pipeline:
+From [`haystack-fast-api-pipeline/specification/pipelines/haystack-ci.md`](../../haystack-fast-api-pipeline/specification/pipelines/haystack-ci.md) and the Release pipeline:
 
 | Artifact | When | How CD uses it |
 | --- | --- | --- |
@@ -211,7 +213,7 @@ aws secretsmanager describe-secret --secret-id heavy-rental/haystack
 aws ssm send-command \
   --instance-ids "$ID" \
   --document-name AWS-RunShellScript \
-  --parameters 'commands=["curl -sfS http://127.0.0.1:8000/docs || curl -sfS http://127.0.0.1:8000/health"]'
+  --parameters 'commands=["curl -sfS http://127.0.0.1:8000/health"]'
 ```
 
 Step 6 **is** the compose playbook, implemented with **AWS CLI + SSM** (or Ansible `aws_ssm` — same job). It runs **on the existing EC2**, after infra created that instance. It writes/updates `.env` from `heavy-rental/haystack`, loads the **CI** image, and `docker compose up` (uvicorn :8000 + sync + populate; **no** neo4j). It does **not** create the ASG.

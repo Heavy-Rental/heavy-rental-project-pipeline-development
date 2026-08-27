@@ -52,7 +52,7 @@ Packaging SHALL build a Docker image after staging wheel/sdist artifacts and SHA
 #### Scenario: Image tar is non-empty
 - GIVEN `docker build` succeeds
 - WHEN Packaging saves the image
-- THEN `haystack_recommender-{semver}.tar.gz` exists and is non-empty
+- THEN `haystack_recommender-image.tar.gz` exists and is non-empty (stable archive name; DAST/Publish consume this file, not a `{semver}` filename)
 
 ### Requirement: Image does not bake database or sync config
 The Dockerfile Packaging uses SHALL NOT set `ENV`/`ARG` for `POSTGRES_*`, `SOURCE_*`, `TARGET_*`, `DATABASE_URL`, `NEED_DECOMPOSER`, `LLM_*`, `INDEXING_*`, `IDEMPOTENCY_*`, `FLEET_BACKEND`, `PRICING_SCHEMA`, `NEO4J_*`, `RECOMMEND_VIA_AGENT_GRAPH`, or `KG_*`, and SHALL NOT `COPY` a raw `.env` or `.env.prod`. `docker build` SHALL NOT pass `--build-arg` for those names. Packaging SHALL sanitize `.env.prod` (app checkout `.env.prod` or `docs/samples/.env.prod`, else generated production defaults), drop estate keys and secrets, and `COPY haystack.prod.env .env` so pydantic `Settings` loads product knobs. Packaging SHALL NOT read Haystack Environment `academy` variables or secrets. Infra `sync-secrets` (`heavy-rental/haystack`) is the Academy owner of DB/sync/`NEO4J_URI`/`NEO4J_POPULATE_URL`/`NEO4J_USER`/`NEO4J_PASSWORD` (ADR 0009). Product knobs stay injectable at runtime (process env wins over `/app/.env`).

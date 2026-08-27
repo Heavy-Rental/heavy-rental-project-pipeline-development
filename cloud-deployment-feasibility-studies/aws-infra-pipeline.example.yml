@@ -1,7 +1,7 @@
-# Academy CD workflow (not CI). CI Release pipelines create the Docker image.
-# Copy to the CD repo: .github/workflows/aws-infra-academy.yml
-# Live Academy implementation: heavy-rental-project-instructure-and-cloud-deploy
-# (HR-162). This example stays a stub (terraform/ansible/stop/destroy exit 1).
+# Stub example only. Live Academy Action:
+#   heavy-rental-project-instructure-and-cloud-deploy/.github/workflows/aws-infra-academy.yml
+# Do not copy this stub into .github/workflows. Live Actions also have bootstrap
+# and deploy-projects (this stub’s action list is incomplete).
 # Vocareum-only. Paid CD is aws-infra-paid-pipeline.example.yml (OIDC — no key fields).
 #
 # Operator (keys change every Start Lab):
@@ -164,7 +164,7 @@ jobs:
           TF_ACTION: ${{ inputs.action }}
         run: |
           set -euo pipefail
-          echo "::error::Stub. Other project: terraform init (S3+DynamoDB remote state) && terraform ${TF_ACTION}."
+          echo "::error::Stub. Other project: terraform init (S3 use_lockfile=true; no DynamoDB) && terraform ${TF_ACTION}."
           echo "Must create three subnet tiers; asg-portal+public ALB; asg-rest+internal ALB; asg-haystack+internal ALB."
           echo "asg-neo4j max=1 data subnets; RDS data subnet group only; deletion_protection=false."
           echo "MUST create secret shells heavy-rental/{portal,rest,haystack,neo4j} and empty heavy-rental/ssh/*."

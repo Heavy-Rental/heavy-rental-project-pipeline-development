@@ -9,9 +9,10 @@ Install from **`deploy-pipeline/`** into the React repo (same paths as PREPARE �
 - `portal-cd-academy-caller.yml` → `.github/workflows/`
 - `portal-cd-paid-caller.yml` → `.github/workflows/` (billed AWS)
 - `web-portal-cd-academy.yml` → `.github/workflows/` (shared jobs)
-- `resolve-vocareum-aws/action.yml` → `.github/actions/resolve-vocareum-aws/`
 - `resolve-aws-profile/action.yml` → `.github/actions/resolve-aws-profile/`
 - **`ansible/`** → `deploy-pipeline/ansible/` (keep this path)
+
+Do **not** copy `resolve-vocareum-aws/` (portal CD does not `uses:` it; `resolve-aws-profile` already masks Vocareum keys).
 
 Do **not** copy `specification/`. Copy [`samples/.env.production`](samples/.env.production) to the **React** repo as `.env.production` (scanned at Release). GHCR is built with **`vite build --mode api`** so Spring login works. Vite inlines `VITE_*` at build time; CD does not read the file.
 

@@ -277,6 +277,6 @@ jobs:
           aws-region: ${{ vars.AWS_REGION || 'us-east-1' }}
       - name: Verify placeholder
         run: |
-          echo "SSM curl localhost:8000/docs or /health. Do not print a public Haystack URL."
+          echo "SSM curl localhost:8000/health (2xx; tg-haystack matcher 200-299). Do not print a public Haystack URL."
           echo "::error::Stub. Other project: SSM health on :8000."
           exit 1

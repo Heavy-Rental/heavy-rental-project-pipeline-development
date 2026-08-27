@@ -18,6 +18,8 @@ Conflict order: **OpenSpec scenarios → OpenSPDD Safeguards → ADR → YAML**.
 
 `cloud-deployment-feasibility-studies/` are **design records with as-built tables**. Start at [`../cloud-deployment-feasibility-studies/README.md`](../cloud-deployment-feasibility-studies/README.md). Living behavior is still the per-family OpenSpec / OpenSPDD / ADR trees. If a study body disagrees with an as-built table or an ADR, the table / ADR / YAML wins.
 
+Estate ALB health (infra): `tg-rest` waits for `GET <instance>:8080/actuator/health` **2xx** (matcher `200-299`); `tg-haystack` waits for `GET <instance>:8000/health` **2xx** (matcher `200-299`); `tg-portal` waits for `GET <instance>:80/` matcher `200-399`. App CD `verify` uses the same paths; portal CD accepts **200 / 301 / 302** only. Layout: [`../../heavy-rental-project-instructure-and-cloud-deploy/docs/ARCHITECTURE.md`](../../heavy-rental-project-instructure-and-cloud-deploy/docs/ARCHITECTURE.md).
+
 ## Families
 
 | Family | Human index | OpenSpec | OpenSPDD | ADRs |

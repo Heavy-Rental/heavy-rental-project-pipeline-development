@@ -11,6 +11,8 @@ This file is a **design record**. Living specs: [`../../heavy-rental-web-portal-
 | Paid portal CD later | **Delivered:** `portal-cd-paid-caller.yml` |
 | GHCR `heavy-rental-web-portal` | **`ghcr.io/<owner>/heavy_rental_web_portal:<semver>`** + `:latest` |
 | GHCR only off PR / published Release | Release is **`workflow_dispatch` only**; Publish always pushes public GHCR on success |
+| Infra `apply` first-composes portal | Infra **`apply` / `configure-only`** run `configure.yml` (Docker + Neo4j only). First-compose is infra **`deploy-projects`** (`site.yml`) or this app CD |
+| Portal CI has no Environments / no Stripe | Fast Feedback / Integration CI have none. **Release Packaging** uses Environment **`academy`** for Stripe `pk_` only |
 
 Portal ALB stays the only public **:80**. REST has its own public **:8080**. nginx `/api` still proxies.
 
@@ -18,9 +20,9 @@ Portal ALB stays the only public **:80**. REST has its own public **:8080**. ngi
 
 **Destinations:** same two AWS accounts as [`../AWS-INFRASTRUCTURE-FEASIBILITY.md`](../AWS-INFRASTRUCTURE-FEASIBILITY.md) — **Academy** (Vocareum) and **Paid**. Separate GitHub Environments (`academy`, `AWS_ACTUAL`), separate callers. One run must never touch the other.
 
-**This CD is manually triggered after the cloud estate is already up.** It does **not** create the VPC, `asg-portal`, the public portal ALB, or RDS. If `asg-portal` is missing, the run **fails** and the operator runs infra CD `action=apply` first. Live Academy workflow (discover **and** compose) is in `heavy-rental-web-portal-pipeline/deploy-pipeline/`. Infra **`apply`** still first-composes the portal. Infra **`configure-only`** does **not** compose the portal — use this app CD (or `apply` for first compose).
+**This CD is manually triggered after the cloud estate is already up.** It does **not** create the VPC, `asg-portal`, the public portal ALB, or RDS. If `asg-portal` is missing, the run **fails** and the operator runs infra CD `action=apply` first. Live Academy workflow (discover **and** compose) is in `heavy-rental-web-portal-pipeline/deploy-pipeline/`. Infra **`apply`** / **`configure-only`** do **not** compose the portal (`configure.yml` is Docker + Neo4j only). First-compose is infra **`deploy-projects`** (`site.yml`) or this app CD. The REST ALB is internet-facing :8080; nginx `/api` proxies to `REST_BASE_URL`.
 
-**The hard problem is not “how to start nginx.”** It is **how the runner learns which EC2s to deploy to** (private app subnets, no public IP, IPs change after Start Lab) **and** how a **static Vite SPA** talks to a **private** REST ALB without exposing REST or baking that URL into the public image.
+**The hard problem is not “how to start nginx.”** It is **how the runner learns which EC2s to deploy to** (private app subnets, no public IP, IPs change after Start Lab) **and** how a **static Vite SPA** talks to REST (`REST_BASE_URL=http://<rest_alb_dns>:8080`, internet-facing) via nginx `/api` without baking that URL into the public image.
 
 ---
 

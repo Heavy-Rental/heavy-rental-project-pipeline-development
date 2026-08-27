@@ -4,6 +4,8 @@
 
 ### Changed
 
+- Second spec/docs verification: REST and portal CD install lists now match YAML (`resolve-aws-profile` required; do not copy unused `resolve-vocareum-aws`). Haystack BOOTSTRAP academy vs `AWS_ACTUAL` secret tables no longer nest Vocareum keys under paid. ADR 0001 (Haystack/portal) binds the academy **caller**, not the shared reusable. OpenSpec academy-auth (Haystack/portal) amended the same way as REST. Semgrep living specs/walkthroughs are SARIF-only (no required `semgrep.json` / `semgrep.txt`). Haystack Release image tar is `haystack_recommender-image.tar.gz`. Portal CD walkthrough job names and `GET /` 200–302 vs ALB `200-399` match YAML. As-built tables cover first-compose (`deploy-projects`), portal Packaging Environment `academy` (`pk_`), and portal health matchers. Academy infra example stub no longer says “copy this file”. Broken Haystack CI study link (`../` → `../../`) fixed.
+
 - Feasibility studies: as-built tables (`AWS_ACTUAL`, internet-facing REST ALB, GHCR names, dispatch-only Release, paid app CD delivered). Folder index at `cloud-deployment-feasibility-studies/README.md`. Example paid stubs default to Environment `AWS_ACTUAL`.
 
 - Synced living specification and documentation with the YAML that already ships.

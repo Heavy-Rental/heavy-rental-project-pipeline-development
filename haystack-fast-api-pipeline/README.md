@@ -36,7 +36,7 @@ Release stops at **packaged artifacts** (wheel, sdist, image tar, public GHCR, G
 | Build, test, and package | In scope |
 | Create or change infrastructure | Out of scope (another project) |
 | Deploy the packaged service | Academy and paid CD in `deploy-pipeline/` (copy into the app repo). Needs a public GHCR/ECR tag from Release |
-| Operate the live system | Infra estate + this CD. See [`docs/BOOTSTRAP.md`](docs/BOOTSTRAP.md) |
+| Operate the live system | Infra estate (`stop` / `destroy` / monitor). This CD can `verify` / `configure-only` / `deploy` compose. See [`docs/BOOTSTRAP.md`](docs/BOOTSTRAP.md) |
 
 Operate needs knowledge of the running platform. It does not create that platform, and this CI family does not either.
 

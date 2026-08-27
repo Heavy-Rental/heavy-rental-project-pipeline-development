@@ -2,7 +2,7 @@
 
 ## Purpose
 
-This family is CI and Release packaging only. Infrastructure setup, project deployment, and operate live in another project.
+This **CI** family is Fast Feedback, Integration CI, and Release packaging only. Estate IaC and operate (`stop` / `destroy`) live in the infra project. Academy and paid **app CD** (compose onto `asg-haystack`) is specified in `add-haystack-cd-*` in this same tree, not in this CI change.
 
 ## ADDED Requirements
 
@@ -16,7 +16,7 @@ The haystack CI family SHALL NOT apply infrastructure-as-code, create cloud reso
 - AND no job creates a managed database, cluster, or network
 
 ### Requirement: Family does not deploy
-The haystack CI family SHALL NOT deploy a packaged artifact onto a runtime. Deployment belongs to another project that may consume Release artifacts.
+The haystack CI family SHALL NOT deploy a packaged artifact onto a runtime. Deployment belongs to the Haystack **app CD** family (`add-haystack-cd-*`) that may consume Release artifacts.
 
 #### Scenario: Release stops at artifacts
 - GIVEN Packaging and DAST succeed

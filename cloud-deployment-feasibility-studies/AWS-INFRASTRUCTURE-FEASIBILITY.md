@@ -15,8 +15,14 @@ This file is a **design record**. Living specs win: estate [`../../heavy-rental-
 | App CD paid “later” | Paid callers **delivered** for Haystack, REST, and portal |
 | NAT instance in some sketches | **Two NAT Gateways** (one per public AZ) |
 | S3 + DynamoDB lock | S3 **`use_lockfile=true`** |
+| Infra `apply` first-compose | `apply` / `configure-only` → **`configure.yml`** (Docker + Neo4j only). Portal / REST / Haystack first-compose is later **`deploy-projects`** (`site.yml`) or app CD |
+| CORS portal-only | `APP_CORS_ALLOWED_ORIGINS` = portal origin **and** `http://<rest_alb_dns>:8080` |
+| GitHub Environment `paid` in §8.1 | Live paid Environment is **`AWS_ACTUAL`** |
+| REST / Haystack ALB health `GET /` | `tg-rest`: `GET <instance>:8080/actuator/health` matcher **`200-299`**. `tg-haystack`: `GET <instance>:8000/health` matcher **`200-299`**. |
+| Portal CI has no Environments / no Stripe | Fast Feedback / Integration CI have none. **Release Packaging** uses Environment **`academy`** for Stripe `pk_` only |
+| Portal ALB health unspecified | `tg-portal`: `GET <instance>:80/` matcher **`200-399`**. App CD `verify` accepts **200 / 301 / 302** |
 
-When the body still says “internal REST ALB”, “Environment `paid`”, or hyphenated GHCR names, treat the table as truth.
+When the body still says “internal REST ALB”, “Environment `paid`”, DynamoDB lock, “apply first-composes”, or “portal CI has no academy Environment”, treat the table as truth.
 
 **Destinations (two separate pipelines):**
 
@@ -479,8 +485,8 @@ Internal REST/Haystack ALBs stay HTTP inside the VPC. Do **not** enable HTTPS on
 | --- | --- | --- |
 | `heavy-rental-network` | **VPC** + subnets + security groups | All resources in this VPC. |
 | Public ingress | **Internet-facing ALB inside the VPC** (public subnets + IGW) | **Portal only** (`tg-portal` instance :80). HTTP :80 always. HTTPS :443 when an ACM cert exists. No REST, no Haystack. |
-| REST ingress | **Dedicated internet-facing ALB** (as-built ADR 0018; study originally said internal) | Public subnets, `tg-rest` :8080, health `GET /actuator/health` or `/`. Guests stay private |
-| Haystack ingress | **Dedicated internal ALB** | `scheme=internal`, `tg-haystack` :8000, health `GET /docs` or `/health` |
+| REST ingress | **Dedicated internet-facing ALB** (as-built ADR 0018; study originally said internal) | Public subnets, `tg-rest` :8080, health wait `GET <instance>:8080/actuator/health` matcher **200–299** (not `/` — Spring **401**). Guests stay private |
+| Haystack ingress | **Dedicated internal ALB** | `scheme=internal`, `tg-haystack` :8000, health wait `GET <instance>:8000/health` matcher **200–299** (not `/` 404 or `/docs`) |
 | Portal / REST / Haystack compute | **One ASG each** in the **private app** subnets (launch template + **`LabInstanceProfile`**) | Never a lone EC2. Images from ECR or GHCR tar. Profile **must** use IAM role **`LabRole`**. Data-source both names; never create IAM. **desired=2** (one guest per app AZ). |
 | Neo4j compute | **`asg-neo4j`** in the **private data** subnets (launch template + **`LabInstanceProfile`**) | Same profile / **`LabRole`**. `neo4j:5` container. No Marketplace AMI. **desired=2** (one per data AZ). Not a causal cluster. |
 | NAT (Academy) | Two `aws_nat_gateway` + EIP (one per public AZ) | No instance profile. Each private subnet uses the Gateway in the **same** AZ. Bills until `destroy`. |
@@ -1232,7 +1238,7 @@ Terraform should own: VPC, **public + private-app + private-data** subnets, rout
 - Two `aws_nat_gateway` (one per public AZ) + EIP. No NAT instance. No Marketplace AMI data source for Neo4j.
 - `asg-neo4j`: `min=2 desired=2 max=2`, EC2 health only, scale-in protection, registers with the Bolt NLB.
 
-**State backend (required for Actions):** S3 + DynamoDB lock (both are allow-listed). The GitHub runner is **ephemeral** — a local `terraform.tfstate` on the job is gone when the job ends; the next `apply`/`destroy` would orphan the VPC or fail. **Local state is CloudShell / laptop break-glass only.** Academy and paid use **different** bucket keys. The bucket itself is **not** in the same state (chicken-and-egg). Vocareum **Reset** deletes the bucket — keep `.tf` in Git and re-apply.
+**State backend (required for Actions):** S3 + native lockfile (`use_lockfile=true`). DynamoDB lock tables are **not** used (as-built; older study text allowed them). The GitHub runner is **ephemeral** — a local `terraform.tfstate` on the job is gone when the job ends; the next `apply`/`destroy` would orphan the VPC or fail. **Local state is CloudShell / laptop break-glass only.** Academy and paid use **different** bucket names (`-academy` / `-actual`). The bucket itself is **not** in the same state (chicken-and-egg). Vocareum **Reset** deletes the bucket — keep `.tf` in Git and re-apply.
 
 Do not use Terraform to install Docker or run `CREATE DATABASE`. That is Ansible.
 
@@ -1500,12 +1506,12 @@ Copy-ready paid workflow: [`aws-infra-paid-pipeline.example.yml`](aws-infra-paid
 
 | The maintainer can do today | Where |
 | --- | --- |
-| Create Environments **`academy`** and **`paid`** on the **CD** repo | §7.2, §6.0c inventory |
-| Set Vocareum keys on `academy` (not on the Run form) | §7.2a |
-| Set `AWS_ROLE_TO_ASSUME` + `AWS_REGION` on `paid` (OIDC; no Vocareum keys) | §7.2b |
+| Create Environments **`academy`** and **`AWS_ACTUAL`** on the **CD** repo | §7.2, §6.0c inventory |
+| Set Vocareum keys on `academy` (form or Environment fallback) | §7.2a |
+| Set `AWS_ROLE_TO_ASSUME` + `AWS_REGION` on `AWS_ACTUAL` (OIDC; no Vocareum keys) | §7.2b |
 | Set app secrets: `SPRING_DATASOURCE_PASSWORD`, `NEO4J_PASSWORD`, Stripe trio | §6.0c |
 | Copy example YAML → `.github/workflows/aws-infra-academy.yml` / `aws-infra-paid.yml` | This folder |
-| Dispatch `plan` / `apply` / `configure-only` / `stop` / `destroy` | Job graph, §7.2d |
+| Dispatch `plan` / `apply` / `configure-only` / `deploy-projects` / `stop` / `destroy` | Job graph, §7.2d |
 | Keep isolation: two files, two states, no key mix | §7.2 |
 | Know the target architecture | §6–§6P |
 
@@ -1515,7 +1521,7 @@ Copy-ready paid workflow: [`aws-infra-paid-pipeline.example.yml`](aws-infra-paid
 | `sync-secrets` JSON + `put-secret-value` | Stub |
 | `sync-ssh-keys` wait-for-InService + PEM | Stub |
 | Ansible inventory / playbooks | Stub |
-| S3 + DynamoDB **remote** state (separate keys per account) | Required on Actions (§7.1). Exact bucket name is other-project |
+| S3 **remote** state + `use_lockfile=true` (separate buckets `-academy` / `-actual`) | Required on Actions (§7.1). No DynamoDB lock table |
 | Exact GHCR image refs/tags to pull | CI publishes; CD must pin |
 | Paid OIDC **trust-policy** JSON | Steps exist; not a copy-paste policy |
 | Map REST CI `REST_API_DB_*` → CD `POSTGRES_*` | Names **differ** (§6.0c) |
@@ -1549,7 +1555,7 @@ Terraform’s dependency graph is the order. Do **not** hand-delete ASGs or the 
 | VPC, IGW, public / private-app / private-data subnets, route tables | **Gone** |
 | Two NAT Gateways + EIPs | **Gone** (hourly Gateway charge stops) |
 | `asg-portal`, `asg-rest`, `asg-haystack`, `asg-neo4j` + launch templates + EC2 | **Terminated / gone** |
-| Public portal ALB + both internal ALBs + Bolt NLB + listeners + target groups | **Gone** (hourly ALB/NLB charge stops) |
+| Public portal ALB + internet-facing REST ALB :8080 + internal Haystack ALB + Bolt NLB + listeners + target groups | **Gone** (hourly ALB/NLB charge stops) |
 | Both RDS instances + TF-created subnet / parameter / option groups | **Deleted** (data **irrecoverable**) |
 | Security groups | **Gone** |
 | Secrets Manager shells `heavy-rental/{portal,rest,haystack,neo4j}` and `heavy-rental/ssh/*` | **Deleted** (including PEMs) |
@@ -1563,10 +1569,10 @@ Academy RDS: set `deletion_protection = false` so destroy can succeed. Secrets M
 
 | Left behind | Why |
 | --- | --- |
-| GitHub Environments `academy` / `paid` and their secrets | Not AWS; needed for the next `apply` |
+| GitHub Environments `academy` / `AWS_ACTUAL` and their secrets | Not AWS; needed for the next `apply` |
 | GHCR images / CI zips / tars | Not in Terraform; CI owns them |
 | Vocareum `LabRole` / `LabInstanceProfile` | Pre-created by the lab; our TF must never create IAM on Academy |
-| S3 / DynamoDB **Terraform state backend** | Chicken-and-egg; destroy empties the **state object**, it does not delete the bucket |
+| S3 **Terraform state backend** | Chicken-and-egg; destroy empties the **state object**, it does not delete the bucket |
 | Manual console resources not in state | Not Terraform’s |
 | The **other** account / state | Academy destroy never touches paid. Paid destroy never touches Academy |
 
@@ -1674,9 +1680,9 @@ App CD auth: academy three keys on Environment only (§8.7)
 | REST | `tomcat:10.1-jdk21-temurin` + `ROOT.war` (Java **21**) → `ghcr.io/<owner>/heavy_rental_rest_api` / tar | 8080 |
 | Haystack | `python:3.12-slim-bookworm` + uvicorn → `ghcr.io/<owner>/haystack_recommender` / tar | 8000 |
 
-CI Environments (`integration` / `production` or none) are **not** CD `academy` / `paid`.
+CI Environments (`integration` / `production` or none) are **not** CD `academy` / `AWS_ACTUAL`.
 
-**Remote Terraform state (required):** S3 + DynamoDB lock. Academy key ≠ paid key. The GitHub runner is ephemeral — a local `tfstate` dies with the job.
+**Remote Terraform state (required):** S3 `use_lockfile=true` (no DynamoDB). Academy bucket suffix `-academy`; paid `-actual`. The GitHub runner is ephemeral — a local `tfstate` dies with the job.
 
 ---
 
@@ -1689,7 +1695,7 @@ Full contract: [`TERRAFORM-PROCESS.md`](TERRAFORM-PROCESS.md). Terraform runs **
 | Workflow (copy name) | Environment | Auth |
 | --- | --- | --- |
 | `aws-infra-academy.yml` | `academy` | Vocareum access key + secret + **session token** |
-| `aws-infra-paid.yml` | `paid` | OIDC `vars.AWS_ROLE_TO_ASSUME` (`id-token: write`) |
+| `aws-infra-paid.yml` | `AWS_ACTUAL` | OIDC `AWS_ROLE_TO_ASSUME` (`id-token: write`) |
 
 Trigger: **`workflow_dispatch` only**. Form: `action`, `aws_environment`, `confirm_destroy` when wiping, and on **Academy only** the three Vocareum keys (optional if Environment `academy` is set). **Paid has no key fields.** Academy: **Start Lab** then paste AWS Details. If `sts` fails (`ExpiredToken`), paste a fresh token.
 
@@ -1701,6 +1707,8 @@ Trigger: **`workflow_dispatch` only**. Form: `action`, `aws_environment`, `confi
 | `apply` | Job `terraform` | `init` → `plan` → `apply` |
 | `destroy` | Job **`destroy`** (not the plan/apply job) | `confirm_destroy == destroy` → `init` → `destroy -auto-approve` |
 | `configure-only` | **Skipped** | `sync-secrets` + `sync-ssh-keys` + Ansible `configure.yml` (Docker + Neo4j) |
+| `deploy-projects` | **Skipped** | Later run: image preflight + Ansible `site.yml` |
+| `bootstrap` | Backend only | S3 state bucket (`use_lockfile`) |
 | `stop` | **Skipped** | AWS CLI: ASG desired=0 + `rds stop-db-instance` (not `terraform destroy`) |
 
 Do **not** `apply` on push or pull_request. Timeouts in the examples: plan/apply **30** minutes; destroy **60** minutes.
@@ -1712,17 +1720,17 @@ assert-lab / assert-account          sts; refuse the wrong account
         │
         ▼
 Job terraform   if: action == plan || apply
-                environment: academy | paid
-  1. configure-aws-credentials@v4    three Vocareum keys  OR  role-to-assume
-  2. actions/checkout@v4             .tf from the CD repo
-  3. terraform init                  S3 backend + DynamoDB lock  (required)
+                environment: academy | AWS_ACTUAL
+  1. configure-aws-credentials       three Vocareum keys  OR  role-to-assume (live pin in infra repo)
+  2. actions/checkout                .tf from the CD repo
+  3. terraform init                  S3 backend + use_lockfile=true  (required)
   4. terraform plan                  always; no apply on action=plan
   5. terraform apply                 only if action=apply
 ```
 
 `configure-aws-credentials` and `checkout` are **Actions** steps. `init` / `plan` / `apply` are the **Terraform** process.
 
-**Remote state:** `init` must use S3 + DynamoDB lock. Academy key ≠ paid key. The backend **bucket** is not in this state. Vocareum **Reset** deletes the bucket — keep `.tf` in Git and re-apply. Local state is CloudShell / laptop break-glass only.
+**Remote state:** `init` must use S3 `use_lockfile=true` (no DynamoDB). Academy key ≠ paid key. The backend **bucket** is not in this state. Vocareum **Reset** deletes the bucket — keep `.tf` in Git and re-apply. Local state is CloudShell / laptop break-glass only.
 
 #### What `apply` puts in that state
 
@@ -1775,7 +1783,7 @@ REST also gets Stripe `sk_` + `whsec_` + `pk_`. Neo4j secret is user/password on
 | Secret id (Terraform shell) | Required JSON fields (`sync-secrets`) | Who reads |
 | --- | --- | --- |
 | `heavy-rental/portal` | `REST_BASE_URL`, `STRIPE_PUBLISHABLE_KEY`, `VITE_STRIPE_PUBLISHABLE_KEY` (same `pk_`) | `asg-portal` / portal app CD (nginx `/api`, not baked into the CI image) |
-| `heavy-rental/rest` | `POSTGRES_HOST` / `POSTGRES_HOSTNAME`, `POSTGRES_DATABASE` / `POSTGRES_DB`, `POSTGRES_USERNAME` / `POSTGRES_USER`, `POSTGRES_PORT`, `POSTGRES_PASSWORD`, `POSTGRES_URL` / `SPRING_DATASOURCE_*`, `HAYSTACK_BASE_URL`, Stripe trio | `asg-rest` / REST app CD (env on the Tomcat image; not baked in CI) |
+| `heavy-rental/rest` | `POSTGRES_HOST` / `POSTGRES_HOSTNAME`, `POSTGRES_DATABASE` / `POSTGRES_DB`, `POSTGRES_USERNAME` / `POSTGRES_USER`, `POSTGRES_PORT`, `POSTGRES_PASSWORD`, `POSTGRES_URL` / `SPRING_DATASOURCE_*`, `HAYSTACK_BASE_URL`, `APP_CORS_ALLOWED_ORIGINS` (`http://<portal_alb>,http://<rest_alb>:8080`), Stripe trio, `APP_JWT_SECRET` | `asg-rest` / REST app CD (env on the Tomcat image; not baked in CI) |
 | `heavy-rental/haystack` | Haystack RDS `POSTGRES_*` / `DATABASE_URL`, `SOURCE_*` (SoR RDS), `TARGET_*` (Haystack RDS), `FLEET_BACKEND=sql`, `NEO4J_BACKEND=bolt`, `NEO4J_URI` / user / password, optional `LLM_API_KEY` | `asg-haystack` / Haystack app CD (same image; env not baked in CI) |
 | `heavy-rental/neo4j` | `NEO4J_USER`, `NEO4J_PASSWORD` | `asg-neo4j` (infra/`configure-only` only) |
 
@@ -1787,14 +1795,15 @@ App CD does **not** create these secrets. It only `describe-secret` / the guest 
 
 ### 8.3 Ansible on the guests (after secrets)
 
-Full contract: [`ANSIBLE-PROCESS.md`](ANSIBLE-PROCESS.md). Ansible runs on `apply` (all four groups, first compose) and `configure-only` (Docker + Compose on all guests; **Neo4j compose only**). It does **not** run on `stop` or `destroy`.
+Full contract: [`ANSIBLE-PROCESS.md`](ANSIBLE-PROCESS.md). Ansible on `apply` / `configure-only` is **`configure.yml`** (Docker + Compose on all guests; **Neo4j compose only**). Portal / REST / Haystack first-compose is a later `action=deploy-projects` (`site.yml`) or app CD. Ansible does **not** run on `stop` or `destroy`.
 
 #### When and how it connects
 
 ```
-Infra apply:     Terraform (EC2 InService) → sync-secrets → sync-ssh-keys → Ansible (all four groups)
-configure-only:  sync-secrets + sync-ssh-keys + Ansible configure.yml   (Docker + Compose; Neo4j compose; no app images)
-App CD later:    discover ASG → same playbook, one group (portal | rest | haystack). No terraform. No neo4j group.
+Infra apply:          Terraform (EC2 InService) → sync-secrets → sync-ssh-keys → Ansible configure.yml
+configure-only:       sync-secrets + sync-ssh-keys + Ansible configure.yml   (Docker + Neo4j; no app images)
+deploy-projects:      later run → sync-secrets + PEMs + image preflight → Ansible site.yml
+App CD later:         discover ASG → same playbook, one group (portal | rest | haystack). No terraform. No neo4j group.
 ```
 
 1. Actions runner installs Ansible (or uses an image that has it).
@@ -1820,8 +1829,8 @@ App CD later:    discover ASG → same playbook, one group (portal | rest | hays
 | Group | Secret | Compose | Limits |
 | --- | --- | --- | --- |
 | `portal` | `heavy-rental/portal` (`REST_BASE_URL`, `pk_` only) | nginx :80; write `/api` → `REST_BASE_URL` (CI image has SPA `try_files` only). Fail if URL empty. Health `GET /`. Do not fail solely because `/api` is down. | `256m` / `0.5` |
-| `rest` | `heavy-rental/rest` (Postgres, `HAYSTACK_BASE_URL`, Stripe trio) | Tomcat :8080. Health `/actuator/health` or `/`. No Bolt. | `1g` / `1.0` |
-| `haystack` | `heavy-rental/haystack` (Haystack RDS Postgres, `NEO4J_URI` = Bolt NLB) | uvicorn :8000 + `postgres-haystack-sync` + `neo4j-populate`. **Must not** start `neo4j`. Health `/docs` or `/health`. | `768m` / `1.0` + two workers `256m` / `0.25` |
+| `rest` | `heavy-rental/rest` (Postgres, `HAYSTACK_BASE_URL`, Stripe trio) | Tomcat :8080. Health wait `GET :8080/actuator/health` **2xx** (ALB `tg-rest` matcher `200-299`). Not `/` (401). No Bolt. | `1g` / `1.0` |
+| `haystack` | `heavy-rental/haystack` (Haystack RDS Postgres, `NEO4J_URI` = Bolt NLB) | uvicorn :8000 + `postgres-haystack-sync` + `neo4j-populate`. **Must not** start `neo4j`. Health wait `GET :8000/health` **2xx** (ALB `tg-haystack` matcher `200-299`). | `768m` / `1.0` + two workers `256m` / `0.25` |
 | `neo4j` | `heavy-rental/neo4j` | **Only** `neo4j:5`, `/data` on EBS, Bolt on each guest. NLB fronts them. App CD does not run this group. | `4g` / `1.5`, heap 512m–1G |
 
 **RDS logical** (`delegate_to` rest or haystack — not Neo4j, not the runner): roles/grants, optional `vector`. Terraform already created both instances (`heavy_rental` and `haystack`). Do not treat the sync worker as a third DB.
@@ -1853,10 +1862,11 @@ Students use the **public portal ALB DNS** only. Operators use SSM.
 | Goal | Workflow | `action` | Terraform? | Ansible? |
 | --- | --- | --- | --- | --- |
 | Preview `.tf` | Infra | `plan` | `init`+`plan` | No |
-| New secret / after Start Lab | Infra | `configure-only` | **No** | Docker + Neo4j. Portal / REST / Haystack **images** = app CD |
+| New secret / after Start Lab | Infra | `configure-only` | **No** | Docker + Neo4j. Portal / REST / Haystack **images** = `deploy-projects` or app CD |
+| First-compose portal / REST / Haystack | Infra | `deploy-projects` | **No** | `site.yml` (later run after apply) |
 | Pause for the lab day | Infra | `stop` | **No** | No — ASG desired=0 + stop **both** RDS |
 | Wipe the estate | Infra | `destroy` + `confirm_destroy=destroy` | `destroy` | No |
-| New portal / REST / Haystack image only | App CD | `deploy` | **No** | One group only |
+| New portal / REST / Haystack image only | App CD | `deploy` | **No** | One group only (academy **and** paid callers) |
 
 **Next Start Lab:** instances come back; IPs change. Re-run **`configure-only`**. Do not recreate RDS. Session end does **not** stop RDS or ALB billing — use `stop` (§3.1).
 

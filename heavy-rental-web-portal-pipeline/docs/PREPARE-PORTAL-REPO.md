@@ -47,7 +47,7 @@ Fast Feedback / Integration `DEFAULT_APP_REPOSITORY: SA62-team1/heavy-rental-rea
 Typical app `develop` today:
 
 - Present or pending: Fast Feedback, Integration CI, Release (copy the six CI YAML files from this tree)
-- **Missing until you copy:** `deploy-pipeline/` (CD caller, reusable workflow, `resolve-vocareum-aws`, `ansible/`)
+- **Missing until you copy:** `deploy-pipeline/` (both CD callers, reusable workflow, `resolve-aws-profile`, `ansible/`)
 
 Copy into the React repo `.github/workflows/`:
 
@@ -85,9 +85,10 @@ Copy from this tree’s `deploy-pipeline/`:
 | `portal-cd-academy-caller.yml` | `.github/workflows/` |
 | `portal-cd-paid-caller.yml` | `.github/workflows/` (billed AWS / OIDC) |
 | `web-portal-cd-academy.yml` | `.github/workflows/` (shared jobs) |
-| `resolve-vocareum-aws/action.yml` | `.github/actions/resolve-vocareum-aws/` |
 | `resolve-aws-profile/action.yml` | `.github/actions/resolve-aws-profile/` |
 | `ansible/` | **`deploy-pipeline/ansible/`** (keep this path) |
+
+Do **not** copy `resolve-vocareum-aws/` (unused; academy masking lives in `resolve-aws-profile`).
 | [`docs/samples/.env.production`](samples/.env.production) | **`.env.production`** at the React repo root (scanned at Release; `vite build --mode api`) |
 
 ---

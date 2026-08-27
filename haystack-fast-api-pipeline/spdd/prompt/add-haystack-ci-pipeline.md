@@ -67,7 +67,7 @@ Artifacts:
 | pip-audit | `security-reports/pip-audit.json` |
 | Release wheel | `haystack-fast-api-v{version}-build{run}-{sha}.whl`, `haystack-fast-api.whl` |
 | Release sdist | matching `.tar.gz` names |
-| Release image tar | `haystack_recommender-{semver}.tar.gz` (local + GHCR tags) |
+| Release image tar | `haystack_recommender-image.tar.gz` (stable archive; GHCR tags are `<semver>` + `:latest`) |
 | GHCR | `ghcr.io/{owner}/haystack_recommender:{x.y.z}` and `:latest` (Publish after DAST) |
 
 ## A — Approach

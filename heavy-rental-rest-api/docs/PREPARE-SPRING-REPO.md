@@ -18,9 +18,11 @@ Specification: [`../specification/README.md`](../specification/README.md). CD wa
 | App (`develop`) | Release / CD contract |
 | --- | --- |
 | Java **21**, `packaging=war`, Tomcat `provided` | `tomcat:10.1-jdk21-temurin` + `ROOT.war` (not a fat JAR / `java -jar` image) |
-| `server.port=8080`, Actuator on the classpath | Health `GET :8080/actuator/health` or `/` |
+| `server.port=8080`, Actuator on the classpath | ALB `tg-rest` waits for `GET <instance>:8080/actuator/health` (**2xx** / matcher `200-299`). Spring Security 401s `/`. Do not point the ALB at `/`. |
 | App `Dockerfile` ignored | Release **always** generates the Tomcat + WAR image with `SPRING_PROFILES_ACTIVE=prod`. Runnable with `docker run -p 8080:8080 -e …` |
 | `src/main/resources/application-prod.properties` | **Required in the WAR** (hyphen name). Non-secret prod defaults only. Not `application.prod.properties`. |
+
+Spring Security `permitAll`s `GET /actuator/health` so the ALB probe is 2xx. `AuthenticationEntryPoint` / `AccessDeniedHandler` may return 401/403 only for authentication or authorization exceptions. `GET /` is 401 and is not the ALB check.
 
 Generated image (app Dockerfile is ignored):
 
@@ -58,7 +60,7 @@ Fast Feedback / Integration CI `DEFAULT_APP_REPOSITORY: SA62-team1/…` is only 
 On app `develop` today:
 
 - Present: `rest-api-release-caller.yml`, `release-pipeline.yml`, Fast Feedback, Integration
-- **Missing:** `deploy-pipeline/` (CD caller, reusable workflow, `resolve-vocareum-aws`, `ansible/`)
+- **Missing:** `deploy-pipeline/` (both CD callers, reusable workflow, `resolve-aws-profile`, `ansible/`)
 
 ---
 
@@ -82,9 +84,10 @@ Copy from this tree’s `deploy-pipeline/`:
 | `rest-api-cd-academy-caller.yml` | `.github/workflows/` |
 | `rest-api-cd-paid-caller.yml` | `.github/workflows/` (billed AWS / OIDC) |
 | `rest-api-cd-academy.yml` | `.github/workflows/` (shared jobs) |
-| `resolve-vocareum-aws/action.yml` | `.github/actions/resolve-vocareum-aws/` |
 | `resolve-aws-profile/action.yml` | `.github/actions/resolve-aws-profile/` |
 | `ansible/` | **`deploy-pipeline/ansible/`** (keep this path) |
+
+Do **not** copy `resolve-vocareum-aws/` (unused; academy masking lives in `resolve-aws-profile`).
 
 Everyday operate: [`BOOTSTRAP.md`](BOOTSTRAP.md).
 
@@ -167,7 +170,7 @@ Re-run infra `configure-only` after this patch so guests get a new `.env` includ
 
 1. Instructure → Start Lab → AWS Details.
 2. Actions → **REST API CD (Academy)** → Environment `academy` → paste the three keys (or use Environment fallback).
-3. `action=verify` — assert-lab + discover + SSM `GET :8080` (Haystack down does not fail this job by itself).
+3. `action=verify` — assert-lab + discover + SSM `GET :8080/actuator/health` must be **2xx** (same as ALB `tg-rest` matcher `200-299`). Haystack down does not fail this job by itself.
 4. `action=deploy` with a **new** public GHCR or ECR tag (or tar URL + matching tag).
 5. `action=configure-only` refreshes `.env` from `heavy-rental/rest` (still needs `REST_IMAGE` or `image_ref` — no stock Tomcat).
 
