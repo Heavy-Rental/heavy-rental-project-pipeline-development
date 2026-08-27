@@ -31,7 +31,7 @@ Conflict order: **OpenSpec scenarios → OpenSPDD Safeguards → ADR → YAML**.
 
 ### CI family — [`../openspec/changes/add-rest-ci-pipeline/`](../openspec/changes/add-rest-ci-pipeline/)
 
-As-implemented spec of Fast Feedback / Integration Check / Release YAML (PR reuses Fast Feedback; Integration caller passes `REST_API_DB_*`).
+As-implemented spec of Fast Feedback / Integration Check / Release YAML (PR reuses Fast Feedback; Integration caller passes `REST_API_DB_*`). Fast Feedback `DEFAULT_APP_REPOSITORY` is `SA62-team1/...` (act); Integration CI and Release are `Heavy-Rental/...`. Security Report is a scheduled/manual Code Scanning summary, not a merge gate.
 
 - Proposal: [`proposal.md`](../openspec/changes/add-rest-ci-pipeline/proposal.md)
 - Design: [`design.md`](../openspec/changes/add-rest-ci-pipeline/design.md)
@@ -59,5 +59,6 @@ As-implemented spec of Fast Feedback / Integration Check / Release YAML (PR reus
 | Fast feedback | [`../fast-feedback-ci-pipeline/fast-feedback-pipeline.yml`](../fast-feedback-ci-pipeline/fast-feedback-pipeline.yml) | [`rest-api-fast-feedback-caller.yml`](../fast-feedback-ci-pipeline/rest-api-fast-feedback-caller.yml) |
 | Integration CI | [`../integration-pipeline/integration-pipeline.yml`](../integration-pipeline/integration-pipeline.yml) | [`rest-api-ci-caller.yml`](../integration-pipeline/rest-api-ci-caller.yml) |
 | Release | [`../release-pipeline/release-pipeline.yml`](../release-pipeline/release-pipeline.yml) | [`rest-api-release-caller.yml`](../release-pipeline/rest-api-release-caller.yml) |
+| Security Report | [`../security-report/security-report-pipeline.yml`](../security-report/security-report-pipeline.yml) | [`rest-api-security-report-caller.yml`](../security-report/rest-api-security-report-caller.yml) |
 | Academy CD | [`../deploy-pipeline/rest-api-cd-academy.yml`](../deploy-pipeline/rest-api-cd-academy.yml) | [`rest-api-cd-academy-caller.yml`](../deploy-pipeline/rest-api-cd-academy-caller.yml) |
 | Paid CD | same reusable | [`rest-api-cd-paid-caller.yml`](../deploy-pipeline/rest-api-cd-paid-caller.yml) |

@@ -4,9 +4,9 @@
 **Authoring tree:** `heavy-rental-rest-api/` in this pipeline-development repo  
 **Stack:** Spring Boot / Java 21 / Maven wrapper / PostgreSQL / WAR → Tomcat 10.1
 
-This family validates and packages the service. It does not create infrastructure or operate production. Academy and paid **app CD** is [`rest-cd.md`](rest-cd.md).
+This family validates and packages the service. It does not create infrastructure or operate production. Academy and paid **app CD** is [`rest-cd.md`](rest-cd.md). A scheduled Security Report pair summarizes existing Code Scanning alerts; it is not a merge gate.
 
-Reusable YAML `DEFAULT_APP_REPOSITORY` is `SA62-team1/heavy-rental-spring-rest-api` on Fast Feedback and Integration CI (local `act` fallback). Release uses `Heavy-Rental/heavy-rental-spring-rest-api`. When a caller runs **in** the Heavy-Rental Spring repo, Fast Feedback and Integration CI check out the calling commit (into `app/`). Release always checks out **`master`**.
+Reusable YAML `DEFAULT_APP_REPOSITORY` is `SA62-team1/heavy-rental-spring-rest-api` on Fast Feedback only (local `act` fallback). Integration CI and Release use `Heavy-Rental/heavy-rental-spring-rest-api`. When a caller runs **in** the Heavy-Rental Spring repo, Fast Feedback and Integration CI check out the calling commit (into `app/`). Release always checks out **`master`**.
 
 Callers pass `github_environment` (`integration` / `production`). Quality Control **hardcodes** `environment: integration` or `environment: production`; the input is unused.
 
@@ -81,7 +81,7 @@ QC “Package WAR” on Integration CI is **build verification**, not a deploy.
 | Human security report | Combined PDF artifact `security-combined-report-pdf` (`security-reports/combined-security-report.pdf`); download from the PR Checks tab (workflow Summary → Artifacts, or Security Testing job summary) |
 | Human DAST report | Combined PDF artifact `dast-combined-report-pdf` (`dast-reports/combined-dast-report.pdf`); download from the Release run Summary → Artifacts, the DAST job summary link, or the GitHub Release |
 | Code scanning | CodeQL `java-kotlin` |
-| Image | Always-generated `tomcat:10.1-jdk21-temurin` + `ROOT.war` + `SPRING_PROFILES_ACTIVE=prod`. WAR must include `application-prod.properties` (hyphen). No baked `POSTGRES_*` / Stripe / JWT. Packaging proves dummy `-e`, `WEB-INF`, profile env, and Tomcat TCP `:8080`. |
+| Image | Always-generated `tomcat:10.1-jdk21-temurin` + `ROOT.war` + `SPRING_PROFILES_ACTIVE=prod`. WAR must include `application-prod.properties` (hyphen). No baked `POSTGRES_*` / Stripe / JWT. Packaging proves dummy `-e`, `WEB-INF`, profile env, and Tomcat TCP `:8080`. Tar artifact: `heavy_rental_rest_api-image.tar.gz`. Publish pushes `ghcr.io/<owner>/heavy_rental_rest_api:<x.y.z>` + `:latest`. |
 
 ## Secrets
 
@@ -113,6 +113,8 @@ actionlint heavy-rental-rest-api/integration-pipeline/integration-pipeline.yml
 actionlint heavy-rental-rest-api/integration-pipeline/rest-api-ci-caller.yml
 actionlint heavy-rental-rest-api/release-pipeline/release-pipeline.yml
 actionlint heavy-rental-rest-api/release-pipeline/rest-api-release-caller.yml
+actionlint heavy-rental-rest-api/security-report/security-report-pipeline.yml
+actionlint heavy-rental-rest-api/security-report/rest-api-security-report-caller.yml
 ```
 
 ## Install into the application repo
@@ -124,13 +126,18 @@ actionlint heavy-rental-rest-api/release-pipeline/rest-api-release-caller.yml
 .github/workflows/integration-pipeline.yml
 .github/workflows/rest-api-release-caller.yml
 .github/workflows/release-pipeline.yml
+.github/workflows/rest-api-security-report-caller.yml
+.github/workflows/security-report-pipeline.yml
 ```
+
+The Security Report pair is a **scheduled/manual summary** of existing Code Scanning alerts (Monday 06:00 UTC + `workflow_dispatch`). It does not scan, is not a `develop` branch-protection check, and does not run on push or pull_request.
 
 ## Pipeline boundaries
 
 | Concern | In this CI family? |
 | --- | --- |
 | Fast Feedback, Integration CI, Release packaging | Yes |
+| Security Report (summarize existing Code Scanning alerts) | Yes — reporting only; not a merge gate |
 | Live Academy RDS / guest compose | No — [`rest-cd.md`](rest-cd.md) |
 | Terraform / create ASG | No — infra project |
 | Operate (`stop` / `destroy`) | No — infra project |

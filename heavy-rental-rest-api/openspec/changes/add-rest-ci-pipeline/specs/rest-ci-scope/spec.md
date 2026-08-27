@@ -34,6 +34,15 @@ The REST CI family SHALL NOT monitor, scale, or run `stop` / `destroy`.
 - WHEN jobs complete
 - THEN no job tails production logs or mutates a running ASG
 
+### Requirement: Security Report does not scan or deploy
+The scheduled Security Report pair SHALL summarize existing Code Scanning alerts only. It SHALL NOT run Semgrep, Trivy, or CodeQL, SHALL NOT produce a WAR or image, and SHALL NOT compose onto `asg-rest`.
+
+#### Scenario: Report-only
+- GIVEN the Security Report workflow runs
+- WHEN jobs complete
+- THEN no scanner job ran
+- AND no Ansible or GHCR push ran
+
 ### Requirement: CI database secrets are not guest config
 Quality Control Docker Postgres secrets (`REST_API_DB_*`) SHALL NOT be documented or used as the guest `heavy-rental/rest` secret. Integration CI SHALL require those names as Repository secrets (caller explicit map) and MAY also store them on Environment `integration`. Release SHALL read the same names from Environment `production` only (no caller map). Release SHALL NOT require `REST_API_CLOUD_DB_*`.
 

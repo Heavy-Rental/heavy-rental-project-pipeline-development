@@ -20,4 +20,4 @@ As-implemented documentation of the Fast Feedback / Integration / Release YAML.
 
 - [x] 3.1 Job `name:` values in the walkthrough match YAML (`Integration Check` on CI, `Integration` on Fast Feedback and Release)
 - [x] 3.2 Secret names match the Integration caller `secrets:` map; Release has no map
-- [x] 3.3 `DEFAULT_APP_REPOSITORY` documented as SA62-team1 act fallback on Fast Feedback / Integration CI; Release uses Heavy-Rental
+- [x] 3.3 `DEFAULT_APP_REPOSITORY` documented as SA62-team1 act fallback on Fast Feedback only; Integration CI and Release use Heavy-Rental

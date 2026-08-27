@@ -2,7 +2,7 @@
 
 Workflows and specifications for [Heavy-Rental/heavy-rental-spring-rest-api](https://github.com/Heavy-Rental/heavy-rental-spring-rest-api).
 
-This tree (`heavy-rental-rest-api/`) authors Fast Feedback, Integration CI, Release packaging, and **Academy + paid app CD** (`deploy-pipeline/`). It does not provision the VPC or ASGs (infra project). Copy workflows into the Spring repo like Release.
+This tree (`heavy-rental-rest-api/`) authors Fast Feedback, Integration CI, Release packaging, a scheduled Security Report, and **Academy + paid app CD** (`deploy-pipeline/`). It does not provision the VPC or ASGs (infra project). Copy workflows into the Spring repo like Release.
 
 Start here: [`specification/README.md`](specification/README.md). App-repo CD checklist: [`docs/PREPARE-SPRING-REPO.md`](docs/PREPARE-SPRING-REPO.md).
 
@@ -16,6 +16,7 @@ Start here: [`specification/README.md`](specification/README.md). App-repo CD ch
 | `fast-feedback-ci-pipeline/` | Integration-only feature-branch pipeline |
 | `integration-pipeline/` | PR / `develop` merge gate |
 | `release-pipeline/` | `workflow_dispatch` Release: checkout `master` + WAR + DAST + GHCR + GitHub Release |
+| `security-report/` | Weekly/manual Code Scanning summary (not a merge gate) |
 | `deploy-pipeline/` | Academy + paid app CD (discover + compose; copy into the app repo) |
 
 ## GitHub Flow
@@ -51,4 +52,4 @@ Release does **not** rerun SAST/CodeQL. Packaging writes the WAR and image tar; 
 | Code scanning | CodeQL `java-kotlin` |
 | Package | versioned WAR + `tomcat:10.1-jdk21-temurin` + `ROOT.war` |
 
-Reusable YAML `DEFAULT_APP_REPOSITORY` is `SA62-team1/heavy-rental-spring-rest-api` on Fast Feedback and Integration CI (local `act` fallback). Release uses `Heavy-Rental/heavy-rental-spring-rest-api`. When Fast Feedback or Integration CI runs **in** `Heavy-Rental/heavy-rental-spring-rest-api`, checkout is the calling commit. Release always checks out **`master`**.
+Reusable YAML `DEFAULT_APP_REPOSITORY` is `SA62-team1/heavy-rental-spring-rest-api` on Fast Feedback only (local `act` fallback). Integration CI and Release use `Heavy-Rental/heavy-rental-spring-rest-api`. When Fast Feedback or Integration CI runs **in** `Heavy-Rental/heavy-rental-spring-rest-api`, checkout is the calling commit. Release always checks out **`master`**.

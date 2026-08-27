@@ -51,7 +51,7 @@ The Release caller is dispatch-only. Do not add `on: release` — this workflow 
 
 Academy guests pull **public** GHCR with no token. If GHCR is private, `docker load` the tar (`image_http_url` / `IMAGE_HTTP_URL`) or copy the image to ECR.
 
-Fast Feedback / Integration CI `DEFAULT_APP_REPOSITORY: SA62-team1/…` is only for local `act`. Release’s fallback is `Heavy-Rental/heavy-rental-spring-rest-api`. When Release runs **in** `heavy-rental-spring-rest-api`, checkout is still **`master`** (into `app/`), not the calling SHA. That is correct.
+Fast Feedback `DEFAULT_APP_REPOSITORY: SA62-team1/…` is only for local `act`. Integration CI and Release default to `Heavy-Rental/heavy-rental-spring-rest-api`. When Fast Feedback or Integration CI runs **in** `heavy-rental-spring-rest-api`, checkout is the calling commit. When Release runs **in** `heavy-rental-spring-rest-api`, checkout is still **`master`** (into `app/`), not the calling SHA. That is correct.
 
 ---
 
@@ -131,13 +131,17 @@ Paste Vocareum AWS Details on each Run after Start Lab, **or** store these as En
 **Minimum `verify`:** Environment `academy` + three Vocareum keys + `AWS_REGION`.  
 **Minimum `deploy` / `configure-only`:** that, plus `REST_IMAGE` or `image_ref` (or a tar **and** a matching tag).
 
+### Paid Environment `AWS_ACTUAL`
+
+Create Environment **`AWS_ACTUAL`**. Variable `AWS_ROLE_TO_ASSUME` (OIDC). **No** Vocareum `AWS_*` secrets. Same `REST_IMAGE` / `IMAGE_HTTP_URL` / `AWS_REGION` / pricing variable names as academy, on **this** Environment. Run **REST API CD (paid)** after infra paid `apply`. Guests use `hr-paid-rest`. Ansible SSM uses `heavy-rental-ssm-<account>-actual`. REST ALB is internet-facing `:8080`.
+
 ---
 
 ## 6. AWS (infra, not GitHub)
 
 This CD does **not** create the ASG. Before any `deploy`:
 
-1. Infra `action=apply` created `asg-rest` (internet-facing REST ALB `:8080`; guests stay private).
+1. Infra `action=apply` created `asg-rest` (internet-facing REST ALB `:8080`; guests stay private). Infra `apply` / `configure-only` do **not** compose REST. First compose is infra `deploy-projects` (`site.yml`) or this CD `action=deploy`.
 2. Infra `sync-secrets` filled **`heavy-rental/rest`**.
 3. Guests are InService and SSM Online (Start Lab if the session ended). Desired=0 → infra, not this CD.
 
@@ -149,7 +153,7 @@ The guest (`LabRole`) reads `heavy-rental/rest`. Release QC Postgres is never co
 
 `application.properties` in the Spring repo does **not** use every name the estate study lists. Stripe names match. These do not:
 
-| App reads | `heavy-rental/rest` after this patch |
+| App reads | `heavy-rental/rest` (infra `sync-secrets`) |
 | --- | --- |
 | `POSTGRES_HOSTNAME` | written (same value as `POSTGRES_HOST`) |
 | `POSTGRES_DB` | written (same value as `POSTGRES_DATABASE`) |
@@ -162,7 +166,7 @@ The guest (`LabRole`) reads `heavy-rental/rest`. Release QC Postgres is never co
 | `ONEMAP_EMAIL` / `ONEMAP_PASSWORD` | written only if both infra Environment secrets are set |
 | `DYNAMIC_PRICING_ENABLED` / `PRICING_DEFAULT_DISTANCE_KM` / `PRICING_ORIGIN_POSTAL_CODE` / `PRICING_DISTANCE_LOOKUP_ENABLED` | written if set on infra Environment vars; REST CD `academy` vars overlay when non-empty |
 
-Re-run infra `configure-only` after this patch so guests get a new `.env` including `APP_JWT_SECRET`.
+Re-run infra `configure-only` or REST CD `configure-only` so guests get a new `.env` including `APP_JWT_SECRET`.
 
 ---
 

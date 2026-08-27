@@ -60,8 +60,8 @@ Artifacts:
 
 ## A — Approach
 
-- Keep the six CI YAML files as the implementation. Specs track Integration Check, Fast Feedback reuse, and the Integration explicit secrets map.
-- Fast Feedback / Integration CI `DEFAULT_APP_REPOSITORY`: `SA62-team1/heavy-rental-spring-rest-api` (act). Release: `Heavy-Rental/heavy-rental-spring-rest-api`. Installed Fast Feedback / CI callers check out the calling commit; Release always checks out `master`.
+- Keep the six CI YAML files as the GitHub Flow implementation. Specs track Integration Check, Fast Feedback reuse, and the Integration explicit secrets map. Security Report is a seventh pair (caller + reusable) that summarizes existing Code Scanning alerts; it is not a merge gate.
+- Fast Feedback `DEFAULT_APP_REPOSITORY`: `SA62-team1/heavy-rental-spring-rest-api` (act). Integration CI and Release: `Heavy-Rental/heavy-rental-spring-rest-api`. Installed Fast Feedback / CI callers check out the calling commit; Release always checks out `master`.
 
 ## S — Structure
 
@@ -74,6 +74,7 @@ heavy-rental-rest-api/
   fast-feedback-ci-pipeline/
   integration-pipeline/
   release-pipeline/
+  security-report/          # scheduled/manual Code Scanning summary — not a merge gate
   deploy-pipeline/          # CD family — not this canvas
 ```
 
@@ -93,7 +94,7 @@ Job `name:` values (branch protection):
 
 1. Document OpenSpec + OpenSPDD + ADRs (this change).
 2. Do not add jobs.
-3. `actionlint` the six CI files if YAML is later edited.
+3. `actionlint` the six CI files and the Security Report pair if YAML is later edited.
 
 ## N — Norms
 

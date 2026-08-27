@@ -13,4 +13,4 @@ After a live AWS session (Vocareum on academy, OIDC on paid), the workflow SHALL
 #### Scenario: Summary is safe
 - GIVEN discover succeeds
 - THEN the step summary may show instance **count**
-- AND it does not print instance IPs, SecretString, or the internal REST ALB URL
+- AND it does not print instance IPs, SecretString, or the REST ALB URL
