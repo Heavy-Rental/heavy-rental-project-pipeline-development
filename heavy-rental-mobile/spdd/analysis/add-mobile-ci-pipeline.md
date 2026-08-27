@@ -12,18 +12,20 @@
 
 | Concept | Meaning here |
 | --- | --- |
-| Caller | Workflow with `on: push/pull_request/release` that only `uses:` a sibling reusable file |
+| Caller | Workflow with `on: push` / `pull_request` / `workflow_dispatch` that only `uses:` a sibling reusable file |
 | Reusable pipeline | `on: workflow_call` only; `assert-caller` rejects any other file |
 | Integration | Highest-priority job: checkout + toolchain + layout. Not “run instrumented tests” |
 | Quality Control | Lint + JVM unit tests + debug APK. Not emulator, not Play |
-| Mock Contract Tests | Node Prism + `mock:verify` against OpenAPI. Not live Spring Boot |
+| Mock Contract Tests | Node Mockoon (`mock:mockoon`) + `mock:verify` against OpenAPI. Fail if scripts missing. Not Prism, not live Spring Boot |
 | Packaging | Unsigned `assembleRelease` APK. Not GHCR, not signing |
+| DAST | MobSF static scan of the unsigned APK. Not ZAP against a container |
+| Publish | `gh release create` on `master` from `workflow_dispatch`. Not GHCR |
 
 ## Stakeholders
 
 - Mobile developers (need fast feedback on feature branches and green PRs into `develop`)
 - Pipeline authors in this repo (must keep REST/portal conventions)
-- Release managers (`develop` → `master` / GitHub Release)
+- Release managers (`workflow_dispatch` Release from `master`)
 
 ## Risks
 
@@ -32,6 +34,7 @@
 3. **Secrets theatre** — inventing `environment: integration` and DB secrets the app does not use.
 4. **Semgrep injection** — interpolating `${{ github.* }}` / `${{ inputs.* }}` inside `run:` scripts.
 5. **Caller bypass** — a reusable file with `push:` in addition to `workflow_call`.
+6. **Prism fallback** — treating Mock Contract Tests like portal skip-clean REST tests. Application ADR 003 returnNotes echo is Mockoon-only; missing scripts fail the job.
 
 ## Strategy
 
@@ -45,3 +48,4 @@
 - Six YAML files exist, `actionlint`-clean, Semgrep-safe.
 - Job names match the branch-protection list in the CI caller header.
 - No keystore, no emulator, no `packages: write`, no DB secrets.
+- Mock Contract Tests require Mockoon; Release is dispatch-only with MobSF + GitHub Release.

@@ -1,6 +1,8 @@
 # Ansible process (feasibility studies)
 
-**Status:** Contract. Live playbooks are in `heavy-rental-project-instructure-and-cloud-deploy` (`ansible/`, `aws-infra-academy.yml` on `HR-162`). Example YAML **in this folder** stays fail-closed.
+**Status:** Contract. Live playbooks are in `heavy-rental-project-instructure-and-cloud-deploy` (`ansible/`) and each app family's `deploy-pipeline/ansible/`. Example YAML **in this folder** stays fail-closed. As-built index: [`README.md`](README.md).
+
+**As-built:** paid GitHub Environment is **`AWS_ACTUAL`**. REST ALB is **internet-facing :8080**; portal nginx `/api` uses `REST_BASE_URL=http://<rest_alb_dns>:8080`. GHCR tags are `haystack_recommender`, `heavy_rental_rest_api`, `heavy_rental_web_portal`. App CD paid callers are delivered.
 
 **Sources:** [`AWS-INFRASTRUCTURE-FEASIBILITY.md`](AWS-INFRASTRUCTURE-FEASIBILITY.md) §7.1a, §6.0c, §6.4a, §6.6; Haystack / REST / portal CD studies (same guest playbook, one group).
 
@@ -69,7 +71,7 @@ Ansible does **not** invent the URL. The **app CD** (or infra first-compose) job
 | `workflow_dispatch` input `image_ref` | Registry tag | Infra: REST **and** Haystack fallback only (portal uses `PORTAL_IMAGE`). Portal **app** CD `action=deploy`: tag if `PORTAL_IMAGE` is empty. |
 | `workflow_dispatch` input `image_http_url` | Optional HTTPS / `s3://` `.tar.gz` | `docker load` on **all** guests. Empty = `vars.IMAGE_HTTP_URL`. Leave empty for normal pulls. |
 
-CI image names (Release; do not rebuild on the guest): portal **`nginx:1.27-alpine`** → `ghcr.io/<owner>/heavy-rental-web-portal` (Node **22** at build); REST **`tomcat:10.1-jdk21-temurin`** → `ghcr.io/<owner>/heavy-rental-rest-api` (Java **21**); Haystack **`python:3.12-slim-bookworm`** → `ghcr.io/<owner>/haystack-fast-api`. Portal CD (`heavy-rental-web-portal-pipeline/deploy-pipeline/ansible/`) copies estate `guest_base` + `portal` and re-runs `--limit portal`. REST CD (`heavy-rental-rest-api/deploy-pipeline/ansible/`) copies estate `guest_base` + `rest` and re-runs `--limit rest`. Haystack CD (`haystack-fast-api-pipeline/deploy-pipeline/ansible/`) copies estate `guest_base` + `haystack` and re-runs `--limit haystack` (no Neo4j container). It does **not** replace infra first-compose on `apply`.
+CI image names (Release; do not rebuild on the guest): portal **`nginx:1.27-alpine`** → `ghcr.io/<owner>/heavy_rental_web_portal` (Node **22** at build); REST **`tomcat:10.1-jdk21-temurin`** → `ghcr.io/<owner>/heavy_rental_rest_api` (Java **21**); Haystack **`python:3.12-slim-bookworm`** → `ghcr.io/<owner>/haystack_recommender`. Portal CD (`heavy-rental-web-portal-pipeline/deploy-pipeline/ansible/`) copies estate `guest_base` + `portal` and re-runs `--limit portal`. REST CD (`heavy-rental-rest-api/deploy-pipeline/ansible/`) copies estate `guest_base` + `rest` and re-runs `--limit rest`. Haystack CD (`haystack-fast-api-pipeline/deploy-pipeline/ansible/`) copies estate `guest_base` + `haystack` and re-runs `--limit haystack` (no Neo4j container). It does **not** replace infra first-compose on `apply`.
 
 Academy pull: public GHCR needs no login. ECR tags (`*.dkr.ecr.*`) get `aws ecr get-login-password` on the guest (`LabRole`). Private GHCR is **not** pulled (no token on the guest) — copy to ECR or load a tar. Prefer a **new tag** each redeploy (`compose up` does not `--pull always`).
 
@@ -108,7 +110,7 @@ Instance still needs outbound HTTPS (same-AZ NAT Gateway or S3 endpoint). Live `
 1. Read `heavy-rental/rest` → `POSTGRES_*` / `SPRING_DATASOURCE_*` (plus `POSTGRES_HOSTNAME` / `POSTGRES_DB` / `POSTGRES_USER`), `HAYSTACK_BASE_URL`, Stripe secret + webhook + publishable.
 2. Compose Tomcat on **:8080**, `mem_limit: 1g`, `cpus: 1.0`.
 3. Health: `GET /actuator/health` or `/`.
-4. No Bolt. No public listener.
+4. No Bolt. REST **guests** have no public IP; the REST **ALB** is internet-facing :8080 (ADR 0018).
 
 ### 4.3 `haystack` (`asg-haystack`)
 

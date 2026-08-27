@@ -12,7 +12,8 @@
 #   3. Security Testing      needs Integration — SAST (Semgrep) + SCA/FS (Trivy)
 #   4. CodeQL Analysis       needs Integration — GitHub CodeQL (Java/Kotlin)
 #   5. Mock Contract Tests   needs Integration — Mockoon + npm run mock:verify
-#                            (ADR 003 returnNotes echo; Prism is not used in CI)
+#                            (application ADR 003 returnNotes echo is Mockoon-only;
+#                             pipeline ADR 0006; Prism is not used in CI)
 #   6. GitHub Flow CI Gate   aggregate: Integration first, then QC + Security + CodeQL + Mocks
 #
 # Security report format (standard): SARIF 2.1.0
@@ -1446,7 +1447,7 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
   # ---------------------------------------------------------------------------
-  # 5. Mock contract tests — Mockoon + mock:verify (ADR 003 returnNotes echo)
+  # 5. Mock contract tests — Mockoon + mock:verify (application ADR 003 returnNotes echo; pipeline ADR 0006)
   # ---------------------------------------------------------------------------
   mock-contract-tests:
     name: Mock Contract Tests
@@ -1505,7 +1506,8 @@ jobs:
           }
 
           MOCK_SCRIPT=""
-          # ADR 003 returnNotes echo is Mockoon-only. Do not fall back to Prism.
+          # Application ADR 003 returnNotes echo is Mockoon-only (pipeline ADR 0006).
+          # Do not fall back to Prism.
           if has_script mock:mockoon; then
             MOCK_SCRIPT="mock:mockoon"
           fi
@@ -1523,12 +1525,12 @@ jobs:
             echo "ready=true" >> "$GITHUB_OUTPUT"
             echo "Detected mock server: npm run $MOCK_SCRIPT"
             echo "Detected verify:      npm run $VERIFY_SCRIPT"
-            echo "ADR 003 echo:         MOCK_EXPECT_ECHO=1"
+            echo "Application ADR 003 echo: MOCK_EXPECT_ECHO=1"
           else
             echo "ready=false" >> "$GITHUB_OUTPUT"
             echo "Mock script found: ${MOCK_SCRIPT:-<none>}"
             echo "Verify script found: ${VERIFY_SCRIPT:-<none>}"
-            echo "::error::Mock Contract Tests require npm scripts mock:mockoon and mock:verify (ADR 003 echo is Mockoon-only; Prism is not used in CI)."
+            echo "::error::Mock Contract Tests require npm scripts mock:mockoon and mock:verify (application ADR 003 echo is Mockoon-only; pipeline ADR 0006; Prism is not used in CI)."
             exit 1
           fi
 

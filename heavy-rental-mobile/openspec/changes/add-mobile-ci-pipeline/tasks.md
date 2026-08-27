@@ -18,8 +18,10 @@
 
 ## 4. Release
 
-- [x] 4.1 Author `release-pipeline/release-pipeline.yml` (CI gates + unsigned packaging)
-- [x] 4.2 Author `release-pipeline/mobile-release-caller.yml` (published release or `develop` → `master` PR)
+- [x] 4.1 Author `release-pipeline/release-pipeline.yml` (Integration + QC + unsigned packaging + MobSF DAST + Publish)
+- [x] 4.2 Author `release-pipeline/mobile-release-caller.yml` (`workflow_dispatch` only; creates the GitHub Release)
+
+As-implemented later YAML (recorded in the OpenSpec deltas, OpenSPDD canvas, and ADRs 0004/0006): Mockoon-only mocks that fail if scripts are missing; Release is dispatch-only with DAST + Publish; SAST/CodeQL stay on Integration CI.
 
 ## 5. Verify
 

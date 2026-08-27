@@ -1,10 +1,14 @@
 # Implementation plan: Web portal app CD (Academy)
 
+## As-built (read this first)
+
+Academy branches 1–2 **and** paid portal CD are **delivered** (`add-portal-cd-academy-deploy`, `add-portal-cd-paid-deploy`, ADR 0009, Environment `AWS_ACTUAL`). `REST_BASE_URL` is the internet-facing REST ALB :8080 (ADR 0018). GHCR is `heavy_rental_web_portal`. Living specs: [`../../heavy-rental-web-portal-pipeline/specification/`](../../heavy-rental-web-portal-pipeline/specification/). Body below is the original Academy two-branch split.
+
 **Contract:** [`WEB-PORTAL-CD-FEASIBILITY.md`](WEB-PORTAL-CD-FEASIBILITY.md), [`../ANSIBLE-PROCESS.md`](../ANSIBLE-PROCESS.md), AWS study §6.0c / §6.4a / §6.6.  
 **Live estate:** `heavy-rental-project-instructure-and-cloud-deploy` (`HR-162` configure). First compose and `/api` proxy already exist there.  
 **This plan is the delivery split.** Live YAML is in `heavy-rental-web-portal-pipeline/deploy-pipeline/`.
 
-**Status:** Infra branches 1–3 exist. Portal CD **branch 1** (discover) and **branch 2** (compose) are in `deploy-pipeline/` (`add-portal-cd-academy-deploy`). Paid portal CD is later.
+**Status:** Infra branches 1–3 exist. Portal CD **branch 1** (discover), **branch 2** (compose), and **paid caller** are in `deploy-pipeline/`.
 
 Conflict order if that repo uses OpenSpec: OpenSpec → OpenSPDD → ADR → YAML / Ansible.
 
@@ -15,7 +19,7 @@ Conflict order if that repo uses OpenSpec: OpenSpec → OpenSPDD → ADR → YAM
 Manually deploy a **CI-built nginx + Vite `dist/` image** onto the **existing** `asg-portal` (desired=2, both InService) without Terraform and without rebuilding the SPA.
 
 - Browser → public portal ALB `:80` → nginx + `dist/`.
-- nginx `location /api/` → `REST_BASE_URL` from `heavy-rental/portal` (internal REST ALB).
+- nginx `location /api/` → `REST_BASE_URL` from `heavy-rental/portal` (`http://<rest_alb_dns>:8080`, internet-facing REST ALB).
 - No Vite server in AWS. No `sk_` / `whsec_` on the portal.
 
 **Non-goals:** `terraform apply`; `npm run build` / `docker build`; REST / Haystack / Neo4j deploy; `stop` / `destroy` (infra CD); paid / OIDC; instance IDs on the Run form.
@@ -31,7 +35,7 @@ Manually deploy a **CI-built nginx + Vite `dist/` image** onto the **existing** 
 | Inventory | Same idea as infra `inventory/aws_ssm.py`, **portal group only** (`asg-portal`) |
 | Auth | Environment **`academy`** (same secret **names** as infra). Vocareum keys: `$GITHUB_EVENT_PATH` + `::add-mask::`. Never `${{ inputs.aws_* }}` in `env:` |
 
-Academy only in this minimum. Paid = later workflow, OIDC, **no** key fields.
+Academy only in this **minimum**. Paid caller is **delivered** (`portal-cd-paid-caller.yml`, OIDC, **no** key fields).
 
 ---
 
@@ -110,7 +114,7 @@ Start Lab → Run workflow → `assert-lab` + `discover-targets` green. No image
 
 ### Done when (branch 2)
 
-`action=deploy` with a public GHCR or ECR tag updates **both** `asg-portal` guests. Public ALB `:80` serves the new SPA. `/api` still proxies to the internal REST ALB. `verify` is green if nginx answers. **Shipped** in `deploy-pipeline/` (`web-portal-cd-academy.yml` + `ansible/`).
+`action=deploy` with a public GHCR or ECR tag updates **both** `asg-portal` guests. Public ALB `:80` serves the new SPA. `/api` still proxies to `REST_BASE_URL` (REST ALB :8080). `verify` is green if nginx answers. **Shipped** in `deploy-pipeline/` (`web-portal-cd-academy.yml` + `ansible/`).
 
 ---
 
@@ -118,7 +122,7 @@ Start Lab → Run workflow → `assert-lab` + `discover-targets` green. No image
 
 | Next | Why it waited |
 | --- | --- |
-| Paid portal CD (`web-portal-cd-paid.yml`) | OIDC; no Vocareum keys |
+| Paid portal CD (`portal-cd-paid-caller.yml`) | **Delivered** — OIDC; no Vocareum keys |
 | REST / Haystack app CD | Same pattern, different group |
 | `--pull always` / digest pins | Optional hardening |
 

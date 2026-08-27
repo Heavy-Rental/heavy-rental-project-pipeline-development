@@ -1,10 +1,14 @@
 # Implementation plan: REST API app CD (Academy)
 
+## As-built (read this first)
+
+Academy branches 1–2 **and** paid REST CD are **delivered** (`add-rest-cd-academy-deploy`, `add-rest-cd-paid-deploy`, ADR 0008, Environment `AWS_ACTUAL`). REST ALB is internet-facing :8080 (ADR 0018). GHCR is `heavy_rental_rest_api`. Living specs: [`../../heavy-rental-rest-api/specification/`](../../heavy-rental-rest-api/specification/). Body below is the original Academy two-branch split.
+
 **Contract:** [`REST-API-CD-FEASIBILITY.md`](REST-API-CD-FEASIBILITY.md), [`../ANSIBLE-PROCESS.md`](../ANSIBLE-PROCESS.md), AWS study §6.0c / §6.4a.  
 **Live estate:** `heavy-rental-project-instructure-and-cloud-deploy` (`HR-162` configure). First compose of Tomcat on `asg-rest` already exists there.  
 **This plan is the delivery split.** Live YAML is in `heavy-rental-rest-api/deploy-pipeline/`.
 
-**Status:** Infra branches 1–3 exist. Portal CD branch 2 exists. REST CD **branch 1** (discover) and **branch 2** (compose) are in `deploy-pipeline/` (`add-rest-cd-academy-deploy`). Paid REST CD is later.
+**Status:** Infra branches 1–3 exist. REST CD **branch 1** (discover), **branch 2** (compose), and **paid caller** are in `deploy-pipeline/`.
 
 Conflict order if that repo uses OpenSpec: OpenSpec → OpenSPDD → ADR → YAML / Ansible.
 
@@ -14,8 +18,8 @@ Conflict order if that repo uses OpenSpec: OpenSpec → OpenSPDD → ADR → YAM
 
 Manually deploy a **CI-built Tomcat + WAR image** onto the **existing** `asg-rest` (desired=2, both InService) without Terraform and without rebuilding the WAR.
 
-- Image: **`tomcat:10.1-jdk21-temurin`** + `ROOT.war`, Java **21**, GHCR `ghcr.io/<owner>/heavy-rental-rest-api`.
-- Internal REST ALB `:8080` only. Never on the public portal listener.
+- Image: **`tomcat:10.1-jdk21-temurin`** + `ROOT.war`, Java **21**, GHCR `ghcr.io/<owner>/heavy_rental_rest_api`.
+- REST ALB `:8080` is **internet-facing** (ADR 0018). Never a rule on the public **portal** listener. Guests stay private.
 - Guest reads `heavy-rental/rest` (Postgres / JDBC, `HAYSTACK_BASE_URL`, Stripe secret + webhook + publishable). Password is **not** in the image.
 - No Bolt on REST. No `docker build` / Maven on the guest.
 
@@ -32,7 +36,7 @@ Manually deploy a **CI-built Tomcat + WAR image** onto the **existing** `asg-res
 | Inventory | Same idea as infra `inventory/aws_ssm.py`, **rest group only** (`asg-rest`) |
 | Auth | Environment **`academy`** (same secret **names** as infra). Vocareum keys: `$GITHUB_EVENT_PATH` + `::add-mask::`. Never `${{ inputs.aws_* }}` in `env:` |
 
-Academy only in this minimum. Paid = later workflow, OIDC, **no** key fields.
+Academy only in this **minimum**. Paid caller is **delivered** (`rest-api-cd-paid-caller.yml`, OIDC, **no** key fields).
 
 ---
 
@@ -40,7 +44,7 @@ Academy only in this minimum. Paid = later workflow, OIDC, **no** key fields.
 
 Before any `deploy`:
 
-1. Infra `action=apply` has created `asg-rest` (and the **internal** REST ALB).
+1. Infra `action=apply` has created `asg-rest` (and the **internet-facing** REST ALB :8080).
 2. Infra `sync-secrets` has filled `heavy-rental/rest` (`POSTGRES_*` / `SPRING_DATASOURCE_*`, `HAYSTACK_BASE_URL`, `STRIPE_API_KEY`, `STRIPE_WEBHOOK_SECRET`, `STRIPE_PUBLISHABLE_KEY`).
 3. Guests are **InService** and **SSM Online** (Start Lab if the session ended). If desired=0, run infra (scale / `configure-only`) first — this CD must not change ASG desired.
 
@@ -113,7 +117,7 @@ Start Lab → Run workflow → `assert-lab` + `discover-targets` green. No image
 
 ### Done when (branch 2)
 
-`action=deploy` with a public GHCR or ECR tag updates **both** `asg-rest` guests. Internal ALB `:8080` serves the new WAR. `verify` is green if Tomcat answers. **Shipped** in `deploy-pipeline/` (`rest-api-cd-academy.yml` + `ansible/`).
+`action=deploy` with a public GHCR or ECR tag updates **both** `asg-rest` guests. REST ALB `:8080` serves the new WAR. `verify` is green if Tomcat answers. **Shipped** in `deploy-pipeline/` (`rest-api-cd-academy.yml` + `ansible/`).
 
 ---
 
@@ -121,7 +125,7 @@ Start Lab → Run workflow → `assert-lab` + `discover-targets` green. No image
 
 | Next | Why it waited |
 | --- | --- |
-| Paid REST CD (`rest-api-cd-paid.yml`) | OIDC; no Vocareum keys |
+| Paid REST CD (`rest-api-cd-paid-caller.yml`) | **Delivered** — OIDC; no Vocareum keys |
 | Haystack app CD | Same pattern, `asg-haystack` |
 | `--pull always` / digest pins | Optional hardening |
 
@@ -135,12 +139,12 @@ Infra **`apply`** still first-composes REST. Infra **`configure-only`** does **n
 - `mvn package`, `docker build` on the runner or guest
 - Deploying portal, Haystack, or Neo4j (no those Ansible groups)
 - Putting `STRIPE_API_KEY` in the image or on the portal
-- Using CI Environments `integration` / `production` (`REST_API_DB_*` / `REST_API_CLOUD_DB_*`) as CD
+- Using CI Environments `integration` / `production` (`REST_API_DB_*`) as CD
 - Instance ID / SSH host / private IP on `workflow_dispatch`
 - Vocareum keys in Secrets Manager or on the guest
 - Key fields on **paid** workflows
 - `stop` / `destroy`
-- Opening `:8080` or `:5432` to the public internet
+- Opening guest `:8080` or `:5432` from `0.0.0.0/0` (REST **ALB** is internet-facing; **instances** stay private)
 
 ---
 

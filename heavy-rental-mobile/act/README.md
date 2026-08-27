@@ -27,7 +27,7 @@ Those mirrors are `workflow_call` only. Use `run-act.sh`, which stages the insta
 - **Integration from this repo without remote inputs** — checkout mode is `caller`, and this repo is not the Android app (`gradlew` is missing).
 - **Full `:app:preBuild` / lint / test / assemble** — needs the Android SDK, a large image, and many minutes. Prefer running act **inside a clone of** `Heavy-Rental/heavy-rental-mobile` after copying the six YAML files.
 - **CodeQL** — not supported by act.
-- **Release caller** — no `workflow_dispatch`; it only fires on a published release or a `develop` → `master` PR. Use `list` to see the graph; do not expect `act push` to start it.
+- **Release caller** — `workflow_dispatch` only (it creates the GitHub Release). Use `list` to see the graph; `act push` does not start it. Full MobSF DAST is not a useful act target.
 
 ## Run from the application repo (full Integration)
 

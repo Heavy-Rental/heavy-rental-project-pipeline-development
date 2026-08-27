@@ -8,7 +8,7 @@
 #   1. Start Lab → AWS Details
 #   2. Run workflow → paste aws_access_key_id / aws_secret_access_key / aws_session_token
 #      OR leave them empty and use Environment academy secrets
-#   3. Choose action. Do not point this workflow at Environment paid.
+#   3. Choose action. Do not point this workflow at Environment AWS_ACTUAL.
 #
 # GitHub cannot secret-type dispatch inputs; they may appear on the run Inputs page.
 # Jobs mask them (::add-mask::) and never write them to Secrets Manager or the guest.

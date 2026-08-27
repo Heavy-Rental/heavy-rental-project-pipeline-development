@@ -3,7 +3,8 @@
 # Environment is AWS_ACTUAL (not "paid"). Do not copy this stub.
 # Order: infra Terraform creates EC2 → infra Ansible first compose
 #        → THIS workflow re-runs compose on asg-portal with a new CI nginx image.
-# nginx /api → REST_BASE_URL (internal REST ALB). No Vite server. No sk_ on portal.
+# nginx /api → REST_BASE_URL (internet-facing REST ALB :8080). No Vite server. No sk_ on portal.
+# Environment AWS_ACTUAL (not "paid"). Live: portal-cd-paid-caller.yml. GHCR heavy_rental_web_portal.
 # OIDC only. No Vocareum keys. No instance IDs on the form.
 
 name: Web Portal CD (paid)
@@ -19,7 +20,7 @@ on:
       aws_environment:
         required: true
         type: environment
-        default: paid
+        default: AWS_ACTUAL
       image_ref:
         required: false
         type: string

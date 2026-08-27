@@ -1,5 +1,23 @@
 # Feasibility study: AWS infrastructure for the Heavy Rental compose estate
 
+## As-built (read this first)
+
+This file is a **design record**. Living specs win: estate [`../../heavy-rental-project-instructure-and-cloud-deploy/specification/`](../../heavy-rental-project-instructure-and-cloud-deploy/specification/); app families [`../specification/`](../specification/). Folder index: [`README.md`](README.md).
+
+| Study body (original) | As-built |
+| --- | --- |
+| GitHub Environment `paid` | Environment **`AWS_ACTUAL`**, state / SSM suffix `-actual` ([infra ADR 0017](../../heavy-rental-project-instructure-and-cloud-deploy/docs/adr/0017-two-actions-academy-paid.md)) |
+| REST ALB internal / no public 8080 | REST ALB **internet-facing :8080** in public subnets; `asg-rest` stays private ([infra ADR 0018](../../heavy-rental-project-instructure-and-cloud-deploy/docs/adr/0018-public-rest-alb.md)). Haystack ALB, Bolt NLB, RDS stay internal |
+| One workflow / Environment pick | Two Actions, separate job graphs ([infra ADR 0019](../../heavy-rental-project-instructure-and-cloud-deploy/docs/adr/0019-separate-job-graphs.md)): `aws-infra-academy.yml` + `aws-infra-paid.yml` |
+| GHCR hyphenated names | `ghcr.io/<owner>/haystack_recommender`, `heavy_rental_rest_api`, `heavy_rental_web_portal` |
+| Release on `develop`→`master` or published GitHub Release | **`workflow_dispatch` only**; Publish creates the GitHub Release |
+| REST Release secrets `REST_API_CLOUD_DB_*` | Integration + Release QC use `REST_API_DB_*` (local Docker Postgres). CD does not read those names |
+| App CD paid “later” | Paid callers **delivered** for Haystack, REST, and portal |
+| NAT instance in some sketches | **Two NAT Gateways** (one per public AZ) |
+| S3 + DynamoDB lock | S3 **`use_lockfile=true`** |
+
+When the body still says “internal REST ALB”, “Environment `paid`”, or hyphenated GHCR names, treat the table as truth.
+
 **Destinations (two separate pipelines):**
 
 1. **Academy** — [AWS Academy](https://awsacademy.instructure.com/) Learner Lab (Instructure + Vocareum sandbox)
@@ -26,7 +44,7 @@ Decide how **GitHub Actions** (the trigger) plus Terraform, Ansible, and the AWS
 1. The compose estate (shared network, three apps, two Postgres roles, Neo4j, sync/populate workers)
 2. **CI** (existing app Release pipelines) **creates the Docker images**; **CD** (this study) deploys those images
 3. **Two CD targets:** AWS Academy and a **paid** AWS account, each with its own Actions workflow
-4. **CD** uses maintainer-copied GitHub Environments **`academy`** and **`paid`**. **CI** uses **other** names (`integration` / `production`) or **none** — inventory in **§6.0c**. They are not the same Environments.
+4. **CD** uses maintainer-copied GitHub Environments **`academy`** and **`AWS_ACTUAL`**. **CI** uses **other** names (`integration` / `production`) or **none** — inventory in **§6.0c**. They are not the same Environments.
 
 ### Non-goals
 
@@ -47,10 +65,10 @@ Infrastructure, deploy, and operate belong to **another project**. This file is 
 | EKS or simpler? | **Still simpler than EKS.** Prefer **VPC + four EC2 Auto Scaling groups + ALBs + two RDS**. REST and Haystack are **internal**; only the portal is public. Both RDS instances and Neo4j sit in a **separate private data-subnet pair**. |
 | Ansible for EC2 + RDS sync? | **Yes — for configuration, not for creating the VPC/ASG/RDS.** Terraform creates ASGs, ALBs, the data subnets, and **both** databases. Ansible installs Docker per ASG, writes env files, extensions, Neo4j on `asg-neo4j`, and Haystack sync/populate. |
 | Dedicated ALB for REST? | **Yes — a dedicated internal ALB** (`scheme=internal`). REST is not on the public ALB. Same pattern as Haystack. |
-| Recommended shape | **Academy (§6):** one VPC, three subnet tiers, four ASGs at **desired=2** (portal/React, REST/Spring Boot, Haystack, Neo4j — one guest per AZ), **two Multi-AZ RDS**, two Neo4j guests behind an **internal Bolt NLB**, **two NAT Gateways** (**8 EC2**). **Paid (§6P):** same tiers in a **separate** account; HTTPS / OIDC / created IAM optional. REST and Haystack: dedicated **internal** ALBs. No public 8080/8000/5432/7687. |
+| Recommended shape | **Academy (§6):** one VPC, three subnet tiers, four ASGs at **desired=2** (portal/React, REST/Spring Boot, Haystack, Neo4j — one guest per AZ), **two Multi-AZ RDS**, two Neo4j guests behind an **internal Bolt NLB**, **two NAT Gateways** (**8 EC2**). **Paid (§6P):** same tiers in a **separate** account; HTTPS / OIDC / created IAM optional. **As-built:** REST ALB is **internet-facing :8080**; Haystack stays internal; no public 8000/5432/7687. Guests have no public IPs. |
 | CI vs CD | **CI** (this repo’s Release pipelines) **builds and publishes Docker images**. **CD** (this study — `aws-infra-academy.yml` / `aws-infra-paid.yml`) is the only apply path to AWS. CD does not rebuild the app. |
-| GitHub Environments | The **maintainer** configures Environments **`academy`** and **`paid`** on the CD repo. CI trees use **other** Environments (`integration`, `production`) or **none**. Inventory: **§6.0c**. GitHub does not share Environments across repos. |
-| Trigger / CD pipeline | **Academy CD:** Environment `academy` + Vocareum AWS keys. **Paid CD:** Environment `paid` + OIDC. Never one workflow for both accounts. |
+| GitHub Environments | The **maintainer** configures Environments **`academy`** and **`AWS_ACTUAL`** on the CD repo. CI trees use **other** Environments (`integration`, `production`) or **none**. Inventory: **§6.0c**. GitHub does not share Environments across repos. |
+| Trigger / CD pipeline | **Academy CD:** Environment `academy` + Vocareum AWS keys. **Paid CD:** Environment `AWS_ACTUAL` + OIDC. Never one workflow for both accounts. |
 | Primary IaC | **Terraform**, invoked **by that Actions workflow** (not CloudShell-first). |
 | Config management | **Ansible**, invoked **by the same Actions workflow** after Terraform succeeds. |
 | AWS CLI | Used **inside** the Actions job (`aws-actions/configure-aws-credentials` + CLI). Vocareum CloudShell is debug-only. |
@@ -97,19 +115,19 @@ These watch and recover what **Deploy** already built. They are not a third CD w
 
 | App tree | Fast feedback | Integration CI | Release packaging |
 | --- | --- | --- | --- |
-| [`haystack-fast-api-pipeline/`](../haystack-fast-api-pipeline/) | Integration only | Integration → QC (Ruff/pytest) ∥ Security (Semgrep, pip-audit, Trivy) ∥ CodeQL | `uv build` + **Docker image** (tar / GHCR) |
-| [`heavy-rental-rest-api/`](../heavy-rental-rest-api/) | Integration only | Integration → QC (Maven, Postgres) ∥ Security ∥ CodeQL | WAR + **Docker image** (Tomcat) |
-| [`heavy-rental-web-portal-pipeline/`](../heavy-rental-web-portal-pipeline/) | Integration only | Integration → QC (ESLint/tsc) ∥ Security ∥ CodeQL | Vite `dist` zip + **nginx Docker image** |
-| [`heavy-rental-mobile/`](../heavy-rental-mobile/) | Integration only | Integration → QC ∥ Security ∥ CodeQL ∥ **Mock Contract Tests** | Unsigned **APK** — **not** deployed to the AWS VPC |
+| [`haystack-fast-api-pipeline/`](../haystack-fast-api-pipeline/) | Integration only | Integration → QC (Ruff/pytest) ∥ Security (Semgrep, pip-audit, Trivy) ∥ CodeQL | `uv build` + **Docker image** (tar / public GHCR `haystack_recommender`) |
+| [`heavy-rental-rest-api/`](../heavy-rental-rest-api/) | Integration only | Integration → QC (Maven, Postgres) ∥ Security ∥ CodeQL | WAR + **Docker image** (Tomcat; GHCR `heavy_rental_rest_api`) |
+| [`heavy-rental-web-portal-pipeline/`](../heavy-rental-web-portal-pipeline/) | Integration only | Integration Check → QC (ESLint/tsc) ∥ Security ∥ CodeQL ∥ REST Endpoint Tests | Vite `dist` zip + **nginx Docker image** (GHCR `heavy_rental_web_portal`) |
+| [`heavy-rental-mobile/`](../heavy-rental-mobile/) | Integration only | Integration → QC ∥ Security ∥ CodeQL ∥ **Mock Contract Tests** (Mockoon required) | Unsigned **APK** + MobSF DAST + GitHub Release — **not** deployed to the AWS VPC |
 
-Triggers stay GitHub Flow: feature push → Fast Feedback; PR/`develop` → Integration CI; `develop`→`master` or published Release → Release.
+Triggers stay GitHub Flow: feature push → Fast Feedback; PR/`develop` → Integration CI; **`workflow_dispatch`** → Release (Publish creates the GitHub Release).
 
 #### CD (Deploy only) — focus of this study
 
 | Workflow | DevSecOps phase | Input |
 | --- | --- | --- |
 | `aws-infra-academy.yml` | **Deploy** | CI Docker images + Environment **`academy`** copy |
-| `aws-infra-paid.yml` | **Deploy** | CI Docker images + Environment **`paid`** copy |
+| `aws-infra-paid.yml` | **Deploy** | CI Docker images + Environment **`AWS_ACTUAL`** copy |
 
 Jira tickets in **Plan** can link to CI checks and to a CD `workflow_dispatch` run; neither CI nor CD creates Jira issues.
 
@@ -192,13 +210,13 @@ REST also documents a **read-replica** compose variant. Academy Multi-AZ is a **
 
 | App | Image | Port |
 | --- | --- | --- |
-| REST API | `tomcat:10.1-jdk21-temurin` + `ROOT.war` → `ghcr.io/<owner>/heavy-rental-rest-api` / `.tar.gz`. Java **21**. | 8080 |
-| Haystack | `python:3.12-slim-bookworm` + uv + uvicorn `app.main:app` → `ghcr.io/<owner>/haystack-fast-api` / `.tar.gz` | 8000 |
-| Web portal | `nginx:1.27-alpine` + Vite `dist/` (CI Node **22**) → `ghcr.io/<owner>/heavy-rental-web-portal` / `.tar.gz` | 80 |
+| REST API | `tomcat:10.1-jdk21-temurin` + `ROOT.war` → `ghcr.io/<owner>/heavy_rental_rest_api` / `.tar.gz`. Java **21**. | 8080 |
+| Haystack | `python:3.12-slim-bookworm` + uv + uvicorn `app.main:app` → `ghcr.io/<owner>/haystack_recommender` / `.tar.gz` | 8000 |
+| Web portal | `nginx:1.27-alpine` + Vite `dist/` (CI Node **22**) → `ghcr.io/<owner>/heavy_rental_web_portal` / `.tar.gz` | 80 |
 
 A later deploy project loads those images (ECR copy or `docker load` of the tar). It does not rebuild from source on EC2.
 
-Haystack **app** CD (live): [`../haystack-fast-api-pipeline/deploy-pipeline/`](../haystack-fast-api-pipeline/deploy-pipeline/) — study [`haystack-CD-feasibility/HAYSTACK-CD-FEASIBILITY.md`](haystack-CD-feasibility/HAYSTACK-CD-FEASIBILITY.md). REST **app** CD (live): [`../heavy-rental-rest-api/deploy-pipeline/`](../heavy-rental-rest-api/deploy-pipeline/) — study [`rest-api-CD-feasibility/REST-API-CD-FEASIBILITY.md`](rest-api-CD-feasibility/REST-API-CD-FEASIBILITY.md). Portal **app** CD (live): [`../heavy-rental-web-portal-pipeline/deploy-pipeline/`](../heavy-rental-web-portal-pipeline/deploy-pipeline/) — study [`web-portal-CD-feasibility/WEB-PORTAL-CD-FEASIBILITY.md`](web-portal-CD-feasibility/WEB-PORTAL-CD-FEASIBILITY.md) (public ALB only; nginx `/api` → internal REST ALB). Each discovers its ASG via the AWS API — they do not create EC2.
+Haystack **app** CD (live, academy + paid callers): [`../haystack-fast-api-pipeline/deploy-pipeline/`](../haystack-fast-api-pipeline/deploy-pipeline/) — study [`haystack-CD-feasibility/HAYSTACK-CD-FEASIBILITY.md`](haystack-CD-feasibility/HAYSTACK-CD-FEASIBILITY.md). REST **app** CD (live): [`../heavy-rental-rest-api/deploy-pipeline/`](../heavy-rental-rest-api/deploy-pipeline/) — study [`rest-api-CD-feasibility/REST-API-CD-FEASIBILITY.md`](rest-api-CD-feasibility/REST-API-CD-FEASIBILITY.md). Portal **app** CD (live): [`../heavy-rental-web-portal-pipeline/deploy-pipeline/`](../heavy-rental-web-portal-pipeline/deploy-pipeline/) — study [`web-portal-CD-feasibility/WEB-PORTAL-CD-FEASIBILITY.md`](web-portal-CD-feasibility/WEB-PORTAL-CD-FEASIBILITY.md) (public portal ALB :80; nginx `/api` → `REST_BASE_URL` on the **internet-facing** REST ALB :8080). Each discovers its ASG via the AWS API — they do not create EC2.
 
 ---
 
@@ -236,7 +254,7 @@ Beanstalk **is** listed (use `LabRole` + `LabInstanceProfile`). It is a poor mat
 
 ## 6. Recommended architecture (AWS Academy)
 
-This section is the **lab** design. REST and Haystack are **internal servers**. Only the Vite/nginx **portal** is internet-facing. The **paid** account is a **separate VPC** with the same three tiers plus extras — see **§6P**.
+This section is the **lab** design. Original study: REST and Haystack **internal**; only the Vite/nginx **portal** internet-facing. **As-built (ADR 0018):** REST ALB is **internet-facing :8080**; Haystack stays internal; portal stays the only public :80. Guests remain in private app subnets with no public IPs. The **paid** account is a **separate VPC** with the same three tiers plus extras — see **§6P**.
 
 Two AZs of **subnets**, not two full copies of the stack. Each app/Neo4j ASG runs **one guest per AZ** (`desired=2`). Portal (React), REST (Spring Boot), and Haystack ALBs span both AZs. **Two** Multi-AZ RDS instances (SoR + Haystack). **Two** NAT Gateways (one per public AZ). Guest count is **8 EC2**.
 
@@ -282,21 +300,20 @@ Two AZs of **subnets**, not two full copies of the stack. Each app/Neo4j ASG run
 
 ### 6.0 Internal servers (REST + Haystack)
 
-Neither the Spring Boot REST API nor Haystack may be reached from the internet.
+Original study: neither Spring Boot REST nor Haystack may be reached from the internet. **As-built:** Haystack still must not be public. REST **ALB** is internet-facing :8080 (ADR 0018). REST **instances** stay private (no public IP; SG from the REST ALB, not from `0.0.0.0/0` on the guest).
 
-| Path | Allowed? |
-| --- | --- |
-| Public ALB rule to REST (`/api`) or Haystack (`/haystack`) | **No** |
-| Dedicated **internet-facing** ALB for REST or Haystack | **No** |
-| Instance SG 8080 or 8000 from `0.0.0.0/0` or `sg-alb-public` | **No** |
-| Browser / mobile calling REST or Haystack directly | **No** — browser talks to the **portal** only; portal calls REST on the **internal** REST ALB; REST calls Haystack on the **internal** Haystack ALB (or compose DNS if they share a host) |
-| **Dedicated internal ALB** for REST (`scheme=internal`, `tg-rest` :8080) | **Yes** |
-| **Dedicated internal ALB** for Haystack (`scheme=internal`, `tg-haystack` :8000) | **Yes** |
-| SSM port-forward for a student demo | **Yes** — break-glass, not ingress |
+| Path | Original study | As-built |
+| --- | --- | --- |
+| Public portal ALB rule to REST (`/api`) or Haystack (`/haystack`) | **No** | **No** (portal listener stays :80 only) |
+| Dedicated **internet-facing** ALB for REST | **No** | **Yes** — `hr-alb-rest` :8080 in public subnets (ADR 0018) |
+| Dedicated **internet-facing** ALB for Haystack | **No** | **No** — Haystack ALB stays internal |
+| Instance SG 8080 or 8000 from `0.0.0.0/0` | **No** | **No** on the **guest**. REST **ALB** SG allows 8080 from `0.0.0.0/0` |
+| Browser / mobile calling REST | **No** (portal `/api` only) | **Yes, allowed** — CORS includes portal + REST ALB DNS. Portal nginx `/api` still proxies |
+| Browser / mobile calling Haystack | **No** | **No** — REST calls Haystack on the internal Haystack ALB |
+| Dedicated Haystack ALB (`scheme=internal`, `tg-haystack` :8000) | **Yes** | **Yes** |
+| SSM port-forward for a student demo | **Yes** | **Yes** |
 
-**Can REST have its own dedicated ALB?** Yes. It **should** — a **dedicated internal** ALB, not a public one. Same for Haystack. Do not share the public portal ALB with either API.
-
-If lab credits cannot afford two internal ALBs, collapse REST+Haystack onto **one** internal ALB with two target groups. **Never** put either API on the public ALB.
+Do not share the public **portal** ALB with Tomcat or uvicorn. REST has its **own** internet-facing ALB.
 
 ### 6.0a Every EC2 is in an Auto Scaling group
 
@@ -332,7 +349,7 @@ Never put Vocareum `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` / `AWS_SESSION_
 
 | Secrets Manager id | ASG | JSON fields |
 | --- | --- | --- |
-| `heavy-rental/portal` | `asg-portal` | `REST_BASE_URL` (internal REST ALB). **Stripe:** `STRIPE_PUBLISHABLE_KEY` and `VITE_STRIPE_PUBLISHABLE_KEY` (same `pk_`). **Never** `STRIPE_API_KEY` or `STRIPE_WEBHOOK_SECRET` on the portal. Not baked into the CI nginx image (ADR 0007). |
+| `heavy-rental/portal` | `asg-portal` | `REST_BASE_URL` (`http://<rest_alb_dns>:8080` — **internet-facing** REST ALB, ADR 0018). **Stripe:** `STRIPE_PUBLISHABLE_KEY` and `VITE_STRIPE_PUBLISHABLE_KEY` (same `pk_`). **Never** `STRIPE_API_KEY` or `STRIPE_WEBHOOK_SECRET` on the portal. Not baked into the CI nginx image (portal ADR 0007). |
 | `heavy-rental/rest` | `asg-rest` | **Postgres (all of):** `POSTGRES_HOST` (RDS endpoint hostname from Terraform — data-subnet address, not public), `POSTGRES_PORT` (`5432`), `POSTGRES_DATABASE` (`heavy_rental`), `POSTGRES_USERNAME`, `POSTGRES_PASSWORD`, `POSTGRES_URL` / `SPRING_DATASOURCE_URL` (`jdbc:postgresql://<host>:<port>/<database>`). Also `SPRING_DATASOURCE_USERNAME` / `SPRING_DATASOURCE_PASSWORD` (same user/password). App aliases: `POSTGRES_HOSTNAME`, `POSTGRES_DB`, `POSTGRES_USER`. `HAYSTACK_BASE_URL` (internal Haystack ALB). **Stripe (REST):** `STRIPE_API_KEY`, `STRIPE_WEBHOOK_SECRET`, `STRIPE_PUBLISHABLE_KEY` (same publishable key as the portal). Injected at compose time (ADR 0007); not in the Tomcat image. |
 | `heavy-rental/haystack` | `asg-haystack` | Haystack RDS `POSTGRES_*` / aliases / `DATABASE_URL`. Sync: `SOURCE_*` (SoR RDS) and `TARGET_*` (Haystack RDS). `FLEET_BACKEND=sql`, `NEO4J_BACKEND=bolt`. `NEO4J_URI` from the **internal Bolt NLB** (`bolt://<nlb-dns>:7687` — not localhost, not a guest private IP), `NEO4J_USER`, `NEO4J_PASSWORD`, `LLM_API_KEY` if used. No Stripe. Not baked into the CI image (ADR 0008). |
 | `heavy-rental/neo4j` | `asg-neo4j` | `NEO4J_USER`, `NEO4J_PASSWORD`. No Postgres password dump, no Stripe, no LLM key. |
@@ -429,17 +446,17 @@ GitHub Environments are **per repository**. They are **not** defined the same wa
 
 | Project | GitHub Environment | Secrets / variables | Notes |
 | --- | --- | --- | --- |
-| REST Integration CI | **`integration`** | Secrets: `REST_API_DB_NAME`, `REST_API_DB_USER`, `REST_API_DB_PASSWORD`, `REST_API_DB_PORT` | QC only. Caller must not set `environment:` on `uses:` |
-| REST Release CI | **`production`** | Secrets: `REST_API_CLOUD_DB_HOST`, `REST_API_CLOUD_DB_NAME`, `REST_API_CLOUD_DB_USER`, `REST_API_CLOUD_DB_PASSWORD`, `REST_API_CLOUD_DB_PORT` | **Different names** than CD `SPRING_DATASOURCE_*` / `POSTGRES_*` |
+| REST Integration CI | **`integration`** (QC job). Caller also maps **repository** secrets | Secrets: `REST_API_DB_NAME`, `REST_API_DB_USER`, `REST_API_DB_PASSWORD`, `REST_API_DB_PORT` | Local Docker Postgres for QC. Caller must not set `environment:` on `uses:` |
+| REST Release CI | **`production`** | Same four `REST_API_DB_*` names (dummy local values are enough) | **Not** CD `POSTGRES_*` / `SPRING_DATASOURCE_*`. There are no `REST_API_CLOUD_DB_*` secrets |
 | Haystack CI (Fast Feedback, Integration, Release) | **None** | No DB / Neo4j / LLM secrets | Workflows **fail** if `LLM_API_KEY` is set |
 | Portal CI | **None** for app config | `GITHUB_TOKEN` for GHCR | No Stripe in CI |
-| Mobile CI | **None** for AWS | Unsigned APK only | Not deployed to the VPC; no env-driven container |
+| Mobile CI | **None** for AWS | Unsigned APK + MobSF DAST + GitHub Release | Not deployed to the VPC; Mockoon-required mocks; no GHCR |
 | **Infra CD Academy** (this study) | **`academy`** | Secrets: `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_SESSION_TOKEN`, `SPRING_DATASOURCE_PASSWORD`, `NEO4J_PASSWORD`, `STRIPE_PUBLISHABLE_KEY`, `STRIPE_API_KEY`, `STRIPE_WEBHOOK_SECRET`. Variables: `AWS_REGION`, optional `PORTAL_IMAGE` / `REST_IMAGE` / `HAYSTACK_IMAGE` | Vocareum keys for the **runner** only. App passwords feed `sync-secrets`. Live YAML: infra project. Example in this folder is a stub. |
-| **Infra CD Paid** | **`paid`** | Variables: `AWS_ROLE_TO_ASSUME`, `AWS_REGION`. Same **app** secrets as academy (Postgres password, Neo4j, Stripe). **No** Vocareum access keys | OIDC only |
+| **Infra CD Paid** | **`AWS_ACTUAL`** | Variables: `AWS_ROLE_TO_ASSUME`, `AWS_REGION`. Same **app** secrets as academy (Postgres password, Neo4j, Stripe). **No** Vocareum access keys | OIDC only |
 | **Portal / REST / Haystack app CD (Academy)** | **`academy`** (same **names** as infra; copy onto each app-CD repo) | Secrets (fallback): **`AWS_ACCESS_KEY_ID`**, **`AWS_SECRET_ACCESS_KEY`**, **`AWS_SESSION_TOKEN`**. Variable: `AWS_REGION`. Optional `IMAGE_HTTP_URL` | **Vocareum only.** Runner may paste the three keys on Run workflow (they change every Start Lab) or use Environment fallback. Never on paid. Never in SM / on EC2 |
-| **Portal / REST / Haystack app CD (Paid)** | **`paid`** | Variables: `AWS_ROLE_TO_ASSUME`, `AWS_REGION`. Optional `IMAGE_HTTP_URL`. **No** `AWS_ACCESS_KEY_ID` | OIDC only. Paid YAML **fails** if an access key is set |
+| **Portal / REST / Haystack app CD (Paid)** | **`AWS_ACTUAL`** | Variables: `AWS_ROLE_TO_ASSUME`, `AWS_REGION`. Optional `IMAGE_HTTP_URL`. **No** `AWS_ACCESS_KEY_ID` | OIDC only. Paid YAML **fails** if an access key is set |
 
-**Name mismatch:** REST CI `REST_API_CLOUD_DB_*` is **not** automatically the same as CD `SPRING_DATASOURCE_PASSWORD` or Secrets Manager `POSTGRES_*`. `sync-secrets` **builds** host/port/database/URL from Terraform + the CD Environment password. Do not assume one GitHub secret feeds both CI QC and AWS RDS.
+**Name mismatch:** REST CI `REST_API_DB_*` is **not** CD `SPRING_DATASOURCE_PASSWORD` or Secrets Manager `POSTGRES_*`. `sync-secrets` **builds** host/port/database/URL from Terraform + the CD Environment password. Do not assume one GitHub secret feeds both CI QC and AWS RDS.
 
 Study-only (MD, not Haystack CI YAML): `LLM_API_KEY` may land in `heavy-rental/haystack` at **runtime** if the class uses an LLM. Haystack **CI** must still leave it unset.
 
@@ -462,7 +479,7 @@ Internal REST/Haystack ALBs stay HTTP inside the VPC. Do **not** enable HTTPS on
 | --- | --- | --- |
 | `heavy-rental-network` | **VPC** + subnets + security groups | All resources in this VPC. |
 | Public ingress | **Internet-facing ALB inside the VPC** (public subnets + IGW) | **Portal only** (`tg-portal` instance :80). HTTP :80 always. HTTPS :443 when an ACM cert exists. No REST, no Haystack. |
-| REST ingress | **Dedicated internal ALB** | `scheme=internal`, `tg-rest` :8080, health `GET /actuator/health` or `/` |
+| REST ingress | **Dedicated internet-facing ALB** (as-built ADR 0018; study originally said internal) | Public subnets, `tg-rest` :8080, health `GET /actuator/health` or `/`. Guests stay private |
 | Haystack ingress | **Dedicated internal ALB** | `scheme=internal`, `tg-haystack` :8000, health `GET /docs` or `/health` |
 | Portal / REST / Haystack compute | **One ASG each** in the **private app** subnets (launch template + **`LabInstanceProfile`**) | Never a lone EC2. Images from ECR or GHCR tar. Profile **must** use IAM role **`LabRole`**. Data-source both names; never create IAM. **desired=2** (one guest per app AZ). |
 | Neo4j compute | **`asg-neo4j`** in the **private data** subnets (launch template + **`LabInstanceProfile`**) | Same profile / **`LabRole`**. `neo4j:5` container. No Marketplace AMI. **desired=2** (one per data AZ). Not a causal cluster. |
@@ -496,7 +513,7 @@ Internal REST/Haystack ALBs stay HTTP inside the VPC. Do **not** enable HTTPS on
 - **Outbound for private ASGs (image pulls):** two NAT Gateways (one per public AZ). Portal / REST / Haystack / Neo4j in AZ-n use the Gateway in public AZ-n. If AZ-0 dies, AZ-1 outbound stays up. Gateways bill until `destroy`. REST / Haystack / Neo4j / RDS stay private with **no public IPs**.
 - **Security groups:**
   - `sg-alb-public`: 80 (and 443 if used) from the internet
-  - `sg-alb-rest`: 8080 from `sg-portal` only (and from `sg-alb-rest` health)
+  - `sg-alb-rest`: 8080 from `0.0.0.0/0` (internet-facing REST ALB, ADR 0018) and from `sg-portal` (nginx `/api`)
   - `sg-alb-haystack`: 8000 from `sg-rest` only
   - `sg-portal`: 80 from `sg-alb-public`
   - `sg-rest`: 8080 from `sg-alb-rest`; egress `5432` to `sg-rds` **and `8000` to `sg-alb-haystack`** (Tomcat → `HAYSTACK_BASE_URL`). No egress `7687` (REST does not talk Bolt)
@@ -658,13 +675,16 @@ These apply to the **current** design (§6 Academy, §6P paid). They do **not** 
 ```
 Browser  →  public portal ALB :80/:443
               →  asg-portal  (nginx SPA + /api proxy)
-                    →  internal REST ALB :8080
-                          →  asg-rest
+                    →  REST ALB :8080  (internet-facing, ADR 0018)
+                          →  asg-rest (private guests)
                                 →  RDS SoR :5432      (heavy_rental, Multi-AZ)
                                 →  internal Haystack ALB :8000   (HAYSTACK_BASE_URL)
                                       →  asg-haystack
                                             →  RDS Haystack :5432 (haystack, Multi-AZ)
                                             →  Bolt NLB :7687     (asg-neo4j ×2; not a cluster)
+
+Browser / mobile MAY also call REST ALB :8080 directly (CORS).
+Haystack is never public.
 ```
 
 Security groups **are** the contract. Browser / mobile never call REST, Haystack, RDS, or Bolt. Operators: SSM (or SSM port-forward + PEM). CD: Actions → Terraform outputs → Secrets Manager → instance `get-secret-value`.
@@ -1258,13 +1278,13 @@ Optional overlap: **CodeDeploy** is allow-listed. Use it only if you want AWS-na
 | --- | --- | --- |
 | Workflow file | `.github/workflows/aws-infra-academy.yml` | `.github/workflows/aws-infra-paid.yml` |
 | Example in this repo | [`aws-infra-pipeline.example.yml`](aws-infra-pipeline.example.yml) | [`aws-infra-paid-pipeline.example.yml`](aws-infra-paid-pipeline.example.yml) |
-| GitHub Environment | **`academy`** | **`paid`** (optional later: `paid-staging`) |
+| GitHub Environment | **`academy`** | **`AWS_ACTUAL`** |
 | AWS account | Vocareum Learner Lab | Billed commercial account |
 | How Actions authenticates | Environment secrets `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_SESSION_TOKEN` | **OIDC** → IAM role (e.g. `github-actions-infra`). No long-lived access keys |
-| Terraform state | `s3://…/academy/…` or lab-local | Separate bucket/key, e.g. `s3://…/paid/…` |
+| Terraform state | `s3://…/academy/…` or lab-local | Separate bucket/key, suffix **`-actual`** |
 | IAM in Terraform | **Do not create roles.** Use `LabRole` / `LabInstanceProfile` | May create task roles, instance profiles, OIDC provider (once, by an admin) |
 | Shape | Same **three-tier VPC** (public / private-app / private-data). Four ASGs at desired=2 + **two Multi-AZ RDS** + Bolt NLB + **two NAT Gateways** | Same three-tier mapping **plus** paid-only extras: ACM/HTTPS, created IAM / OIDC |
-| Who may run apply | People who can use Environment `academy` | Required reviewers on Environment `paid` |
+| Who may run apply | People who can use Environment `academy` | Required reviewers on Environment `AWS_ACTUAL` |
 
 Hard isolation:
 
@@ -1398,17 +1418,17 @@ App **CI** Release workflows stay as they are (package + GHCR). They do not appl
 **A second workflow** (`aws-infra-paid.yml`) is the only apply path for the billed account. Same job names (assert → terraform → sync-secrets → **sync-ssh-keys after InService** → ansible) and the same compose-to-VPC idea; different trust, scale, and isolation.
 
 ```
-  GitHub Environment paid  (OIDC role ARN + region as variables)
+  GitHub Environment AWS_ACTUAL  (OIDC role ARN + region as variables)
            │
            ▼
-  Actions → Run workflow aws-infra-paid.yml  →  action + environment=paid
+  Actions → Run workflow aws-infra-paid.yml  →  action + environment=AWS_ACTUAL
            │
-           ├─ job: assert-account    environment: paid, OIDC, sts get-caller-identity
-           ├─ job: terraform         paid state key; 3-tier VPC; may create IAM roles
+           ├─ job: assert-account    environment: AWS_ACTUAL, OIDC, sts get-caller-identity
+           ├─ job: terraform         -actual state key; 3-tier VPC; may create IAM roles
            └─ job: ansible           four ASG groups + RDS logical sync
 ```
 
-#### Authentication (Environment `paid`) — OIDC, not Vocareum keys
+#### Authentication (Environment `AWS_ACTUAL`) — OIDC, not Vocareum keys
 
 A paid account **can** create an IAM OIDC identity provider for GitHub. That is the designed auth.
 
@@ -1416,7 +1436,7 @@ One-time (admin, not this workflow’s first student run):
 
 1. Create GitHub OIDC provider in the paid account (`token.actions.githubusercontent.com`).
 2. Create role `github-actions-infra` trusted only for this repo and `aws-infra-paid.yml`.
-3. Put on Environment **`paid`**:
+3. Put on Environment **`AWS_ACTUAL`**:
    - **Variable** `AWS_ROLE_TO_ASSUME` = role ARN
    - **Variable** `AWS_REGION`
    - Secrets for app data only (DB passwords, never `AWS_ACCESS_KEY_ID`)
@@ -1431,7 +1451,7 @@ on:
         options: [plan, apply, configure-only, stop, destroy]
       aws_environment:
         type: environment
-        default: paid
+        default: AWS_ACTUAL
 
 permissions:
   id-token: write   # required for OIDC
@@ -1448,7 +1468,7 @@ jobs:
       - run: aws sts get-caller-identity
 ```
 
-**Retrieval contract (paid):** jobs MUST use `environment: paid` and `vars.AWS_ROLE_TO_ASSUME`. They MUST NOT reference `secrets.AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, or `AWS_SESSION_TOKEN`. App passwords still come from Environment `paid` **secrets** into **`sync-secrets`**, then instances read Secrets Manager.
+**Retrieval contract (paid):** jobs MUST use `environment: AWS_ACTUAL` and `vars.AWS_ROLE_TO_ASSUME`. They MUST NOT reference `secrets.AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, or `AWS_SESSION_TOKEN`. App passwords still come from Environment `AWS_ACTUAL` **secrets** into **`sync-secrets`**, then instances read Secrets Manager.
 
 Enable Environment protection (required reviewers) on `paid` before the first apply.
 
@@ -1498,7 +1518,7 @@ Copy-ready paid workflow: [`aws-infra-paid-pipeline.example.yml`](aws-infra-paid
 | S3 + DynamoDB **remote** state (separate keys per account) | Required on Actions (§7.1). Exact bucket name is other-project |
 | Exact GHCR image refs/tags to pull | CI publishes; CD must pin |
 | Paid OIDC **trust-policy** JSON | Steps exist; not a copy-paste policy |
-| Map REST CI `REST_API_CLOUD_DB_*` → CD `POSTGRES_*` | Names **differ** (§6.0c) |
+| Map REST CI `REST_API_DB_*` → CD `POSTGRES_*` | Names **differ** (§6.0c) |
 | `terraform destroy` against the same backend as apply | Stub in example YAML; must empty **this** state only (§7.2d) |
 
 ### 7.2d `action=destroy` — remove everything Terraform created
@@ -1650,9 +1670,9 @@ App CD auth: academy three keys on Environment only (§8.7)
 
 | App | Image | Port |
 | --- | --- | --- |
-| Portal | `nginx:1.27-alpine` + Vite `dist/` (Node **22**) → `ghcr.io/<owner>/heavy-rental-web-portal` / tar | 80 |
-| REST | `tomcat:10.1-jdk21-temurin` + `ROOT.war` (Java **21**) → `ghcr.io/<owner>/heavy-rental-rest-api` / tar | 8080 |
-| Haystack | `python:3.12-slim-bookworm` + uvicorn → `ghcr.io/<owner>/haystack-fast-api` / tar | 8000 |
+| Portal | `nginx:1.27-alpine` + Vite `dist/` (Node **22**) → `ghcr.io/<owner>/heavy_rental_web_portal` / tar | 80 |
+| REST | `tomcat:10.1-jdk21-temurin` + `ROOT.war` (Java **21**) → `ghcr.io/<owner>/heavy_rental_rest_api` / tar | 8080 |
+| Haystack | `python:3.12-slim-bookworm` + uvicorn → `ghcr.io/<owner>/haystack_recommender` / tar | 8000 |
 
 CI Environments (`integration` / `production` or none) are **not** CD `academy` / `paid`.
 
@@ -1709,11 +1729,11 @@ Job terraform   if: action == plan || apply
 | In state (Terraform creates) | Not Terraform |
 | --- | --- |
 | VPC, IGW, three subnet tiers (2 AZs each), route tables | Docker / compose / `.env` |
-| NAT **instance** (Academy; not NAT Gateway) | `CREATE DATABASE` / extensions |
+| Two NAT Gateways + EIP each (one per public AZ; not a NAT instance) | `CREATE DATABASE` / extensions |
 | Security groups (portal / rest / haystack / neo4j / ALBs / RDS) | Stripe plaintext, DB passwords, PEMs |
 | Four launch templates + ASGs (`LabInstanceProfile` on Academy) | CI images, GHCR, GitHub Environments |
 | Public portal ALB + `tg-portal` :80 | `action=stop` (CLI) |
-| Internal REST ALB + `tg-rest` :8080 | App CD deploys |
+| Internet-facing REST ALB + `tg-rest` :8080 (ADR 0018) | App CD deploys |
 | Internal Haystack ALB + `tg-haystack` :8000 | |
 | Internal Bolt NLB + `tg-neo4j` :7687 | |
 | Two Multi-AZ RDS in the **data** subnet group (`publicly_accessible=false`, `deletion_protection=false`) | |
@@ -1722,7 +1742,7 @@ Job terraform   if: action == plan || apply
 
 Preferred: **no** `key_name` on launch templates. PEMs wait until InService.
 
-Academy `.tf` must not create IAM roles or an OIDC provider. Data-source **`LabInstanceProfile`** and **`LabRole`**; plan fails unless the profile uses that role. Must use two `aws_nat_gateway` (not a NAT instance). Must not use a Marketplace Neo4j CFT, and must not register REST/Haystack on the public listener. Portal / REST / Haystack / Neo4j: `desired=2` + two-AZ ALB/NLB. Both RDS: `multi_az=true`. Engine: prefer **12.22** then **11.22** on this Vocareum image.
+Academy `.tf` must not create IAM roles or an OIDC provider. Data-source **`LabInstanceProfile`** and **`LabRole`**; plan fails unless the profile uses that role. Must use two `aws_nat_gateway` (not a NAT instance). Must not use a Marketplace Neo4j CFT, and must not register Haystack on the public **portal** listener. REST has its own internet-facing ALB :8080. Portal / REST / Haystack / Neo4j: `desired=2` + two-AZ ALB/NLB. Both RDS: `multi_az=true`. Engine: prefer **12.22** then **11.22** on this Vocareum image.
 
 #### Destroy job (still Terraform, later)
 
@@ -1742,7 +1762,7 @@ These are **not** Terraform and **not** Ansible.
 
 | Terraform output | Lands in |
 | --- | --- |
-| Internal REST ALB DNS | `heavy-rental/portal` → `REST_BASE_URL` (+ `STRIPE_PUBLISHABLE_KEY` only) |
+| REST ALB DNS (`http://<dns>:8080`) | `heavy-rental/portal` → `REST_BASE_URL` (+ `STRIPE_PUBLISHABLE_KEY` only) |
 | Internal Haystack ALB DNS | `heavy-rental/rest` → `HAYSTACK_BASE_URL` |
 | SoR RDS endpoint hostname + port | `heavy-rental/rest` → `POSTGRES_*` / URL |
 | Haystack RDS endpoint hostname + port | `heavy-rental/haystack` → `POSTGRES_*` / URL |
@@ -1941,20 +1961,20 @@ Paid app CD: `AWS_ROLE_TO_ASSUME` only. **No** `aws_access_key_id` inputs. Workf
 All phases run through **`aws-infra-academy.yml`**, after Start Lab.
 
 1. Workflow skeleton: Environment `academy` + `workflow_dispatch` (`action` only) + `assert-lab` + `terraform plan`.
-2. `action=apply`: VPC + **public + private-app + private-data** subnets + SGs + **four ASGs at desired=2** + public portal ALB + **dedicated internal REST ALB** + **dedicated internal Haystack ALB** + **Bolt NLB** + **two Multi-AZ RDS** in the **data subnet group** + two NAT Gateways (one per public AZ).
-3. Ansible: Docker on **every** ASG guest + release images + RDS logical setup (roles/grants/extensions). Portal must not receive a public REST URL. Haystack compose must not start Neo4j.
+2. `action=apply`: VPC + **public + private-app + private-data** subnets + SGs + **four ASGs at desired=2** + public portal ALB + **dedicated internet-facing REST ALB :8080** (ADR 0018) + **dedicated internal Haystack ALB** + **Bolt NLB** + **two Multi-AZ RDS** in the **data subnet group** + two NAT Gateways (one per public AZ).
+3. Ansible: Docker on **every** ASG guest + release images + RDS logical setup (roles/grants/extensions). `REST_BASE_URL` is the REST ALB DNS :8080. Haystack compose must not start Neo4j.
 4. Haystack ASG workers only: sync + populate, pointed at **SoR RDS**, **Haystack RDS**, and the **Bolt NLB**. No public `/api` or `/haystack` rule.
 5. ECR in the lab account (including a copy of `neo4j:5` so the data-subnet host does not need Docker Hub).
 6. `action=stop`: set all four ASG desired=0 (or stop instances) and stop **both** RDS. NAT Gateways keep billing.
 7. `action=destroy`: `terraform destroy` of the Academy state — VPC, ASGs, ALBs, NLB, both RDS, secret shells, two NAT Gateways + EIPs. Requires `confirm_destroy=destroy`. See §7.2d.
 
-Do not add a third RDS, a NAT instance, Marketplace Neo4j AMI, a new IAM role, a 9th EC2, or EKS on Academy. Do not put REST, Haystack, RDS, or Neo4j on a public address. Do not place RDS or Neo4j in the app subnets.
+Do not add a third RDS, a NAT instance, Marketplace Neo4j AMI, a new IAM role, a 9th EC2, or EKS on Academy. Do not put Haystack, RDS, or Neo4j on a public address. REST **ALB** is internet-facing :8080; REST **guests** stay private. Do not place RDS or Neo4j in the app subnets.
 
 ### 11.2 Paid (separate, after Academy works)
 
 All phases run through **`aws-infra-paid.yml`**. Do not promote Academy state.
 
-1. Admin: OIDC provider + `github-actions-infra` + Environment `paid` (reviewers on).
+1. Admin: OIDC provider + `github-actions-infra` + Environment `AWS_ACTUAL` (reviewers on).
 2. Plan against an empty paid state key.
 3. Apply a **new** VPC (same **three-tier** topology; paid extras allowed — NAT Gateway / HTTPS / IAM still land in the same tiers; both RDS + Bolt NLB stay in the **data** subnets).
 4. Ansible against paid outputs; images from paid ECR.
@@ -1973,7 +1993,7 @@ All phases run through **`aws-infra-paid.yml`**. Do not promote Academy state.
 6. Whether Neo4j Browser must be reachable from the student laptop (if yes: SSM port forward, never `0.0.0.0/7474`).
 7. Who can edit Environment `academy` secrets and who can approve apply (Environment protection)?
 8. Confirm Vocareum AWS Details always includes a session token (almost always yes).
-9. Paid account ID, region, and who may approve Environment `paid` applies.
+9. Paid account ID, region, and who may approve Environment `AWS_ACTUAL` applies.
 10. Whether paid keeps four ASGs + internal ALBs or later moves REST/Haystack to ECS (Neo4j/RDS stay in the data subnets either way).
 11. Academy budget vs two internal ALBs — collapse to one internal ALB with two TGs only if credits force it.
 12. Academy budget vs `asg-neo4j`: keep the dedicated data-subnet ASG by default. Only fall back to a Haystack sidecar if credits force it — **RDS still stays in the data subnet group**.
@@ -1985,13 +2005,13 @@ All phases run through **`aws-infra-paid.yml`**. Do not promote Academy state.
 
 The compose estate is a **small number of containers on one bridge network**. This Vocareum lab is **long-lived, credit-capped, and IAM-locked** (`LabRole` only), but it **does** allow ECS, Fargate, and EKS if you use the pre-created roles.
 
-That still selects a **simple three-tier VPC**. **Academy (§6):** four **Auto Scaling groups** at **desired=2** (portal/React, REST/Spring Boot, Haystack in **private app** subnets; Neo4j in **private data** subnets), a **public ALB for the portal only**, dedicated **internal** ALBs for REST and Haystack, an **internal Bolt NLB**, **two Multi-AZ RDS** in the data subnet group, and **two NAT Gateways** (**8 EC2**; `LabRole`, no Marketplace AMI). **Paid (§6P):** the same tiers in a **separate** account — HTTPS, OIDC / created IAM, and an optional Marketplace AMI in *our* data-subnet ASG. REST, Haystack, RDS, and Neo4j are not internet-facing. **EKS is allowed and still the wrong default.**
+That still selects a **simple three-tier VPC**. **Academy (§6):** four **Auto Scaling groups** at **desired=2** (portal/React, REST/Spring Boot, Haystack in **private app** subnets; Neo4j in **private data** subnets), a **public ALB for the portal :80**, a dedicated **internet-facing REST ALB :8080**, a dedicated **internal** Haystack ALB, an **internal Bolt NLB**, **two Multi-AZ RDS** in the data subnet group, and **two NAT Gateways** (**8 EC2**; `LabRole`, no Marketplace AMI). **Paid (§6P):** the same tiers in a **separate** account — HTTPS, OIDC / created IAM, and an optional Marketplace AMI in *our* data-subnet ASG. Haystack, RDS, and Neo4j are not internet-facing. REST **ALB** is. **EKS is allowed and still the wrong default.**
 
 **Two GitHub Actions pipelines** are the trigger:
 
 - **CI** (app Release): **creates the Docker image**.
 - **CD Academy** (`aws-infra-academy.yml`): same maintainer **Environment `academy` copy** → Terraform → **`sync-secrets`** → pull that image → Ansible. `stop` pauses; `destroy` runs `terraform destroy` on Academy state.
-- **CD Paid** (`aws-infra-paid.yml`): same maintainer **Environment `paid` copy** + OIDC → Terraform → **`sync-secrets`** → pull that image → Ansible. `destroy` is paid state only.
+- **CD Paid** (`aws-infra-paid.yml`): same maintainer **Environment `AWS_ACTUAL` copy** + OIDC → Terraform → **`sync-secrets`** → pull that image → Ansible. `destroy` is paid state only.
 
 EC2s never read GitHub. They retrieve **AWS Secrets Manager**. CD updates those AWS secrets from the GitHub Environment secrets the maintainer configured (and copied onto the CD repo).
 

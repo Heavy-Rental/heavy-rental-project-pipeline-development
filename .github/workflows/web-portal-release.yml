@@ -1,27 +1,35 @@
 # =============================================================================
 # Heavy Rental Web Portal — Release CI Pipeline (reusable)
 # =============================================================================
-# Stages:
-#   1. Integration       — checkout, Node 22, npm ci, install health
-#   2. Quality Control   — ESLint + TypeScript (needs Integration)
-#   3. Security Testing  — Semgrep + npm audit + Trivy (needs Integration)
-#   4. CodeQL Analysis   — GitHub CodeQL for JavaScript/TypeScript (needs Integration)
-#   5. Packaging         — Vite dist zip + Docker image (needs Integration + QC + Security + CodeQL)
-#   Security report format (standard): SARIF 2.1.0
-#     - Semgrep → semgrep.sarif + semgrep.json + semgrep.txt (all severities)
-#     - npm audit → npm-audit.sarif (converted from audit JSON)
-#     - Trivy FS → trivy-fs.sarif
-#     - CodeQL → GitHub Code Scanning (native SARIF via analyze)
+# Stages (priority order — Integration is highest priority):
+#   1. Integration      (HIGHEST) checkout master, Node 22, npm ci, install health
+#   2. Quality Control  needs Integration — ESLint + TypeScript
+#   3. Packaging        needs Integration + QC — vite build --mode api + nginx tar
+#   4. DAST             needs Packaging — run image, OWASP ZAP + Dastardly + Nuclei
+#                       + combined-dast-report.pdf (artifact dast-combined-report-pdf)
+#   5. Publish          needs Integration + Packaging + DAST — public GHCR +
+#                       GitHub Release on master
 #
-# Same gates as integration-pipeline.yml, plus production build + versioned
-# archive artifacts for deploy pipelines to consume.
+# SAST/CodeQL/REST Endpoint Tests live on Integration CI (develop), not Release.
+# DAST (Release): ZAP JSON/HTML, Dastardly XML, Nuclei JSONL, plus
+#   combined-dast-report.pdf (artifact dast-combined-report-pdf).
+#
+# GitHub Flow
+# --------------------------------------------------------------------------
+# Invoked via portal-release-caller.yml on workflow_dispatch
+# (Actions → Release → Run workflow).
+# Do not use on: release — Publish creates the GitHub Release.
+# Feature-branch PR validation remains portal-ci-caller.yml (Integration first).
+#
+#   feature → develop (CI) → merge to master → workflow_dispatch this pipeline
 #
 # Packaging output (Vite SPA static deploy):
-#   npm run build → dist/ (index.html + assets/*.js|*.css|…)
+#   tsc -b + vite build --mode api → dist/ (index.html + assets/*.js|*.css|…)
 #   Deploy archive: .zip of dist/ contents (web-server static root)
 #   Docker image:   always-generated nginx serving dist/ (SPA try_files);
-#                   app Dockerfile is not the deploy image. GHCR
-#                   heavy_rental_web_portal:<semver> + :latest (not on PR)
+#                   app Dockerfile is not the deploy image. Packaging does
+#                   not docker push; Publish pushes GHCR after DAST:
+#                   heavy_rental_web_portal:<semver> + :latest
 #                   <semver> is previous GHCR x.y.z patch-bumped (first: 1.0.0)
 #                   Packaging starts the image and requires GET / + SPA fallback
 #   Cloud-ready: tsc + vite build --mode api (Spring login / cart / deposit).
@@ -30,7 +38,7 @@
 #   Baked nginx is try_files only so CD can mount /api → SM REST_BASE_URL.
 #
 # Application:
-#   https://github.com/SA62-team1/heavy-rental-react-web-portal
+#   https://github.com/Heavy-Rental/heavy-rental-react-web-portal
 #   React 19 + TypeScript + Vite 8 (npm)
 #
 # How the portal uses this on release
@@ -42,10 +50,6 @@
 #
 # This file exposes only workflow_call (no push / PR / workflow_dispatch).
 # A gate job rejects any caller other than portal-release-caller.yml.
-#
-# Invoked via portal-release-caller.yml when:
-#   - a GitHub Release is published, or
-#   - a pull request is opened/updated from develop → master
 #
 # The caller invokes this workflow with:
 #   uses: ./.github/workflows/release-pipeline.yml
@@ -76,12 +80,12 @@ on:
       app_ref:
         description: >
           Override git ref (branch/tag/SHA). Leave empty to use the calling
-          workflow's commit (github.sha) — correct for release / develop→master PR.
+          workflow's commit (github.sha). Release checkout is master.
         required: false
         type: string
         default: ""
 
-# One run per release tag or develop→master PR; do not cancel in-flight packaging
+# One run per repository; do not cancel in-flight packaging
 concurrency:
   group: web-portal-release-${{ github.workflow }}-${{ github.repository }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: false
@@ -318,7 +322,7 @@ jobs:
         run: npx tsc -b --pretty false
 
   # ---------------------------------------------------------------------------
-  # 3. Security testing — SAST + SCA + filesystem vulnerability scan
+  # 3. Packaging — Vite dist zip + nginx image tar (needs Integration + QC)
   # ---------------------------------------------------------------------------
   packaging:
     name: Packaging
@@ -937,11 +941,7 @@ jobs:
             echo ""
             echo "1. **Zip** — download \`web-portal-package\` and unzip so \`index.html\` is the web root (nginx/IIS/S3/Azure static)."
             echo "2. **Image archive** — \`docker load < ${IMAGE_TAR}\` then run \`${IMAGE_LOCAL}\` (maps port 80)."
-            if [ "${EVENT_NAME}" != "pull_request" ]; then
-              echo "3. **GHCR** — \`docker pull ${IMAGE_REMOTE}\` or \`docker pull ${IMAGE_REMOTE_LATEST}\`."
-            else
-              echo "3. **GHCR** — push skipped on pull_request; image is available as the tar artifact only."
-            fi
+            echo "3. **GHCR** — Publish (after DAST) pushes \`${IMAGE_REMOTE}\` and \`:latest\`. Packaging only uploads the tar."
           } >> "$GITHUB_STEP_SUMMARY"
 
   dast:

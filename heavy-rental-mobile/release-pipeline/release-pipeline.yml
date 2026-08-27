@@ -2,31 +2,28 @@
 # Heavy Rental Mobile — Release CI Pipeline (reusable)
 # =============================================================================
 # Stages (priority order — Integration is highest priority):
-#   1. Integration      (HIGHEST) checkout, JDK 17, Android SDK, Gradle, layout
+#   1. Integration      (HIGHEST) checkout master, JDK 17, Android SDK, Gradle, layout
 #   2. Quality Control  needs Integration — lintDebug, testDebugUnitTest, assembleDebug
-#   3. Security Testing needs Integration — SAST (Semgrep) + SCA/FS (Trivy)
-#   4. CodeQL Analysis  needs Integration — GitHub CodeQL (Java/Kotlin)
-#   5. Packaging        needs Integration + QC + Security + CodeQL — unsigned APK
+#   3. Packaging        needs Integration + QC — unsigned assembleRelease APK
+#   4. DAST             needs Packaging — MobSF static scan of the APK
+#                       + combined-dast-report.pdf (artifact dast-combined-report-pdf)
+#   5. Publish          needs Integration + Packaging + DAST — GitHub Release on
+#                       master (unsigned APKs + DAST reports; no GHCR)
 #
-# Security report format (standard): SARIF 2.1.0
-#   - Semgrep → semgrep.sarif
-#   - Trivy FS → trivy-fs.sarif
-#   - CodeQL → GitHub Code Scanning (native SARIF via analyze)
+# SAST/CodeQL/Mock Contract Tests live on Integration CI (develop), not Release.
 # DAST (Release): MobSF JSON/PDF plus combined-dast-report.pdf
 #   (artifact dast-combined-report-pdf).
 #
 # GitHub Flow (https://docs.github.com/en/get-started/using-github/github-flow)
 # --------------------------------------------------------------------------
-# Invoked via mobile-release-caller.yml when:
-#   - a GitHub Release is published, or
-#   - a pull request is opened/updated from develop → master
+# Invoked via mobile-release-caller.yml on workflow_dispatch
+# (Actions → Release → Run workflow).
+# Do not use on: release — Publish creates the GitHub Release.
 # Feature-branch PR validation remains mobile-ci-caller.yml (Integration first).
 #
-#   feature → develop (CI) → PR develop→master and/or publish GitHub Release
-#     → this pipeline
+#   feature → develop (CI) → merge to master → workflow_dispatch this pipeline
 #
-# Same gates as integration-pipeline.yml (no mock contract job), plus
-# unsigned assembleRelease APK artifacts. No Play signing and no GHCR in v1.
+# Unsigned assembleRelease APK artifacts. No Play signing and no GHCR in v1.
 #
 # Application:
 #   https://github.com/Heavy-Rental/heavy-rental-mobile

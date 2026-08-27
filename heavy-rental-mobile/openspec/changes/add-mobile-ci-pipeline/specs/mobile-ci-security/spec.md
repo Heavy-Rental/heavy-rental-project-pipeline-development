@@ -10,20 +10,18 @@ Static and supply-chain scanning of the Android application. Standard report for
 Security Testing SHALL run only after Integration succeeds, in parallel with Quality Control, and SHALL scan the same application source.
 
 ### Requirement: Semgrep SAST
-Security Testing SHALL run Semgrep with Kotlin, Java, OWASP Top Ten, security-audit, secrets, CWE Top 25, FindSecBugs, Gitleaks, SQL injection, JWT, and insecure-transport rulesets, plus custom ERROR-severity rules that flag hard-coded credentials in properties/env/Gradle/YAML, JDBC URLs with embedded user:password, and hard-coded password/secret assignments in Java and Kotlin. It SHALL always attempt to write `semgrep.sarif`, `semgrep.json`, and `semgrep.txt` covering all severities (not only ERROR). It SHALL fail the job only when ERROR-severity findings exist (or Semgrep cannot complete the gate scan).
+Security Testing SHALL run Semgrep with Kotlin, Java, OWASP Top Ten, security-audit, secrets, CWE Top 25, FindSecBugs, Gitleaks, SQL injection, JWT, and insecure-transport rulesets, plus custom ERROR-severity rules that flag hard-coded credentials in properties/env/Gradle/YAML, JDBC URLs with embedded user:password, and hard-coded password/secret assignments in Java and Kotlin. It SHALL always attempt to write `semgrep.sarif` covering all severities (not only ERROR). The ERROR-only gate SHALL print text findings to the job log; it SHALL NOT require `semgrep.json` or `semgrep.txt` files. It SHALL fail the job only when ERROR-severity findings exist (or Semgrep cannot complete the gate scan).
 
 #### Scenario: SARIF written on clean scan
 - GIVEN Semgrep finds no ERROR-severity issues
 - WHEN Security Testing runs
 - THEN `security-reports/semgrep.sarif` exists
-- AND `security-reports/semgrep.json` exists
-- AND `security-reports/semgrep.txt` exists
 - AND the Semgrep gate step succeeds
 
 #### Scenario: full report when ERROR gate fails
 - GIVEN Semgrep reports at least one ERROR-severity finding
 - WHEN the Semgrep gate fails
-- THEN `semgrep.sarif`, `semgrep.json`, and `semgrep.txt` are still uploaded when present
+- THEN `semgrep.sarif` is still uploaded when present
 
 #### Scenario: ERROR findings fail the job
 - GIVEN Semgrep reports at least one ERROR-severity finding
@@ -73,7 +71,7 @@ Security Testing SHALL combine present scanner outputs under `security-reports/`
 - AND a check named `Security combined report (PDF)` is created when the Checks API accepts the request
 
 ### Requirement: Publish SARIF
-Security Testing SHALL upload Semgrep SARIF/JSON/text and Trivy SARIF files as a workflow artifact and SHALL attempt to publish SARIF to GitHub Code Scanning. A Code Scanning upload failure SHALL NOT fail the job.
+Security Testing SHALL upload Semgrep and Trivy SARIF files (and the combined PDF when present) as a workflow artifact and SHALL attempt to publish SARIF to GitHub Code Scanning. A Code Scanning upload failure SHALL NOT fail the job.
 
 #### Scenario: Code Scanning optional
 - GIVEN SARIF files exist and the Code Scanning API rejects the upload

@@ -1,5 +1,6 @@
-# Haystack app CD (paid). Not CI. Not terraform apply.
-# Copy to: .github/workflows/haystack-cd-paid.yml
+# Haystack app CD (paid). STUDY STUB. Not CI. Not terraform apply.
+# Live: ../../haystack-fast-api-pipeline/deploy-pipeline/haystack-cd-paid-caller.yml
+# Environment AWS_ACTUAL (not "paid"). GHCR haystack_recommender.
 # Order: infra Terraform creates EC2 → infra Ansible first compose
 #        → THIS workflow re-runs compose on asg-haystack with a new CI image.
 # OIDC only. No Vocareum keys. No instance IDs on the form.
@@ -19,10 +20,10 @@ on:
           - configure-only
           - verify
       aws_environment:
-        description: Must be paid
+        description: Must be AWS_ACTUAL
         required: true
         type: environment
-        default: paid
+        default: AWS_ACTUAL
       image_ref:
         description: Optional GHCR/ECR tag or https tar URL
         required: false

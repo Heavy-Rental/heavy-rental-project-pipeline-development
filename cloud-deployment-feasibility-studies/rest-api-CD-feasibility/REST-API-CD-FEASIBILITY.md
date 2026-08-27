@@ -1,10 +1,23 @@
 # Feasibility study: CD for heavy-rental-rest-api
 
-**Status:** Study only. Example workflows are stubs. This file does not apply Terraform or deploy a live service.
+## As-built (read this first)
 
-**Destinations:** same two AWS accounts as [`../AWS-INFRASTRUCTURE-FEASIBILITY.md`](../AWS-INFRASTRUCTURE-FEASIBILITY.md) — **Academy** and **Paid**. Environments `academy` / `paid`. One run must never touch the other.
+This file is a **design record**. Living specs: [`../../heavy-rental-rest-api/specification/`](../../heavy-rental-rest-api/specification/). Folder index: [`../README.md`](../README.md).
 
-**Manually triggered after the estate is up.** It does **not** create the VPC, `asg-rest`, the internal REST ALB, or RDS. If `asg-rest` is missing, **fail** and run infra CD `action=apply` first. Live Academy workflow (discover **and** compose) is in `heavy-rental-rest-api/deploy-pipeline/`. Infra **`apply`** still first-composes REST. Infra **`configure-only`** does **not** compose REST — use this app CD (or `apply` for first compose).
+| Study body (original) | As-built |
+| --- | --- |
+| GitHub Environment `paid` | **`AWS_ACTUAL`** (REST ADR 0008; infra ADR 0017) |
+| REST ALB internal | **Internet-facing :8080**; `asg-rest` stays private (infra ADR 0018) |
+| Paid REST CD later | **Delivered:** `rest-api-cd-paid-caller.yml` |
+| GHCR `heavy-rental-rest-api` | **`ghcr.io/<owner>/heavy_rental_rest_api:<semver>`** + `:latest` |
+| GHCR not pushed on develop→master PR | Release is **`workflow_dispatch` only**; Publish always pushes public GHCR on success |
+| REST Release secrets `REST_API_CLOUD_DB_*` | QC uses `REST_API_DB_*` (local Docker Postgres). CD does not read those names |
+
+**Status:** Study + as-built table. Example workflows are stubs.
+
+**Destinations:** same two AWS accounts as [`../AWS-INFRASTRUCTURE-FEASIBILITY.md`](../AWS-INFRASTRUCTURE-FEASIBILITY.md) — **Academy** and **Paid**. Environments `academy` / `AWS_ACTUAL`. One run must never touch the other.
+
+**Manually triggered after the estate is up.** It does **not** create the VPC, `asg-rest`, the REST ALB, or RDS. If `asg-rest` is missing, **fail** and run infra CD `action=apply` first. Live Academy workflow (discover **and** compose) is in `heavy-rental-rest-api/deploy-pipeline/`. Infra **`apply`** still first-composes REST. Infra **`configure-only`** does **not** compose REST — use this app CD (or `apply` for first compose).
 
 **The hard problem** is discovering the **private** EC2 (no public IP; IDs change after Start Lab). Do not type instance IDs on the form.
 
@@ -60,14 +73,14 @@ From `heavy-rental-rest-api/release-pipeline/release-pipeline.yml`:
 | Artifact | When | CD use |
 | --- | --- | --- |
 | Image tar (`tomcat:10.1-jdk21-temurin` + `ROOT.war`, Java **21**) | Always on Packaging | Academy: `docker load` or ECR in-region |
-| GHCR `ghcr.io/<owner>/heavy-rental-rest-api:<version>` and `:latest` | Non-PR / published Release | Paid (Academy if pull works). **Not** pushed on develop→master PR |
+| GHCR `ghcr.io/<owner>/heavy_rental_rest_api:<semver>` and `:latest` | Publish on `workflow_dispatch` | Academy and paid if GHCR pull works |
 | Versioned + stable WAR | Always | Optional; image is enough |
 
 Image contract: **`tomcat:10.1-jdk21-temurin`** serving `ROOT.war` on **`:8080`**. Java **21**. Build does **not** start Postgres or Haystack. Release **refuses** baked `POSTGRES_*` / `SPRING_DATASOURCE_*` / `HAYSTACK_*` / Stripe / JWT and proves dummy runtime env (ADR 0007). `spring-datasource.env` is a workflow artifact (no password), **not** in the image.
 
 Port **8080**. Health `GET /actuator/health` or `/`. Password is **not** in the image; CD uses Secrets Manager (`heavy-rental/rest`).
 
-CI Environments: **`integration`** (`REST_API_DB_*`) and **`production`** (`REST_API_CLOUD_DB_*`). Those names are **not** CD `POSTGRES_*` / `SPRING_DATASOURCE_PASSWORD`. See AWS study §6.0c.
+CI Environments: **`integration`** and **`production`** both use `REST_API_DB_*` (local Docker Postgres). Those names are **not** CD `POSTGRES_*` / `SPRING_DATASOURCE_PASSWORD`. See AWS study §6.0c.
 
 Specs: [`../../heavy-rental-rest-api/specification/`](../../heavy-rental-rest-api/specification/).
 
@@ -78,7 +91,7 @@ Specs: [`../../heavy-rental-rest-api/specification/`](../../heavy-rental-rest-ap
 | Piece | Value |
 | --- | --- |
 | Compute | **`asg-rest`**, private app subnets, estate default **desired=2**, InService, SSM Online |
-| Ingress | **Internal** ALB `tg-rest` **:8080**. Never public |
+| Ingress | **Internet-facing** ALB `tg-rest` **:8080** (ADR 0018). Guests stay private; no public IP |
 | Data | SoR RDS `heavy_rental` on **:5432** (`sg-rest` → `sg-rds`). Haystack via **internal** Haystack ALB (`HAYSTACK_BASE_URL`, `sg-rest` → `sg-alb-haystack` **:8000**). REST does **not** open Bolt. Academy has **two** RDS; REST uses the SoR instance only. Haystack may still read SoR `:5432` for sync. |
 | Secret | `heavy-rental/rest` (Postgres fields, Stripe **secret** + webhook + publishable, `HAYSTACK_BASE_URL`) |
 | Limits | §6.4a: Tomcat `mem_limit: 1g`, `cpus: 1.0` on `t3.small` |
@@ -135,10 +148,10 @@ AWS keys **do not** push GHCR (CI `GITHUB_TOKEN`). On **Academy**, paste the thr
 | Store | REST app CD |
 | --- | --- |
 | GitHub `academy` | **Runner only:** three Vocareum keys + `AWS_REGION`. App passwords optional if SM is already filled |
-| GitHub `paid` | **Runner only:** OIDC. No access keys |
+| GitHub `AWS_ACTUAL` | **Runner only:** OIDC. No access keys |
 | AWS `heavy-rental/rest` | **Instance (`LabRole`):** `POSTGRES_*` / `SPRING_DATASOURCE_*`, `HAYSTACK_BASE_URL`, `STRIPE_API_KEY`, `STRIPE_WEBHOOK_SECRET`, `STRIPE_PUBLISHABLE_KEY` |
 
-Do not put `sk_` in the image. Do not use CI `REST_API_CLOUD_DB_*` as the RDS hostname — `sync-secrets` **builds** JDBC from Terraform + CD password. Fail deploy if `describe-secret` for `heavy-rental/rest` fails. See AWS study **§8.2** and **§8.7**.
+Do not put `sk_` in the image. Do not use CI `REST_API_DB_*` as the RDS hostname — `sync-secrets` **builds** JDBC from Terraform + CD password. Fail deploy if `describe-secret` for `heavy-rental/rest` fails. See AWS study **§8.2** and **§8.7**.
 
 ---
 
@@ -146,7 +159,7 @@ Do not put `sk_` in the image. Do not use CI `REST_API_CLOUD_DB_*` as the RDS ho
 
 | | Academy | Paid |
 | --- | --- | --- |
-| Workflow | `rest-api-cd-pipeline.example.yml` | `rest-api-cd-paid-pipeline.example.yml` |
+| Workflow | `rest-api-cd-academy-caller.yml` (example stub in this folder) | `rest-api-cd-paid-caller.yml` (example stub in this folder) |
 | Auth | Vocareum three keys | OIDC |
 | Image | Tar or ECR in-region | GHCR or paid ECR |
 | If ASG missing | Fail | Fail |
@@ -167,7 +180,7 @@ Image source is configured on the **GitHub Actions** form (`image_ref`, optional
 
 **Live:** estate first-compose (`guest_base` / `rest`) **and** REST app CD branch 2 in [`../../heavy-rental-rest-api/deploy-pipeline/`](../../heavy-rental-rest-api/deploy-pipeline/) (same roles, `--limit rest`). Example YAML **in this folder** stays fail-closed.
 
-**Still later:** paid/OIDC REST CD. Academy Haystack / portal app CD already live in their pipeline trees. Delivery split: [`IMPLEMENTATION-PLAN.md`](IMPLEMENTATION-PLAN.md).
+**Paid/OIDC REST CD is delivered** (`rest-api-cd-paid-caller.yml`). Delivery split (Academy branches 1–2): [`IMPLEMENTATION-PLAN.md`](IMPLEMENTATION-PLAN.md).
 
 ---
 

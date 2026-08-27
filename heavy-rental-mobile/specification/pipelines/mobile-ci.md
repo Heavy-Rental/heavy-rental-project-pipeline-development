@@ -2,11 +2,11 @@
 
 **Application:** https://github.com/Heavy-Rental/heavy-rental-mobile  
 **Authoring tree:** `heavy-rental-mobile/` in this pipeline-development repo  
-**Stack:** Android / Kotlin (JVM 17) / Jetpack Compose / Gradle wrapper (app-declared; documented as 9.6.1 when this spec was written) / OpenAPI mocks on `:8081`
+**Stack:** Android / Kotlin (JVM 17) / Jetpack Compose / Gradle wrapper (app-declared; documented as 9.6.1 when this spec was written) / OpenAPI Mockoon on `:8081`
 
 Workflows call `./gradlew`. They do not pin a Gradle version in YAML; the wrapper in the application repo is the source of truth.
 
-This family validates the app and produces an unsigned APK. There is **no Academy CD** and no GHCR image.
+This family validates the app and produces an unsigned APK, then MobSF DAST and a GitHub Release. There is **no Academy CD** and no GHCR image.
 
 ## GitHub Flow
 
@@ -26,18 +26,40 @@ On `pull_request`, Integration looks up `mobile-fast-feedback-caller.yml` for th
 assert-caller
       │
       ▼
- Integration
+ Integration          PR: reuse Fast Feedback for the head SHA (skip Android SDK / Gradle / layout)
+                      else: JDK 17 + Android SDK + Gradle wrapper + :app:preBuild + layout
       │
       ├── Quality Control         lintDebug + testDebugUnitTest + assembleDebug
-      ├── Security Testing        Semgrep + Trivy (SARIF)
+      ├── Security Testing        Semgrep + Trivy (SARIF) + combined PDF
       ├── CodeQL Analysis         java-kotlin
-      └── Mock Contract Tests     mock:prepare + Prism + mock:verify
+      └── Mock Contract Tests     mock:mockoon + mock:verify (required; optional mock:prepare)
       │
       ▼
  GitHub Flow CI Gate
 ```
 
-Release adds **Packaging** (`assembleRelease` unsigned APK) after Integration + QC + Security + CodeQL. Release does **not** run Mock Contract Tests.
+## Job graph (Release)
+
+SAST, CodeQL, and Mock Contract Tests stay on Integration CI (`develop`). Release does **not** rerun them. The caller is `workflow_dispatch` only (it **creates** the GitHub Release; it must not use `on: release`). Always checkout **`master`**.
+
+```
+assert-caller
+      │
+      ▼
+ Integration          checkout master, JDK 17 + Android SDK + Gradle, layout
+      │
+      ▼
+ Quality Control      lintDebug + testDebugUnitTest + assembleDebug
+      │
+      ▼
+ Packaging            unsigned assembleRelease (needs Integration + QC only)
+      │
+      ▼
+ DAST                 MobSF static scan of the APK + combined-dast-report.pdf
+      │
+      ▼
+ Publish              GitHub Release on master (unsigned APKs + DAST reports; no GHCR)
+```
 
 ## Android tools
 
@@ -47,12 +69,14 @@ Release adds **Packaging** (`assembleRelease` unsigned APK) after Integration + 
 | Android SDK | `compileSdk` / build-tools **35** (`ANDROID_COMPILE_SDK`, `ANDROID_BUILD_TOOLS`) |
 | Build | Gradle wrapper (`./gradlew --no-daemon`) |
 | QC | `:app:lintDebug` + `:app:testDebugUnitTest` + `:app:assembleDebug` |
-| Mocks | Node scripts `mock:prepare` / `mock:prism` / `mock:verify` on `:8081` |
-| SAST / SCA | Semgrep `p/kotlin` `p/java` + OWASP / audit / secrets / CWE Top 25 / FindSecBugs / Gitleaks / SQL injection / JWT / insecure-transport, plus custom ERROR rules for plaintext credentials (reports: `semgrep.sarif` + `semgrep.json` + `semgrep.txt`, ERROR-only gate); Trivy FS SARIF |
+| Mocks | Node scripts `mock:mockoon` + `mock:verify` on `:8081` (optional `mock:prepare`; `MOCK_EXPECT_ECHO=1`; fail if Mockoon/verify missing; Prism is not used in CI) |
+| SAST / SCA | Semgrep `p/kotlin` `p/java` + OWASP / audit / secrets / CWE Top 25 / FindSecBugs / Gitleaks / SQL injection / JWT / insecure-transport, plus custom ERROR rules for plaintext credentials (report: `semgrep.sarif`, ERROR-only gate); Trivy FS SARIF |
 | Human security report | Combined PDF artifact `security-combined-report-pdf`; download from the PR Checks tab (workflow Summary → Artifacts, or Security Testing job summary) |
 | Human DAST report | Combined PDF artifact `dast-combined-report-pdf` (`dast-reports/combined-dast-report.pdf`); download from the Release run Summary → Artifacts, the DAST job summary link, or the GitHub Release |
 | Code scanning | CodeQL `java-kotlin` |
 | Package | `:app:assembleRelease` unsigned APK |
+| DAST | MobSF static scan of the unsigned APK (Release only) |
+| Publish | `gh release create` on `master` (no GHCR) |
 
 ## GitHub Actions
 
@@ -72,7 +96,7 @@ Floating major tags (ADR 0005; same style as REST/portal CI). Pins must match th
 | `aquasecurity/trivy-action` | v0.36.0 |
 | `github/codeql-action` (`init`, `analyze`, `upload-sarif`) | v4 |
 
-No repository secrets are required for v1.
+No repository secrets are required for v1. Integration CI requests `checks: write` so the combined security PDF can appear on the PR Checks tab. Release requests `contents: write` (GitHub Release) and does **not** request `packages: write`.
 
 ## Branch protection (application repo `develop`)
 
@@ -112,13 +136,13 @@ Copy each pair into `Heavy-Rental/heavy-rental-mobile`:
 .github/workflows/release-pipeline.yml
 ```
 
-`DEFAULT_APP_REPOSITORY` is `Heavy-Rental/heavy-rental-mobile`. When the caller runs **in** the app repo, checkout is the calling repo (into `app/`).
+`DEFAULT_APP_REPOSITORY` is `Heavy-Rental/heavy-rental-mobile`. When the caller runs **in** the app repo, checkout is the calling repo (into `app/`). Release always checks out **`master`**.
 
 ## Pipeline boundaries
 
 | Concern | In this family? |
 | --- | --- |
-| Fast Feedback, Integration CI, unsigned Release APK | Yes |
+| Fast Feedback, Integration CI, unsigned Release APK, MobSF DAST, GitHub Release | Yes |
 | Env-driven Docker image / GHCR | No — not a container family |
 | Emulator / `connectedAndroidTest` | No |
 | Play signing, keystore, Firebase App Distribution | No |
@@ -130,4 +154,4 @@ Copy each pair into `Heavy-Rental/heavy-rental-mobile`:
 
 - OpenSpec: [`../../openspec/changes/add-mobile-ci-pipeline/`](../../openspec/changes/add-mobile-ci-pipeline/)
 - OpenSPDD: [`../../spdd/analysis/add-mobile-ci-pipeline.md`](../../spdd/analysis/add-mobile-ci-pipeline.md)
-- ADRs: [`../../docs/adr/`](../../docs/adr/)
+- ADRs: [`../../docs/adr/`](../../docs/adr/) (0001–0007)
