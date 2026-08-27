@@ -14,8 +14,8 @@
 #   1. Branch from develop
 #   2. Open a pull request into develop → this workflow runs (Integration first)
 #   3. Review + green checks → merge into develop
-#   4. Release packaging → mobile-release-caller.yml on GitHub Release
-#                          publish, or on PR develop → master
+#   4. Release packaging → mobile-release-caller.yml on workflow_dispatch
+#                          (Publish creates the GitHub Release; no GHCR)
 #
 # Reusable workflow (same repository):
 #   ./.github/workflows/integration-pipeline.yml

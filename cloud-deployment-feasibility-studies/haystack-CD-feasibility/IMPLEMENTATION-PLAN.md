@@ -1,10 +1,14 @@
 # Implementation plan: Haystack FastAPI app CD (Academy)
 
+## As-built (read this first)
+
+Academy branches 1–2 **and** paid Haystack CD are **delivered** (`add-haystack-cd-academy-deploy`, `add-haystack-cd-paid-deploy`, ADR 0010, Environment `AWS_ACTUAL`). GHCR is `haystack_recommender`. Release is `workflow_dispatch` only. Living specs: [`../../haystack-fast-api-pipeline/specification/`](../../haystack-fast-api-pipeline/specification/). Body below is the original Academy two-branch split.
+
 **Contract:** [`HAYSTACK-CD-FEASIBILITY.md`](HAYSTACK-CD-FEASIBILITY.md), [`../ANSIBLE-PROCESS.md`](../ANSIBLE-PROCESS.md) §4.3, AWS study §6.0c / §6.4a.  
 **Live estate:** `heavy-rental-project-instructure-and-cloud-deploy` (`HR-162` configure). First compose on `asg-haystack` (uvicorn + sync + populate, **no** Neo4j container) already exists there.  
 **This plan is the delivery split.** Live YAML is in `haystack-fast-api-pipeline/deploy-pipeline/`.
 
-**Status:** Infra branches 1–3 exist. Portal CD and REST CD branch 2 exist. Haystack CD **branch 1** (discover) and **branch 2** (compose) are in `deploy-pipeline/` (`add-haystack-cd-academy-deploy`). Paid Haystack CD is later.
+**Status:** Infra branches 1–3 exist. Haystack CD **branch 1** (discover), **branch 2** (compose), and **paid caller** are in `deploy-pipeline/`.
 
 Conflict order if that repo uses OpenSpec: OpenSpec → OpenSPDD → ADR → YAML / Ansible.
 
@@ -14,7 +18,7 @@ Conflict order if that repo uses OpenSpec: OpenSpec → OpenSPDD → ADR → YAM
 
 Manually deploy a **CI-built uvicorn image** onto the **existing** `asg-haystack` (desired=2, both InService) without Terraform and without rebuilding the app.
 
-- Image: **`python:3.12-slim-bookworm`** + uv + uvicorn `app.main:app` on **`:8000`**, GHCR `ghcr.io/<owner>/haystack-fast-api`.
+- Image: **`python:3.12-slim-bookworm`** + uv + uvicorn `app.main:app` on **`:8000`**, GHCR `ghcr.io/<owner>/haystack_recommender`.
 - Internal Haystack ALB `:8000` only. Never on the public portal listener.
 - Guest reads `heavy-rental/haystack` (Haystack RDS `POSTGRES_*` including app aliases `POSTGRES_HOSTNAME` / `POSTGRES_DB` / `POSTGRES_USER`, `DATABASE_URL`, `FLEET_BACKEND=sql`, `NEO4J_BACKEND=bolt`, `NEO4J_URI` = Bolt **NLB** — not localhost, not a guest IP — user/password, optional `LLM_API_KEY`). Password is **not** in the image.
 - Compose **uvicorn + postgres-haystack-sync + neo4j-populate**. **Must not** start a `neo4j` container.
@@ -33,7 +37,7 @@ Manually deploy a **CI-built uvicorn image** onto the **existing** `asg-haystack
 | Inventory | Same idea as infra `inventory/aws_ssm.py`, **haystack group only** (`asg-haystack`) |
 | Auth | Environment **`academy`** (same secret **names** as infra). Vocareum keys: `$GITHUB_EVENT_PATH` + `::add-mask::`. Never `${{ inputs.aws_* }}` in `env:` |
 
-Academy only in this minimum. Paid = later workflow, OIDC, **no** key fields.
+Academy only in this **minimum**. Paid caller is **delivered** (`haystack-cd-paid-caller.yml`, OIDC, **no** key fields).
 
 ---
 
@@ -122,7 +126,7 @@ Start Lab → Run workflow → `assert-lab` + `discover-targets` green. No image
 
 | Next | Why it waited |
 | --- | --- |
-| Paid Haystack CD (`haystack-cd-paid.yml`) | OIDC; no Vocareum keys |
+| Paid Haystack CD (`haystack-cd-paid-caller.yml`) | **Delivered** — OIDC; no Vocareum keys |
 | `--pull always` / digest pins | Optional hardening |
 
 Infra **`apply`** still first-composes Haystack. Infra **`configure-only`** does **not** compose Haystack. After that, use this app CD.

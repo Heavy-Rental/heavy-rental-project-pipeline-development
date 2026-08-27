@@ -1,8 +1,22 @@
 # Feasibility study: CD for heavy-rental-web-portal
 
-**Status:** Study only. Example workflows are stubs. This file does not apply Terraform or deploy a live service.
+## As-built (read this first)
 
-**Destinations:** same two AWS accounts as [`../AWS-INFRASTRUCTURE-FEASIBILITY.md`](../AWS-INFRASTRUCTURE-FEASIBILITY.md) — **Academy** (Vocareum) and **Paid**. Separate GitHub Environments (`academy`, `paid`), separate workflows. One run must never touch the other.
+This file is a **design record**. Living specs: [`../../heavy-rental-web-portal-pipeline/specification/`](../../heavy-rental-web-portal-pipeline/specification/). Folder index: [`../README.md`](../README.md).
+
+| Study body (original) | As-built |
+| --- | --- |
+| GitHub Environment `paid` | **`AWS_ACTUAL`** (portal ADR 0009; infra ADR 0017) |
+| `REST_BASE_URL` = internal REST ALB | **`http://<rest_alb_dns>:8080`** (internet-facing REST ALB, ADR 0018) |
+| Paid portal CD later | **Delivered:** `portal-cd-paid-caller.yml` |
+| GHCR `heavy-rental-web-portal` | **`ghcr.io/<owner>/heavy_rental_web_portal:<semver>`** + `:latest` |
+| GHCR only off PR / published Release | Release is **`workflow_dispatch` only**; Publish always pushes public GHCR on success |
+
+Portal ALB stays the only public **:80**. REST has its own public **:8080**. nginx `/api` still proxies.
+
+**Status:** Study + as-built table. Example workflows are stubs.
+
+**Destinations:** same two AWS accounts as [`../AWS-INFRASTRUCTURE-FEASIBILITY.md`](../AWS-INFRASTRUCTURE-FEASIBILITY.md) — **Academy** (Vocareum) and **Paid**. Separate GitHub Environments (`academy`, `AWS_ACTUAL`), separate callers. One run must never touch the other.
 
 **This CD is manually triggered after the cloud estate is already up.** It does **not** create the VPC, `asg-portal`, the public portal ALB, or RDS. If `asg-portal` is missing, the run **fails** and the operator runs infra CD `action=apply` first. Live Academy workflow (discover **and** compose) is in `heavy-rental-web-portal-pipeline/deploy-pipeline/`. Infra **`apply`** still first-composes the portal. Infra **`configure-only`** does **not** compose the portal — use this app CD (or `apply` for first compose).
 
@@ -76,7 +90,7 @@ From [`../../heavy-rental-web-portal-pipeline/release-pipeline/release-pipeline.
 | --- | --- | --- |
 | Vite `dist/` zip `heavy-rental-web-portal-v{version}-build{run}-{sha}.zip` + stable `heavy-rental-web-portal-dist.zip` | Always on Packaging | Optional; image is enough. Zip has `index.html` at archive root (web-server document root) |
 | Image tar `heavy-rental-web-portal-v{version}-build{run}-{sha}.tar.gz` | Always on Packaging | Academy-friendly: download + `docker load` on the instance (or copy to ECR in-region) |
-| GHCR `ghcr.io/<owner>/heavy-rental-web-portal:<version>` and `:latest` | Published Release / non-PR only | Paid (and Academy if GHCR pull works). **Not** pushed on `develop`→`master` PR |
+| GHCR `ghcr.io/<owner>/heavy_rental_web_portal:<semver>` and `:latest` | Publish on `workflow_dispatch` | Academy and paid if GHCR pull works |
 
 Image contract: **nginx:1.27-alpine** serving Vite `dist/` on **`:80`**, SPA `try_files $uri $uri/ /index.html`, hashed `/assets/` cached. Build does **not** start a Node/Vite process, REST, or Stripe. Release **must not** inline `VITE_*` lab URLs or `sk_` into `dist/` (ADR 0007). Stripe `pk_` is allowed.
 
@@ -152,7 +166,7 @@ Gives `REST_BASE_URL` and `STRIPE_PUBLISHABLE_KEY`. It does **not** replace ASG 
 | Input | Required | Notes |
 | --- | --- | --- |
 | `action` | Yes | `deploy` / `configure-only` / `verify` |
-| `aws_environment` | Yes | `academy` or `paid` |
+| `aws_environment` | Yes | `academy` or `AWS_ACTUAL` |
 | `image_ref` | Optional | GHCR/ECR tag, or an `https://…` tar URL. Empty = latest Release tar / `:latest` |
 | `image_http_url` | Optional | HTTPS URL of the CI `.tar.gz`. Empty = Environment `IMAGE_HTTP_URL`. Ansible `get_url` + `docker load` on the guest |
 | `aws_access_key_id` / `aws_secret_access_key` / `aws_session_token` | Academy only | Vocareum AWS Details (change every Start Lab). Empty = Environment `academy`. **Do not add these on paid.** |
@@ -205,7 +219,7 @@ aws secretsmanager describe-secret --secret-id heavy-rental/portal
 # 6. Deploy (on the instance via SSM — not on the runner)
 #    get-secret-value heavy-rental/portal → .env + nginx /api proxy
 #    docker load < heavy-rental-web-portal-*.tar.gz
-#       or: docker pull ghcr.io/<owner>/heavy-rental-web-portal:<tag>
+#       or: docker pull ghcr.io/<owner>/heavy_rental_web_portal:<tag>
 #    docker compose up -d   # nginx :80; /api → REST_BASE_URL; NO vite
 
 aws ssm send-command \
@@ -224,7 +238,7 @@ Resource limits must match the AWS study **§6.4a** so a `t3.micro` portal host 
 
 Leave ~256–512 MiB for OS + SSM + Docker. `restart: unless-stopped`. **No** `replicas > 1` on one EC2.
 
-**CI image:** Packaging in `heavy-rental-web-portal-pipeline/release-pipeline/` already builds `heavy-rental-web-portal-v…tar.gz` and (off PR) `ghcr.io/<owner>/heavy-rental-web-portal:<version>`. This CD **must** `docker load` or `docker pull` that artifact. It **must not** `npm run build` or `docker build` from source.
+**CI image:** Packaging in `heavy-rental-web-portal-pipeline/release-pipeline/` already builds a gzipped image tar; Publish pushes `ghcr.io/<owner>/heavy_rental_web_portal:<semver>`. This CD **must** `docker load` or `docker pull` that artifact. It **must not** `npm run build` or `docker build` from source.
 
 ### 5.6 Communication: public SPA, private REST (nginx `/api`, not Vite)
 
@@ -234,7 +248,7 @@ AWS study §6.6 Communication is still the contract:
 Browser  →  public portal ALB :80/:443
               →  asg-portal  (nginx + Vite dist, :80)
                     nginx location /api  →  REST_BASE_URL
-                                            (internal REST ALB :8080)
+                                            (REST ALB :8080, internet-facing ADR 0018)
                                               →  asg-rest
 ```
 
@@ -243,8 +257,8 @@ Browser  →  public portal ALB :80/:443
 | Static Vite SPA interfaces the **public** ALB | **Yes** | Browser loads `index.html` + hashed assets from `tg-portal` :80 |
 | Something on the portal host talks to the **internal** REST ALB | **Yes** | nginx on `asg-portal` `proxy_pass`es `/api` to `REST_BASE_URL` |
 | A **Vite server** in AWS talks to REST | **No** | CI ships static `dist/` on nginx. `vite` / `npm run dev` is local only |
-| Browser `fetch()` to the internal REST ALB DNS | **No** | That name is private. The JS bundle must not contain it |
-| REST on the public ALB so the SPA can call it | **No** | AWS study forbids public 8080. Portal is the only public target |
+| Browser `fetch()` to the REST ALB DNS | **As-built: allowed** | ADR 0018 CORS includes portal + REST ALB. Do **not** bake that DNS into a Vite `VITE_*` bundle; prefer same-origin `/api` |
+| REST on the **portal** ALB so the SPA can call it | **No** | Portal listener stays :80. REST has its **own** internet-facing ALB :8080 |
 
 **Why CD must add the proxy.** CI `nginx-spa.conf` is:
 
@@ -258,7 +272,7 @@ location /assets/ { … immutable cache … }
 No `/api`. App CD (and infra first-compose) writes a guest snippet, for example:
 
 ```
-# REST_BASE_URL from heavy-rental/portal (internal ALB, e.g. http://internal-…elb.amazonaws.com:8080)
+# REST_BASE_URL from heavy-rental/portal (REST ALB, e.g. http://<rest-alb-dns>:8080)
 location /api/ {
   proxy_pass         ${REST_BASE_URL}/;
   proxy_http_version 1.1;
@@ -281,8 +295,8 @@ Mount that file over `/etc/nginx/conf.d/default.conf` (or `include` it) so a new
 | Store | Portal CD |
 | --- | --- |
 | GitHub Environment `academy` | **Runner only:** `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_SESSION_TOKEN` (+ `AWS_REGION`). Same names as infra CD |
-| GitHub Environment `paid` | **Runner only:** OIDC `AWS_ROLE_TO_ASSUME`. **Fail** if `AWS_ACCESS_KEY_ID` is set |
-| AWS `heavy-rental/portal` | What the **instance (`LabRole`)** reads: `REST_BASE_URL` (internal REST ALB), `STRIPE_PUBLISHABLE_KEY` (`pk_…` only) |
+| GitHub Environment `AWS_ACTUAL` | **Runner only:** OIDC `AWS_ROLE_TO_ASSUME`. **Fail** if `AWS_ACCESS_KEY_ID` is set |
+| AWS `heavy-rental/portal` | What the **instance (`LabRole`)** reads: `REST_BASE_URL` (`http://<rest_alb_dns>:8080`), `STRIPE_PUBLISHABLE_KEY` (`pk_…` only) |
 
 ```
 Runner (academy three keys) → sts, describe-asg, ssm, describe-secret, optional ECR push
@@ -301,8 +315,8 @@ Inventory: AWS study **§6.0c** and **§8.7**. Portal CI uses **no** `academy`/`
 
 | | Academy | Paid |
 | --- | --- | --- |
-| Workflow | `web-portal-cd-academy.yml` (example: `web-portal-cd-pipeline.example.yml`) | `web-portal-cd-paid.yml` |
-| Environment | `academy` | `paid` |
+| Workflow | `portal-cd-academy-caller.yml` + reusable (example stub in this folder) | `portal-cd-paid-caller.yml` (same reusable) |
+| Environment | `academy` | `AWS_ACTUAL` |
 | Auth | Vocareum access key + session token | OIDC `AWS_ROLE_TO_ASSUME` |
 | Image | Prefer **tar** or ECR in-region (LabRole pull-only on ECR) | GHCR or paid ECR |
 | Connect | SSM + `LabInstanceProfile` | SSM + instance profile |
@@ -350,7 +364,7 @@ Actions → Run workflow  (action + environment; optional image_ref)
 
 **Live:** estate first-compose (`guest_base` / `portal`) **and** portal app CD branch 2 in [`../../heavy-rental-web-portal-pipeline/deploy-pipeline/`](../../heavy-rental-web-portal-pipeline/deploy-pipeline/) (same roles, `--limit portal`). Example YAML **in this folder** stays fail-closed.
 
-**Still later:** paid/OIDC portal CD. Academy REST / Haystack app CD already live in their pipeline trees. Delivery split: [`IMPLEMENTATION-PLAN.md`](IMPLEMENTATION-PLAN.md).
+**Paid/OIDC portal CD is delivered** (`portal-cd-paid-caller.yml`). Delivery split (Academy branches 1–2): [`IMPLEMENTATION-PLAN.md`](IMPLEMENTATION-PLAN.md).
 
 ---
 

@@ -2,7 +2,7 @@
 
 ## Context
 
-This pipeline-development repo already authors REST API and web-portal workflows as **reusable `workflow_call` files + sole-allowed callers**. The mobile application is Kotlin/Compose on JDK 17, Gradle wrapper 9.6.1, `compileSdk` 35, with JVM unit tests under `app/src/test` and Node mock tooling (`mock:prepare`, `mock:prism`, `mock:verify`) on port 8081.
+This pipeline-development repo already authors REST API and web-portal workflows as **reusable `workflow_call` files + sole-allowed callers**. The mobile application is Kotlin/Compose on JDK 17, Gradle wrapper (app-declared), `compileSdk` 35, with JVM unit tests under `app/src/test` and Node mock tooling (`mock:prepare` optional, `mock:mockoon`, `mock:verify`) on port 8081. Application ADR 003 (returnNotes echo) is Mockoon-only.
 
 ## Goals / Non-Goals
 
@@ -11,8 +11,9 @@ This pipeline-development repo already authors REST API and web-portal workflows
 - Same GitHub Flow family as REST/portal (fast feedback / CI / release).
 - Integration is the highest-priority job; later jobs `needs: [integration]`.
 - Android-appropriate toolchain: JDK 17 Temurin + Android SDK on `ubuntu-latest`.
-- JVM lint/test/assemble as Quality Control; Prism mock verify as the contract analog of portal REST tests.
+- JVM lint/test/assemble as Quality Control; Mockoon `mock:verify` as the contract analog of portal REST tests.
 - Semgrep-safe scripts (bind `github.*` / `inputs.*` through `env:`).
+- Release packages an unsigned APK, runs MobSF DAST, and creates a GitHub Release on `workflow_dispatch`.
 
 **Non-Goals:**
 
@@ -21,6 +22,7 @@ This pipeline-development repo already authors REST API and web-portal workflows
 - GHCR or Docker images
 - Hitting a live Spring Boot backend
 - Changing the Android product `specification/` in the application repo
+- Skip-clean Mock Contract Tests when scripts are missing (portal REST tests skip; mobile fails)
 
 ## Decisions
 
@@ -28,11 +30,12 @@ This pipeline-development repo already authors REST API and web-portal workflows
 2. **JDK 17, not 21.** Matches `app/build.gradle.kts` (`JavaVersion.VERSION_17`, `jvmTarget = "17"`). REST API stays on 21; do not share that constant.
 3. **`android-actions/setup-android@v4`** for SDK + license acceptance; install `platforms;android-35` and a 35.x build-tools package.
 4. **No GitHub Environment / secrets on QC.** Mobile tests do not need Postgres.
-5. **Mock job uses `mock:prism` (headless) + `mock:verify`.** Skip cleanly only when those scripts are absent from `package.json`.
-6. **Release APK is unsigned.** Stage versioned + stable filenames. AAB only if `assembleRelease` already produces one.
+5. **Mock job uses `mock:mockoon` + `mock:verify` only (ADR 0006).** Fail if either script is absent. Do not fall back to Prism. Set `MOCK_EXPECT_ECHO=1`. `mock:prepare` is optional.
+6. **Release APK is unsigned.** Stage versioned + stable filenames. AAB only if `assembleRelease` already produces one. No GHCR.
 7. **Specs and YAML live under `heavy-rental-mobile/`.** OpenSpec, OpenSPDD, and workflow files stay with the pipeline they describe.
 8. **Integration CI reuses Fast Feedback on `pull_request`.** The CI caller does not `uses:` `fast-feedback-pipeline.yml`. Integration looks up `mobile-fast-feedback-caller.yml` for the PR head SHA, waits if in-flight, and skips Android SDK / Gradle / layout when Fast Feedback succeeded. Pending-run jq is inlined in `PENDING_ID` / `PENDING_URL` (do not assign `PENDING_FILTER`).
 9. **Floating Action majors, not SHAs.** Pin current stable tags (`checkout@v7`, `setup-java@v6`, `setup-android@v4`, `codeql-action@v4`, and peers). Do not SHA-pin like Haystack. ADR 0005 is the pin table.
+10. **Release is `workflow_dispatch` only.** It creates the GitHub Release; it must not subscribe to `on: release` or PR `develop` → `master`. Jobs: Integration (always `master`) → QC → Packaging (`needs` Integration + QC only) → DAST (MobSF) → Publish. SAST, CodeQL, and mocks stay on Integration CI.
 
 ## Risks / Trade-offs
 
@@ -43,6 +46,7 @@ This pipeline-development repo already authors REST API and web-portal workflows
 | Semgrep `p/kotlin` registry drift | Same two-pass pattern as siblings (SARIF always, ERROR gate); fail with a clear message if the ruleset 404s |
 | Unsigned APK is not store-ready | Document as v1; signing is a later OpenSpec change |
 | First-time Gradle on the runner is slow | `actions/setup-java` Gradle cache + `--no-daemon` |
+| Mockoon missing in `package.json` fails CI | Fail closed (ADR 0006); do not skip like portal REST tests |
 
 ## Migration Plan
 

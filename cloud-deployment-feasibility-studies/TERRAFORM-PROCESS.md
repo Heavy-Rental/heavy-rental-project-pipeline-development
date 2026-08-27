@@ -1,6 +1,8 @@
 # Terraform in GitHub Actions (feasibility studies)
 
-**Status:** Contract only. There is no live `.tf` in this folder. Infra example YAML `terraform` / `destroy` jobs are fail-closed stubs (`exit 1`).
+**Status:** Contract. Live Terraform is in `heavy-rental-project-instructure-and-cloud-deploy`. Example YAML in this folder stays fail-closed. As-built index: [`README.md`](README.md).
+
+**As-built:** paid GitHub Environment is **`AWS_ACTUAL`** (not `paid`). REST ALB is **internet-facing :8080**. Remote lock is S3 **`use_lockfile=true`** (no DynamoDB lock table). Two Actions, separate job graphs.
 
 **Sources:** [`AWS-INFRASTRUCTURE-FEASIBILITY.md`](AWS-INFRASTRUCTURE-FEASIBILITY.md) §7.0–§7.2d; [`aws-infra-pipeline.example.yml`](aws-infra-pipeline.example.yml); [`aws-infra-paid-pipeline.example.yml`](aws-infra-paid-pipeline.example.yml).
 
@@ -28,7 +30,7 @@ Only **infra CD**:
 | Workflow (copy name) | Environment | Auth |
 | --- | --- | --- |
 | `aws-infra-academy.yml` | `academy` | Vocareum three keys: **Run-workflow form** (they change every Start Lab) or Environment fallback. **Not paid.** |
-| `aws-infra-paid.yml` | `paid` | OIDC `vars.AWS_ROLE_TO_ASSUME` (`id-token: write`) |
+| `aws-infra-paid.yml` | `AWS_ACTUAL` | OIDC `vars.AWS_ROLE_TO_ASSUME` (`id-token: write`) |
 
 Trigger: **`workflow_dispatch` only**. Form fields: `action`, `aws_environment`, `confirm_destroy` when wiping, and on **Academy only** the three Vocareum keys (optional if Environment `academy` is set). **Paid has no key fields.**
 
@@ -59,10 +61,10 @@ assert-lab / assert-account          sts; refuse the wrong account
         │
         ▼
 Job terraform   if: action == plan || apply
-                environment: academy | paid
-  1. configure-aws-credentials@v4    three Vocareum keys  OR  role-to-assume
-  2. actions/checkout@v4             .tf from the CD repo
-  3. terraform init                  S3 backend + DynamoDB lock  (required)
+                environment: academy | AWS_ACTUAL
+  1. configure-aws-credentials       three Vocareum keys  OR  role-to-assume (live pin in infra repo)
+  2. actions/checkout                .tf from the CD repo
+  3. terraform init                  S3 backend + use_lockfile=true  (required)
   4. terraform plan                  always; no apply on action=plan
   5. terraform apply                 only if action=apply
         │
@@ -110,7 +112,7 @@ A local `terraform.tfstate` on `ubuntu-latest` is gone when the job ends. The ne
 
 | Rule | Why |
 | --- | --- |
-| `terraform init` uses **S3 + DynamoDB lock** | State survives the job; lock stops two applies |
+| `terraform init` uses **S3 + `use_lockfile=true`** | State survives the job; lock stops two applies. Do not add a DynamoDB lock table |
 | Academy key ≠ paid key | One run must never see the other estate |
 | Backend **bucket** is not in this state | Chicken-and-egg; `destroy` empties the state object, not the bucket |
 | Vocareum **Reset** deletes the bucket | Keep `.tf` in Git; re-`apply` |
@@ -130,7 +132,7 @@ Exact bucket and key names are **other project**. Actions only needs them in the
 | Security groups (portal / rest / haystack / neo4j / ALBs / NLB / RDS) | Stripe plaintext, DB passwords, PEMs |
 | Four launch templates + ASGs at **desired=2** (`LabInstanceProfile` → **`LabRole`** on Academy) | CI images, GHCR, GitHub Environments |
 | Public portal ALB + `tg-portal` :80 | `action=stop` (CLI) |
-| Internal REST ALB + `tg-rest` :8080 | App CD deploys |
+| Internet-facing REST ALB + `tg-rest` :8080 (ADR 0018) | App CD deploys |
 | Internal Haystack ALB + `tg-haystack` :8000 | |
 | Internal Bolt NLB + `tg-neo4j` :7687 | |
 | Two Multi-AZ RDS in the **data** subnet group (`publicly_accessible=false`, `deletion_protection=false`) | |
@@ -147,7 +149,7 @@ Preferred: **no** `key_name` on launch templates. PEMs wait until InService.
 
 | Output | Lands in |
 | --- | --- |
-| Internal REST ALB DNS | `heavy-rental/portal` → `REST_BASE_URL` |
+| REST ALB DNS (`http://<dns>:8080`) | `heavy-rental/portal` → `REST_BASE_URL` |
 | Internal Haystack ALB DNS | `heavy-rental/rest` → `HAYSTACK_BASE_URL` |
 | SoR RDS endpoint hostname + port | `heavy-rental/rest` → `POSTGRES_HOST` / `_PORT` / URL |
 | Haystack RDS endpoint hostname + port | `heavy-rental/haystack` → `POSTGRES_HOST` / `_PORT` / URL |
@@ -164,7 +166,7 @@ Do not echo SecretString, `sk_`, or PEMs in the job log or step summary. Public 
 - Two `aws_nat_gateway` (one per public AZ) + EIP. No NAT **instance**. No Marketplace Neo4j AMI / vendor CFT.
 - RDS: **two** instances, both `multi_az=true`; class ≤ medium; data subnet group only; no enhanced monitoring. Engine: prefer **12.22**, then **11.22** (this Vocareum image).
 - Portal / REST / Haystack / Neo4j: `min=2 desired=2 max=2` across both AZs of that tier. ALBs/NLB span both subnets. Not a causal Neo4j cluster.
-- Never register REST or Haystack on the public listener.
+- Never register Haystack on the public portal listener. REST has its **own** internet-facing ALB :8080 (not a rule on the portal ALB).
 - Never a lone `aws_instance` outside an ASG.
 
 Paid may add created IAM instance profiles and ACM HTTPS — **different state**, same three tiers. Multi-AZ RDS, Bolt NLB, and per-AZ NAT Gateways are already on Academy.

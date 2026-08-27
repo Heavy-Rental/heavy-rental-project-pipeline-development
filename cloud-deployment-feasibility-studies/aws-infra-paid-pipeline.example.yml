@@ -1,17 +1,17 @@
 # Stub example only. Live paid Action:
 #   heavy-rental-project-instructure-and-cloud-deploy/.github/workflows/aws-infra-paid.yml
 # Environment name is AWS_ACTUAL (not "paid"); S3 suffix is -actual.
-# Do not copy this stub into .github/workflows.
+# REST ALB is internet-facing :8080 (infra ADR 0018). Do not copy this stub into .github/workflows.
 #
 # Operator:
 #   1. Admin has created GitHub OIDC + IAM role github-actions-infra
-#   2. Environment "paid" variables: AWS_ROLE_TO_ASSUME, AWS_REGION
+#   2. Environment AWS_ACTUAL variables: AWS_ROLE_TO_ASSUME, AWS_REGION
 #   3. Actions → this workflow → Run workflow → choose action only
 #
 # Vocareum form keys (aws_access_key_id / secret / session_token) are Academy-only.
 # Do NOT add those workflow_dispatch inputs here.
 # Do NOT set AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY / AWS_SESSION_TOKEN
-# on Environment paid. Those names are Vocareum-only (academy pipeline).
+# on Environment AWS_ACTUAL. Those names are Vocareum-only (academy pipeline).
 #
 # Terraform/Ansible steps are stubs for the other project to fill in.
 
@@ -32,10 +32,10 @@ on:
           - stop
           - destroy
       aws_environment:
-        description: GitHub Environment for the billed AWS account (must be paid)
+        description: GitHub Environment for the billed AWS account (must be AWS_ACTUAL)
         required: true
         type: environment
-        default: paid
+        default: AWS_ACTUAL
       confirm_destroy:
         description: Type destroy to confirm (required when action=destroy)
         required: false

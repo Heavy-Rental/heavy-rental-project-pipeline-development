@@ -1,8 +1,22 @@
 # Feasibility study: CD for haystack-fast-api
 
-**Status:** Study only. Example workflows are stubs. This file does not apply Terraform or deploy a live service.
+## As-built (read this first)
 
-**Destinations:** same two AWS accounts as [`AWS-INFRASTRUCTURE-FEASIBILITY.md`](AWS-INFRASTRUCTURE-FEASIBILITY.md) — **Academy** (Vocareum) and **Paid**. Separate GitHub Environments (`academy`, `paid`), separate workflows. One run must never touch the other.
+This file is a **design record**. Living specs: [`../../haystack-fast-api-pipeline/specification/`](../../haystack-fast-api-pipeline/specification/). Folder index: [`../README.md`](../README.md).
+
+| Study body (original) | As-built |
+| --- | --- |
+| GitHub Environment `paid` | **`AWS_ACTUAL`** (Haystack ADR 0010; infra ADR 0017) |
+| Paid Haystack CD later | **Delivered:** `haystack-cd-paid-caller.yml` + shared reusable |
+| GHCR `haystack-fast-api` | **`ghcr.io/<owner>/haystack_recommender:<semver>`** + `:latest` |
+| GHCR only off PR / published Release | Release is **`workflow_dispatch` only**; Publish always pushes public GHCR on success |
+| Example YAML is the workflow | Live: [`../../haystack-fast-api-pipeline/deploy-pipeline/`](../../haystack-fast-api-pipeline/deploy-pipeline/). Examples in this folder stay stubs |
+
+Haystack ALB stays **internal**. REST ALB is internet-facing :8080 (does not change Haystack CD).
+
+**Status:** Study + as-built table. This file does not apply Terraform.
+
+**Destinations:** same two AWS accounts as [`../AWS-INFRASTRUCTURE-FEASIBILITY.md`](../AWS-INFRASTRUCTURE-FEASIBILITY.md) — **Academy** (Vocareum) and **Paid**. Separate GitHub Environments (`academy`, `AWS_ACTUAL`), separate callers. One run must never touch the other.
 
 **This CD is manually triggered after the cloud estate is already up.** It does **not** create the VPC, ASGs, ALBs, RDS, or Neo4j. If `asg-haystack` is missing (or no guest is InService), the run **fails** and the operator runs infra CD `action=apply` first. Infra leaves **desired=2**, a **Haystack RDS**, and `NEO4J_URI` pointing at the **Bolt NLB**. Live Academy workflow (discover **and** compose) is in `haystack-fast-api-pipeline/deploy-pipeline/`. Infra **`apply`** still first-composes Haystack. Infra **`configure-only`** does **not** compose Haystack. App-repo readiness: [`../../haystack-fast-api-pipeline/docs/PREPARE-HAYSTACK-REPO.md`](../../haystack-fast-api-pipeline/docs/PREPARE-HAYSTACK-REPO.md).
 
@@ -67,10 +81,10 @@ From [`haystack-fast-api-pipeline/specification/pipelines/haystack-ci.md`](../ha
 | Artifact | When | How CD uses it |
 | --- | --- | --- |
 | Image tar `haystack-fast-api-v{version}-build{run}-{sha}.tar.gz` | Always on Packaging | Academy-friendly: download + `docker load` on the instance (or copy to ECR in-region) |
-| GHCR `ghcr.io/<owner>/haystack-fast-api:<version>` and `:latest` | Published Release / non-PR only | Paid (and Academy if GHCR pull works). **Not** pushed on `develop`→`master` PR |
+| GHCR `ghcr.io/<owner>/haystack_recommender:<semver>` and `:latest` | Publish on `workflow_dispatch` | Academy and paid if GHCR pull works. Release **creates** the GitHub Release; do not subscribe to `on: release` |
 | Wheel / sdist | Always | **Not** required on EC2 if the image is used |
 
-Image contract: **`python:3.12-slim-bookworm`** + uv + **uvicorn `app.main:app` on `:8000`** (`--extra neo4j`). GHCR `ghcr.io/<owner>/haystack-fast-api`. Build does **not** start Postgres, Neo4j, or an LLM. Release **refuses** baked `POSTGRES_*` / `SOURCE_*` / `TARGET_*` and proves dummy runtime env (ADR 0008).
+Image contract: **`python:3.12-slim-bookworm`** + uv + **uvicorn `app.main:app` on `:8000`** (`--extra neo4j`). GHCR `ghcr.io/<owner>/haystack_recommender`. Build does **not** start Postgres, Neo4j, or an LLM. Release **refuses** baked `POSTGRES_*` / `SOURCE_*` / `TARGET_*` and proves dummy runtime env (ADR 0008).
 
 Runtime env (CD / Secrets Manager only): `POSTGRES_*` / `DATABASE_URL` (Haystack RDS), `SOURCE_*` (SoR / REST RDS), `TARGET_*` (Haystack RDS), `NEO4J_URI` / user / password, optional `LLM_API_KEY`. Not `bolt://neo4j:7687` and not localhost. Specs: [`../../haystack-fast-api-pipeline/specification/`](../../haystack-fast-api-pipeline/specification/).
 
@@ -138,7 +152,7 @@ Gives `NEO4J_URI` (Bolt NLB), Haystack RDS Postgres, optional LLM. It does **not
 | Input | Required | Notes |
 | --- | --- | --- |
 | `action` | Yes | `deploy` / `configure-only` / `verify` |
-| `aws_environment` | Yes | `academy` or `paid` |
+| `aws_environment` | Yes | `academy` or `AWS_ACTUAL` |
 | `image_ref` | Optional | GHCR/ECR tag, or an `https://…` tar URL. Empty = latest Release tar / `:latest` |
 | `image_http_url` | Optional | HTTPS URL of the CI `.tar.gz`. Empty = Environment `IMAGE_HTTP_URL`. Ansible `get_url` + `docker load` on the guest |
 | `aws_access_key_id` / `aws_secret_access_key` / `aws_session_token` | Academy only | Vocareum AWS Details (change every Start Lab). Empty = Environment `academy`. **Do not add these on paid.** |
@@ -191,7 +205,7 @@ aws secretsmanager describe-secret --secret-id heavy-rental/haystack
 # 6. Deploy (on the instance via SSM — not on the runner)
 #    get-secret-value heavy-rental/haystack → .env
 #    docker load < haystack-fast-api-*.tar.gz
-#       or: docker pull ghcr.io/<owner>/haystack-fast-api:<tag>
+#       or: docker pull ghcr.io/<owner>/haystack_recommender:<tag>
 #    docker compose up -d   # uvicorn :8000 + sync + populate; NO neo4j service
 
 aws ssm send-command \
@@ -213,7 +227,7 @@ Resource limits must match the AWS study **§6.4a** so a `t3.small` haystack hos
 
 Leave ~256–512 MiB for OS + SSM + Docker. `restart: unless-stopped`.
 
-**CI image:** Packaging in `haystack-fast-api-pipeline/` already builds `haystack-fast-api-v…tar.gz` and (off PR) `ghcr.io/<owner>/haystack-fast-api:<version>`. This CD **must** `docker load` or `docker pull` that artifact. It **must not** `docker build` from source.
+**CI image:** Packaging in `haystack-fast-api-pipeline/` already builds a gzipped image tar; Publish pushes `ghcr.io/<owner>/haystack_recommender:<semver>`. This CD **must** `docker load` or `docker pull` that artifact. It **must not** `docker build` from source.
 
 ---
 
@@ -222,7 +236,7 @@ Leave ~256–512 MiB for OS + SSM + Docker. `restart: unless-stopped`.
 | Store | Haystack CD |
 | --- | --- |
 | GitHub Environment `academy` | **Runner only:** `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_SESSION_TOKEN` (+ `AWS_REGION`). Same names as infra CD. Not Stripe/DB unless infra has not synced yet |
-| GitHub Environment `paid` | **Runner only:** OIDC `AWS_ROLE_TO_ASSUME`. **Fail** if `AWS_ACCESS_KEY_ID` is set |
+| GitHub Environment `AWS_ACTUAL` | **Runner only:** OIDC `AWS_ROLE_TO_ASSUME`. **Fail** if `AWS_ACCESS_KEY_ID` is set |
 | AWS `heavy-rental/haystack` | What the **instance** (`LabRole`) reads: Haystack RDS Postgres host/port/db/user/password/URL plus `POSTGRES_HOSTNAME` / `POSTGRES_DB` / `POSTGRES_USER`, `FLEET_BACKEND=sql`, `NEO4J_BACKEND=bolt`, `NEO4J_URI` (Bolt NLB)/`USER`/`PASSWORD`, optional `LLM_API_KEY` |
 
 ```
@@ -242,8 +256,8 @@ Inventory: AWS study **§6.0c** and **§8.7**. Haystack CI uses **no** `academy`
 
 | | Academy | Paid |
 | --- | --- | --- |
-| Workflow | `haystack-cd-academy.yml` (example: `haystack-cd-pipeline.example.yml`) | `haystack-cd-paid.yml` |
-| Environment | `academy` | `paid` |
+| Workflow | `haystack-cd-academy-caller.yml` + reusable (example stub: `haystack-cd-pipeline.example.yml`) | `haystack-cd-paid-caller.yml` (same reusable) |
+| Environment | `academy` | `AWS_ACTUAL` |
 | Auth | Vocareum access key + session token | OIDC `AWS_ROLE_TO_ASSUME` |
 | Image | Prefer **tar** or ECR in-region (LabRole pull-only on ECR) | GHCR or paid ECR |
 | Connect | SSM + `LabInstanceProfile` | SSM + instance profile |
@@ -289,7 +303,7 @@ Actions → Run workflow  (action + environment; optional image_ref)
 
 **Live:** estate first-compose (`guest_base` / `haystack`) **and** Haystack app CD branch 2 in [`../../haystack-fast-api-pipeline/deploy-pipeline/`](../../haystack-fast-api-pipeline/deploy-pipeline/) (same roles, `--limit haystack`, no Neo4j). Example YAML **in this folder** stays fail-closed.
 
-**Still later:** paid/OIDC Haystack CD. Delivery split: [`IMPLEMENTATION-PLAN.md`](IMPLEMENTATION-PLAN.md).
+**Paid/OIDC Haystack CD is delivered** (`haystack-cd-paid-caller.yml`). Delivery split (Academy branches 1–2): [`IMPLEMENTATION-PLAN.md`](IMPLEMENTATION-PLAN.md).
 
 ---
 

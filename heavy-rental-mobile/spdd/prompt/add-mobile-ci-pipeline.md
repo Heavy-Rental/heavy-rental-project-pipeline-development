@@ -12,7 +12,7 @@ When reality diverges, fix this prompt first — then update the YAML.
 - Provide the same three-pipeline GitHub Flow family used by REST API and the web portal, adapted for Heavy Rental mobile (`Heavy-Rental/heavy-rental-mobile`).
 - Fast Feedback: Integration only, feature-branch pushes (ignore `master`/`develop`). No `pull_request` trigger.
 - Integration CI: PR/push `develop` + `workflow_dispatch`. Jobs: Assert caller → Integration → (QC ∥ Security ∥ CodeQL ∥ Mock Contract Tests) → GitHub Flow CI Gate. On `pull_request`, Integration reuses a successful Fast Feedback run for the head SHA (skip Android SDK / Gradle wrapper / `:app:preBuild` / layout). An in-flight Fast Feedback run is waited on; the pending-run jq filter is inlined in `PENDING_ID` / `PENDING_URL` (same form as `SUCCESS_ID`), not a `PENDING_FILTER` variable. The CI caller must not `uses:` `fast-feedback-pipeline.yml`.
-- Release: published GitHub Release **or** PR `develop` → `master`. Same gates as CI (without Mock Contract Tests as a packaging dependency) + unsigned APK Packaging.
+- Release: `workflow_dispatch` only (creates the GitHub Release; do not use `on: release` or PR `develop` → `master`). Jobs: Assert caller → Integration (checkout `master`) → QC → Packaging → DAST (MobSF) → Publish. No Security Testing, CodeQL, or Mock Contract Tests on Release. Unsigned APK only; no GHCR.
 - Specs (OpenSpec + this canvas) and YAML all live under `heavy-rental-mobile/`.
 - Install story: copy each caller + reusable pair into the application repo `.github/workflows/`.
 
@@ -21,7 +21,7 @@ When reality diverges, fix this prompt first — then update the YAML.
 ```mermaid
 classDiagram
     class CallerWorkflow {
-      +on push|pull_request|release|workflow_dispatch
+      +on push|pull_request|workflow_dispatch
       +uses reusable
     }
     class ReusableWorkflow {
@@ -39,6 +39,8 @@ classDiagram
     class CodeQLJob
     class MockContractTestsJob
     class PackagingJob
+    class DastJob
+    class PublishJob
     class GitHubFlowGateJob
     CallerWorkflow --> ReusableWorkflow : uses
     ReusableWorkflow --> IntegrationJob : needs assert-caller
@@ -46,14 +48,15 @@ classDiagram
     IntegrationJob --> SecurityTestingJob
     IntegrationJob --> CodeQLJob
     IntegrationJob --> MockContractTestsJob
-    IntegrationJob --> PackagingJob
-    QualityControlJob --> PackagingJob
-    SecurityTestingJob --> PackagingJob
-    CodeQLJob --> PackagingJob
     QualityControlJob --> GitHubFlowGateJob
     SecurityTestingJob --> GitHubFlowGateJob
     CodeQLJob --> GitHubFlowGateJob
     MockContractTestsJob --> GitHubFlowGateJob
+    IntegrationJob --> PackagingJob
+    QualityControlJob --> PackagingJob
+    PackagingJob --> DastJob
+    IntegrationJob --> PublishJob
+    DastJob --> PublishJob
 ```
 
 Artifacts:
@@ -64,7 +67,10 @@ Artifacts:
 | Lint / unit-test reports | `app/build/reports/`, `app/build/test-results/` |
 | Debug APK | `app/build/outputs/apk/debug/` |
 | SARIF | `security-reports/semgrep.sarif`, `security-reports/trivy-fs.sarif` |
+| Combined security PDF | `security-combined-report-pdf` (Integration CI) |
 | Release APK | `heavy-rental-mobile-v{version}-build{run}-{sha}.apk`, `heavy-rental-mobile.apk` |
+| Combined DAST PDF | `dast-combined-report-pdf` (MobSF; Release) |
+| GitHub Release | `v{version}` on `master` (Publish on dispatch; unsigned APKs attached) |
 
 ## A — Approach
 
@@ -72,9 +78,9 @@ Artifacts:
 - Replace toolchain: Temurin **17**, `android-actions/setup-android@v4`, `platforms;android-35`, Gradle wrapper `--no-daemon`.
 - Integration resolve step: `./gradlew --no-daemon :app:preBuild` (do not depend on a specific configuration name).
 - QC: `./gradlew --no-daemon :app:lintDebug :app:testDebugUnitTest :app:assembleDebug`.
-- Mocks: Node 22, detect `mock:prism` then `mock:mockoon`, plus `mock:verify`; listen `127.0.0.1:8081`.
-- Security: Semgrep `p/kotlin` `p/java` `p/owasp-top-ten` `p/security-audit` `p/secrets`; Trivy FS two-pass + CRITICAL gate; CodeQL `java-kotlin`.
-- Release: `assembleRelease`, pick first `*.apk` under `app/build/outputs/apk/release/`, refuse empty files. No Docker.
+- Mocks: Node 22, require `mock:mockoon` and `mock:verify` (fail if either is missing; no Prism fallback); optional `mock:prepare`; `MOCK_EXPECT_ECHO=1`; listen `127.0.0.1:8081`.
+- Security: Semgrep `p/kotlin` `p/java` plus OWASP / audit / secrets / CWE Top 25 / FindSecBugs / Gitleaks / SQL injection / JWT / insecure-transport and custom ERROR credential rules; write `semgrep.sarif`; ERROR-only gate; Trivy FS two-pass + CRITICAL gate; CodeQL `java-kotlin`; combined PDF artifact.
+- Release: `assembleRelease`, pick first `*.apk` under `app/build/outputs/apk/release/`, refuse empty files. MobSF DAST on the APK. Publish `gh release create` on `master`. No Docker / GHCR.
 
 ## S — Structure
 
@@ -83,6 +89,7 @@ heavy-rental-mobile/
   specification/                 # human index
   openspec/                      # behavior
   spdd/                          # this canvas
+  docs/adr/
   fast-feedback-ci-pipeline/
     fast-feedback-pipeline.yml
     mobile-fast-feedback-caller.yml
@@ -104,7 +111,7 @@ Install names (application repo):
 `DEFAULT_APP_REPOSITORY`: `Heavy-Rental/heavy-rental-mobile`.  
 `DEFAULT_APP_REF`: `develop` (fast feedback + CI), `master` (release).
 
-Job `name:` values (branch protection):
+Job `name:` values (branch protection on `develop`):
 
 - `Assert caller`
 - `Integration`
@@ -113,15 +120,16 @@ Job `name:` values (branch protection):
 - `CodeQL Analysis`
 - `Mock Contract Tests`
 - `GitHub Flow CI Gate`
-- `Packaging` (release only)
+
+Release-only job names: `Packaging`, `DAST`, `Publish`.
 
 ## O — Operations
 
 1. Write OpenSpec + OpenSPDD + `specification/` (this change; already required before YAML).
 2. Write `integration-pipeline.yml` with jobs in this order: `assert-caller`, `integration`, `quality-control`, `security-testing`, `codeql`, `mock-contract-tests`, `github-flow-gate`.
-3. Write `mobile-ci-caller.yml` (`name: CI`, PR/push `develop`, `workflow_dispatch`, `security-events: write`).
+3. Write `mobile-ci-caller.yml` (`name: CI`, PR/push `develop`, `workflow_dispatch`, `security-events: write`, `checks: write`).
 4. Write fast-feedback pair (Integration only, `branches-ignore: [master, develop]`).
-5. Write release pair (`release: published` or PR `develop`→`master`; `cancel-in-progress: false`; Packaging job).
+5. Write release pair (`workflow_dispatch` only; `cancel-in-progress: false`; Integration → QC → Packaging → DAST → Publish).
 6. Header-comment each file with install path, triggers, and local `actionlint` command.
 7. Bind every `github.*` / `inputs.*` / `needs.*.outputs.*` used in `run:` through `env:` (except GitHub-native `if:` expressions, which are not shell).
 8. `actionlint` all six files.
@@ -136,6 +144,8 @@ Job `name:` values (branch protection):
 - Gradle invocations always `--no-daemon`.
 - Write `$GITHUB_STEP_SUMMARY` tables for source resolution, Integration, QC, gate, packaging.
 - SARIF is the security report standard; console tables are logs only.
+- Combined human PDFs: `security-combined-report-pdf` (Integration CI), `dast-combined-report-pdf` (Release).
+- YAML comments that cite “ADR 003 returnNotes echo” mean the **application** ADR, not pipeline ADR 0003 (unsigned APK). Pipeline Mockoon policy is ADR 0006.
 
 ## S — Safeguards (negative space)
 
@@ -154,3 +164,6 @@ Job `name:` values (branch protection):
 - **DO NOT** invent a fourth pipeline or rename jobs away from the branch-protection list.
 - **DO NOT** cancel in-progress Release runs.
 - **DO NOT** SHA-pin GitHub Actions (Haystack style) or pin `trivy-action@master`. Use the ADR 0005 major tags.
+- **DO NOT** fall back to `mock:prism` or skip Mock Contract Tests when `mock:mockoon` / `mock:verify` are missing (fail the job; ADR 0006).
+- **DO NOT** subscribe Release to `on: release` or PR `develop` → `master`. Publish creates the GitHub Release.
+- **DO NOT** put Security Testing, CodeQL, or Mock Contract Tests on the Release workflow.

@@ -2,7 +2,7 @@
 # Live workflow: ../../heavy-rental-web-portal-pipeline/deploy-pipeline/
 # Order: infra Terraform creates EC2 → infra Ansible first compose
 #        → THIS workflow re-runs compose on asg-portal with a new CI nginx image.
-# nginx /api → REST_BASE_URL (internal REST ALB). No Vite server. No sk_ on portal.
+# nginx /api → REST_BASE_URL (internet-facing REST ALB :8080). No Vite server. No sk_ on portal.
 # Vocareum-only. Paid is web-portal-cd-paid (OIDC — no key fields).
 # Paste aws_access_key_id / secret / session_token on Run workflow (they change every Start Lab)
 # or leave empty and use Environment academy. Do not put instance IDs on the form.
@@ -230,7 +230,7 @@ jobs:
       - name: Compose placeholder
         run: |
           echo "SSM to PORTAL_INSTANCE_IDS. get-secret-value heavy-rental/portal."
-          echo "Write nginx location /api → REST_BASE_URL (internal REST ALB). Fail if REST_BASE_URL empty."
+          echo "Write nginx location /api → REST_BASE_URL (REST ALB :8080). Fail if REST_BASE_URL empty."
           echo "compose nginx :80 mem_limit 256m cpus 0.5. Leave 256-512m for OS/SSM/Docker."
           echo "No vite. No sk_ / whsec_ on this host. pk_ only if SPA needs runtime config.json."
           echo "::error::Stub. Other project: SSM compose on asg-portal with /api proxy."
