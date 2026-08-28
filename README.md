@@ -9,7 +9,7 @@ This tree does **not** provision the VPC, ASGs, RDS, or NAT. That is [`heavy-ren
 | Path | Contents |
 | --- | --- |
 | `specification/` | Human index for all families |
-| `haystack-fast-api-pipeline/` | Haystack FastAPI CI + Academy/paid CD |
+| `haystack-fast-api-pipeline/` | Haystack FastAPI CI + Academy/paid CD (compose workers match estate) |
 | `heavy-rental-rest-api/` | Spring REST API CI + Security Report + Academy/paid CD |
 | `heavy-rental-web-portal-pipeline/` | React portal CI + Security Report + Academy/paid CD |
 | `heavy-rental-mobile/` | Android CI only (unsigned APK + MobSF; no app CD) |
@@ -20,16 +20,26 @@ This tree does **not** provision the VPC, ASGs, RDS, or NAT. That is [`heavy-ren
 ## GitHub Flow (each CI family)
 
 ```
-feature branch push  →  Fast Feedback (Integration only)
-PR / push → develop  →  Integration CI (full gates; SAST here)
+feature branch push  →  Fast Feedback (Integration only; sole Integration-stage run for that SHA)
+PR / push → develop  →  Integration CI (reuses Fast Feedback on PR; full gates; SAST here)
 workflow_dispatch     →  Release (master + QC + package + DAST + publish)
 ```
 
-Haystack, REST, and portal Release publish a public GHCR image and a GitHub Release. Mobile Release publishes an unsigned APK, MobSF DAST, and a GitHub Release (no GHCR).
+Haystack, REST, and portal Release publish a public GHCR image and a GitHub Release. Mobile Release publishes an unsigned APK, MobSF DAST, and a GitHub Release (no GHCR). REST and portal also have a scheduled **Security Report** (Monday 08:00 UTC or manual). It summarizes existing Code Scanning alerts; it is **not** a merge gate.
 
-Haystack, REST, and portal CD each have **two callers**: Environment `academy` (Vocareum) and Environment `AWS_ACTUAL` (OIDC). Copy caller + reusable pairs into the application repo `.github/workflows/`.
+Copy caller + reusable pairs into the application repo `.github/workflows/`.
+
+## App CD vs the estate
+
+Portal / REST / Haystack **first compose** is infra `action=deploy-projects` (`site.yml`) or this tree’s app CD `action=deploy`. Infra `apply` / `configure-only` run `configure.yml` (Docker + Neo4j only) and do **not** compose the three apps.
+
+Haystack, REST, and portal CD each have **two callers**: Environment `academy` (Vocareum) and Environment `AWS_ACTUAL` (OIDC). Mobile has no app CD.
 
 App CD `verify` uses the same **paths** as estate ALB probes: REST `GET :8080/actuator/health` **2xx** (ALB matcher `200-299`); Haystack `GET :8000/health` **2xx** (ALB matcher `200-299`); portal `GET :80/` **200 / 301 / 302** (ALB `tg-portal` matcher is `200-399`). Portal **Release Packaging** uses Environment `academy` only to bake Stripe `pk_`; that is not CD auth.
+
+Haystack compose workers are `postgres:17` + `sync-from-primary.sh` and `python:3.12-slim` + `populate_neo4j.py` (Haystack ADR 0011 / infra ADR 0020). They are not `python -m` on the uvicorn image. Worker failure does not fail Haystack `verify`.
+
+GHCR names (Publish after DAST): `haystack_recommender`, `heavy_rental_rest_api`, `heavy_rental_web_portal` (`:<semver>` + `:latest`). REST ALB is internet-facing `:8080`; Haystack ALB stays internal.
 
 ## Families
 

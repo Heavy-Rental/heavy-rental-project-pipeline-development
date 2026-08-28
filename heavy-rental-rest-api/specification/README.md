@@ -13,6 +13,7 @@ Infrastructure setup (VPC, ASGs, RDS) is **not** specified here. It belongs to t
 | Concern | Specified here? |
 | --- | --- |
 | Fast Feedback, Integration CI, Release packaging | Yes — CI family |
+| Security Report (summarize existing Code Scanning alerts) | Yes — reporting only; not a merge gate |
 | Academy and paid app CD (discover `asg-rest` + compose) | Yes — CD family |
 | Create or change infrastructure | No — infra project |
 | Operate the live system (`stop` / `destroy`) | No — infra project after go-live |
@@ -49,7 +50,8 @@ As-implemented spec of Fast Feedback / Integration Check / Release YAML (PR reus
 - SPDD: [`../spdd/analysis/add-rest-cd-academy-skeleton.md`](../spdd/analysis/add-rest-cd-academy-skeleton.md), [`../spdd/analysis/add-rest-cd-academy-deploy.md`](../spdd/analysis/add-rest-cd-academy-deploy.md), [`../spdd/analysis/add-rest-cd-paid-deploy.md`](../spdd/analysis/add-rest-cd-paid-deploy.md)
 - Walkthrough: [`pipelines/rest-cd.md`](pipelines/rest-cd.md)
 - Operator: [`../docs/BOOTSTRAP.md`](../docs/BOOTSTRAP.md), [`../docs/PREPARE-SPRING-REPO.md`](../docs/PREPARE-SPRING-REPO.md)
-- CD / ALB health: `GET :8080/actuator/health` **2xx** (`tg-rest` matcher `200-299`; not `GET /`)
+- First-compose: infra `deploy-projects` (`site.yml`) or this CD (not infra `apply`)
+- CD / ALB health: `GET :8080/actuator/health` **2xx** (`tg-rest` matcher `200-299`; not `GET /`). REST ALB is internet-facing `:8080`
 - Two CD Actions: [ADR 0008](../docs/adr/0008-two-cd-actions-academy-paid.md)
 
 ## Workflows (implementation)

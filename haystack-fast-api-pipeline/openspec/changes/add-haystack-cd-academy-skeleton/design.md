@@ -1,8 +1,10 @@
 # Design: Haystack CD Academy skeleton
 
+**Superseded** for compose and verify by [`../add-haystack-cd-academy-deploy/`](../add-haystack-cd-academy-deploy/) and for paid/OIDC by [`../add-haystack-cd-paid-deploy/`](../add-haystack-cd-paid-deploy/). Keep this file as the branch-1 record. Do not treat “verify is discover-only” or “compose is branch 2” as current behavior. As-built first-compose is infra `deploy-projects` or this app CD (not infra `apply`). Workers are [`../add-haystack-cd-workers/`](../add-haystack-cd-workers/) / [ADR 0011](../../../../docs/adr/0011-devcontainer-worker-sidecars.md).
+
 ## Context
 
-Study `HAYSTACK-CD-FEASIBILITY.md` §5 / `IMPLEMENTATION-PLAN.md` §5. Infra `HR-162` already composes Haystack. This repo’s Release pipeline builds `ghcr.io/<owner>/haystack_recommender:<tag>` (Publish after DAST) and a `.tar.gz` artifact.
+Study `HAYSTACK-CD-FEASIBILITY.md` §5 / `IMPLEMENTATION-PLAN.md` §5. Keep this file as the branch-1 record. This repo’s Release pipeline builds `ghcr.io/<owner>/haystack_recommender:<tag>` (Publish after DAST) and `haystack_recommender-image.tar.gz`.
 
 ## Decisions
 

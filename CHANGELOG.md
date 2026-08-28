@@ -4,6 +4,10 @@
 
 ### Changed
 
+- Pipeline-development root README and `specification/README.md` now match the family YAML: GitHub Flow reuses Fast Feedback on PR; first-compose is infra `deploy-projects` or app CD; GHCR names; REST ALB internet-facing `:8080`; Haystack workers (ADR 0011 / infra ADR 0020); Security Report is not a merge gate. Family indexes (Haystack, REST, portal) state the same first-compose and health facts.
+
+- Haystack spec/docs verification against YAML: compose workers are `postgres:17` + `sync-from-primary.sh` and `python:3.12-slim` + `populate_neo4j.py` (ADR 0011; not uvicorn `-m`). Worker credential aliases (`SOURCE_USER`, `PG*`, `NEO4J_POPULATE_TRIGGER_URL`) match Ansible. First-compose is infra `deploy-projects` or app CD. CI `DEFAULT_APP_REPOSITORY` is `Heavy-Rental/haystack-fast-api`; Packaging tar is `haystack_recommender-image.tar.gz`. Profile overlay applies on Environment `academy` or `AWS_ACTUAL`.
+
 - Portal spec/docs verification against YAML: Fast Feedback, Integration CI, and Release `DEFAULT_APP_REPOSITORY` is `Heavy-Rental/heavy-rental-react-web-portal`. Security Report pair is documented as reporting-only (not a merge gate; Monday 08:00 UTC). Paid portal CD does not `secrets: inherit` (OIDC via `vars.AWS_ROLE_TO_ASSUME`). Semgrep Publish SARIF is SARIF-only. GHCR is dispatch-only Publish (`heavy_rental_web_portal-image.tar.gz`). First-compose is infra `deploy-projects` or app CD. PREPARE includes Environment `AWS_ACTUAL`.
 
 - REST spec/docs verification against YAML: Integration CI `DEFAULT_APP_REPOSITORY` is `Heavy-Rental/...` (Fast Feedback remains `SA62-team1/...` act fallback). Semgrep Publish SARIF is SARIF-only. Security Report pair is documented as reporting-only (not a merge gate). GHCR is dispatch-only Publish (`heavy_rental_rest_api-image.tar.gz`). REST ALB is internet-facing (do not call it internal). First-compose is infra `deploy-projects` or app CD. PREPARE includes Environment `AWS_ACTUAL`.

@@ -25,13 +25,15 @@ Operate comes after deploy. It requires knowledge of the infrastructure; it does
 | --- | --- | --- |
 | **OpenSpec** | [`../openspec/`](../openspec/) | Observable behavior: requirements and GIVEN/WHEN/THEN scenarios |
 | **OpenSPDD** | [`../spdd/`](../spdd/) | Implementation contract: REASONS Canvas (how to write the YAML, what not to invent) |
-| **ADR** | [`../docs/adr/`](../docs/adr/) | Why: caller gate, uv toolchain, sanitized `.env.prod` → `/app/.env` (0008), estate vs project knobs (0009 — academy overlay is guest `.env`, not the image), two CD Actions (0010), masked Vocareum keys, reused Ansible |
+| **ADR** | [`../docs/adr/`](../docs/adr/) | Why: caller gate, uv toolchain, sanitized `.env.prod` → `/app/.env` (0008), estate vs project knobs (0009), two CD Actions (0010), workers = devcontainer scripts (0011), masked Vocareum keys, reused Ansible |
 
 Conflict order: **OpenSpec scenarios → OpenSPDD Safeguards → ADR → YAML**. If the YAML cannot satisfy a scenario without breaking a safeguard, stop and update the spec first.
 
 ## Changes
 
 ### CI family — [`../openspec/changes/add-haystack-ci-pipeline/`](../openspec/changes/add-haystack-ci-pipeline/)
+
+As-implemented spec of Fast Feedback / Integration CI / Release YAML (PR Integration reuses Fast Feedback). `DEFAULT_APP_REPOSITORY` is `Heavy-Rental/haystack-fast-api` on Fast Feedback, Integration CI, and Release. Release checkout is always `master`. Packaging tar is `haystack_recommender-image.tar.gz`; Publish pushes `haystack_recommender:<semver>` + `:latest` on `workflow_dispatch` only. Semgrep publish is SARIF-only.
 
 - Proposal: [`proposal.md`](../openspec/changes/add-haystack-ci-pipeline/proposal.md)
 - Design: [`design.md`](../openspec/changes/add-haystack-ci-pipeline/design.md)
@@ -47,11 +49,14 @@ Conflict order: **OpenSpec scenarios → OpenSPDD Safeguards → ADR → YAML**.
 - [`../openspec/changes/add-haystack-cd-academy-skeleton/`](../openspec/changes/add-haystack-cd-academy-skeleton/)
 - [`../openspec/changes/add-haystack-cd-academy-deploy/`](../openspec/changes/add-haystack-cd-academy-deploy/)
 - [`../openspec/changes/add-haystack-cd-paid-deploy/`](../openspec/changes/add-haystack-cd-paid-deploy/)
-- SPDD: [`../spdd/analysis/add-haystack-cd-academy-skeleton.md`](../spdd/analysis/add-haystack-cd-academy-skeleton.md), [`../spdd/analysis/add-haystack-cd-academy-deploy.md`](../spdd/analysis/add-haystack-cd-academy-deploy.md), [`../spdd/analysis/add-haystack-cd-paid-deploy.md`](../spdd/analysis/add-haystack-cd-paid-deploy.md)
+- [`../openspec/changes/add-haystack-cd-workers/`](../openspec/changes/add-haystack-cd-workers/) — compose workers match estate (ADR 0011)
+- SPDD: [`../spdd/analysis/add-haystack-cd-academy-skeleton.md`](../spdd/analysis/add-haystack-cd-academy-skeleton.md), [`../spdd/analysis/add-haystack-cd-academy-deploy.md`](../spdd/analysis/add-haystack-cd-academy-deploy.md), [`../spdd/analysis/add-haystack-cd-paid-deploy.md`](../spdd/analysis/add-haystack-cd-paid-deploy.md), [`../spdd/analysis/add-haystack-cd-workers.md`](../spdd/analysis/add-haystack-cd-workers.md)
 - Walkthrough: [`pipelines/haystack-cd.md`](pipelines/haystack-cd.md)
 - Operator: [`../docs/BOOTSTRAP.md`](../docs/BOOTSTRAP.md), [`../docs/PREPARE-HAYSTACK-REPO.md`](../docs/PREPARE-HAYSTACK-REPO.md)
+- First-compose: infra `deploy-projects` (`site.yml`) or this CD (not infra `apply`)
 - CD / ALB health: `GET :8000/health` **2xx** (`tg-haystack` matcher `200-299`)
 - Two CD Actions: [ADR 0010](../docs/adr/0010-two-cd-actions-academy-paid.md)
+- Workers: [ADR 0011](../docs/adr/0011-devcontainer-worker-sidecars.md) (`postgres:17` / `python:3.12-slim`; match estate ADR 0020)
 
 ## Workflows (implementation)
 
