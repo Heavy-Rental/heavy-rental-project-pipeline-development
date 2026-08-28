@@ -4,7 +4,7 @@ This workflow discovers `asg-haystack` and can re-run Haystack compose (branch 2
 
 Specification index: [`../specification/README.md`](../specification/README.md). CD walkthrough: [`../specification/pipelines/haystack-cd.md`](../specification/pipelines/haystack-cd.md).
 
-**App repo is not ready yet.** Checklist, image contract, sidecar gaps, and the full env-name table: [`PREPARE-HAYSTACK-REPO.md`](PREPARE-HAYSTACK-REPO.md). Production-shaped product knobs: [`samples/.env.prod`](samples/.env.prod).
+**App repo is not ready yet.** Checklist, image contract, worker env aliases, and the full env-name table: [`PREPARE-HAYSTACK-REPO.md`](PREPARE-HAYSTACK-REPO.md). Production-shaped product knobs: [`samples/.env.prod`](samples/.env.prod). Compose workers are estate/CD scripts (ADR 0011), not uvicorn `-m`.
 
 Install from **`deploy-pipeline/`** into the Haystack app repo (same paths as PREPARE §4):
 
@@ -22,7 +22,7 @@ Do **not** copy `specification/`. Do **not** copy `resolve-vocareum-aws/` (Hayst
 | --- | --- |
 | Infra `sync-secrets` → `heavy-rental/haystack` | `POSTGRES_*`, `DATABASE_URL`, `SOURCE_*`, `TARGET_*`, Bolt NLB `NEO4J_URI` / `USER` / `PASSWORD`, `NEO4J_POPULATE_URL=http://neo4j-populate:8089/v1/populate`, `FLEET_BACKEND=sql`, `NEO4J_BACKEND=bolt`, optional `LLM_API_KEY` |
 | Image `/app/.env` (sanitized `.env.prod`) | Product knobs (`APP_ENV=prod`, `NEED_DECOMPOSER`, `LLM_*` without the key, `INDEXING_*`, `KG_*`, …). **No** estate hosts or secrets. |
-| Haystack Environment `academy` overlay | Non-empty Profile vars/secrets below. Empty = keep SM / image `/app/.env`. |
+| Haystack Environment `academy` or `AWS_ACTUAL` overlay | Non-empty Profile vars/secrets below. Empty = keep SM / image `/app/.env`. |
 
 Compose `env_file` on the guest is the SM map (plus aliases and overlay). Process env **wins** over `/app/.env`. Haystack RDS database name is **`haystack`**. `SOURCE_DATABASE` is **`heavy_rental`**.
 
@@ -68,7 +68,7 @@ Example: `NEED_DECOMPOSER=llm` on academy changes the **running** container afte
 
 Do **not** set `NEO4J_URI`, `NEO4J_POPULATE_URL`, `NEO4J_USER`, `NEO4J_PASSWORD`, `POSTGRES_*`, `DATABASE_URL`, `SOURCE_*`, or `TARGET_*` here. CD will not overlay them. Infra writes Bolt NLB `NEO4J_URI` and `NEO4J_POPULATE_URL=http://neo4j-populate:8089/v1/populate` (compose worker on `asg-haystack`, not an ALB).
 
-Infra must already have applied the estate and `sync-secrets` (`heavy-rental/haystack`). Guests InService + SSM Online. Desired=0 is infra, not this CD.
+Infra must already have applied the estate and `sync-secrets` (`heavy-rental/haystack`). Infra `apply` does **not** compose Haystack; first compose is infra `deploy-projects` or this CD `action=deploy`. Guests InService + SSM Online. Desired=0 is infra, not this CD.
 
 ## Every run (same as PREPARE §10)
 
@@ -78,7 +78,7 @@ Infra must already have applied the estate and `sync-secrets` (`heavy-rental/hay
 4. `action=deploy` — **new** public GHCR or ECR tag (or tar URL + matching tag). Prefer a **new tag** (`compose up` is not `--pull always`).
 5. `action=configure-only` — refresh guest `.env` from `heavy-rental/haystack`, add Postgres aliases / `FLEET_BACKEND=sql` / `NEO4J_BACKEND=bolt` if missing, overlay non-empty academy Profile vars. Still needs `HAYSTACK_IMAGE` or `image_ref`. No stock uvicorn.
 
-Sidecar crash-loops (`postgres-haystack-sync`, `neo4j-populate`) do **not** fail `verify` if uvicorn answers. A green verify is not proof that sync or populate ran.
+Worker failures (`postgres-haystack-sync`, `neo4j-populate`) do **not** fail `verify` if uvicorn answers. A green verify is not proof that FDW merge or graph populate ran. Workers are `postgres:17` / `python:3.12-slim` scripts (ADR 0011), not `python -m` on the API image.
 
 The **runner** uses Vocareum keys. The **EC2** uses `LabRole`.
 

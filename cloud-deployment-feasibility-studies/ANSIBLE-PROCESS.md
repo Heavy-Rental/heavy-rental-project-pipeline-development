@@ -119,11 +119,11 @@ Instance still needs outbound HTTPS (same-AZ NAT Gateway or S3 endpoint). Live `
 
 ### 4.3 `haystack` (`asg-haystack`)
 
-1. Read `heavy-rental/haystack` → Haystack RDS Postgres fields plus app aliases `POSTGRES_HOSTNAME` / `POSTGRES_DB` / `POSTGRES_USER`, `DATABASE_URL`, `SOURCE_*` (SoR RDS), `TARGET_*` (Haystack RDS), `FLEET_BACKEND=sql`, `NEO4J_BACKEND=bolt`, `NEO4J_URI` (Bolt NLB, not localhost, not a guest private IP), optional `LLM_API_KEY`. Do not invent `SOURCE_*` / `TARGET_*` in the playbook.
+1. Read `heavy-rental/haystack` → Haystack RDS Postgres fields plus app aliases `POSTGRES_HOSTNAME` / `POSTGRES_DB` / `POSTGRES_USER`, `DATABASE_URL`, `SOURCE_HOST` / `SOURCE_PORT` / `SOURCE_DATABASE` (SoR RDS), `TARGET_HOST` / `TARGET_PORT` / `TARGET_DATABASE` (Haystack RDS), `FLEET_BACKEND=sql`, `NEO4J_BACKEND=bolt`, `NEO4J_URI` (Bolt NLB, not localhost, not a guest private IP), optional `LLM_API_KEY`. Do not invent those **host** keys in the playbook. Alias worker credentials (`SOURCE_USER`, `TARGET_USER`, `PG*`, `NEO4J_POPULATE_TRIGGER_URL`) when SM omitted them (Haystack ADR 0011 / infra ADR 0020).
 2. Compose:
    - uvicorn (CI image) **:8000** — `768m` / `1.0`
-   - `postgres-haystack-sync` — `256m` / `0.25`
-   - `neo4j-populate` — `256m` / `0.25`
+   - `postgres-haystack-sync` — `postgres:17` + `sync-from-primary.sh` — `256m` / `0.25`
+   - `neo4j-populate` — `python:3.12-slim` + `populate_neo4j.py` — `256m` / `0.25`
 3. **Must not** start a `neo4j` container. Do not start a pgvector container unless the Haystack RDS cannot load `vector` (credit fallback).
 4. Sync `SOURCE_HOST` = SoR RDS endpoint. `TARGET_HOST` = Haystack RDS endpoint. Populate Bolt = NLB `NEO4J_URI`.
 5. Health: wait for `GET :8000/health` **2xx** (ALB `tg-haystack` matcher `200-299` on each instance IP). Do **not** use `GET /` (404) or `/docs` as the ALB check.
@@ -154,7 +154,7 @@ Run via `delegate_to` a **rest** or **haystack** instance (those SGs can reach `
 | --- | --- | --- |
 | Portal CD (`deploy-pipeline/ansible/`) | `portal` | New nginx + `dist/` image; keep `/api` proxy |
 | REST CD (`deploy-pipeline/ansible/`) | `rest` | New Tomcat image; refresh `.env` from `heavy-rental/rest` |
-| Haystack CD (`deploy-pipeline/ansible/`) | `haystack` | New uvicorn image; same sync + populate; still no neo4j |
+| Haystack CD (`deploy-pipeline/ansible/`) | `haystack` | New uvicorn image; same `postgres:17` / `python:3.12-slim` workers (ADR 0011); still no neo4j |
 
 Discover **every** `InService` + SSM Online instance in the ASG first (two at desired=2). Fail if the group is missing or none are Online.
 

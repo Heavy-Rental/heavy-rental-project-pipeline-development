@@ -1,5 +1,7 @@
 # Delta for haystack-cd-ansible
 
+> **Later modified by** [`add-haystack-cd-workers`](../../../add-haystack-cd-workers/proposal.md) / [ADR 0011](../../../../../docs/adr/0011-devcontainer-worker-sidecars.md): workers are `postgres:17` + `sync-from-primary.sh` and `python:3.12-slim` + `populate_neo4j.py`, not uvicorn `-m`.
+
 ## ADDED Requirements
 
 ### Requirement: Re-run infra Haystack compose via SSM
@@ -18,7 +20,7 @@ On `deploy` or `configure-only`, Ansible SHALL use `amazon.aws.aws_ssm` against 
 After writing `.env` from `heavy-rental/haystack`, the haystack role SHALL add aliases when the app name is empty: `POSTGRES_HOSTNAME` from `POSTGRES_HOST`, `POSTGRES_DB` from `POSTGRES_DATABASE`, `POSTGRES_USER` from `POSTGRES_USERNAME`. When `FLEET_BACKEND` or `NEO4J_BACKEND` is absent it SHALL set `sql` and `bolt`. It SHALL NOT overwrite a key already present in the secret unless the Haystack GitHub Environment overlay supplies that key. It SHALL NOT invent `LLM_API_KEY` when the Environment secret is empty.
 
 ### Requirement: Overlay Haystack project Profile knobs
-On `deploy` and `configure-only`, after SM → `.env` and aliases, the haystack role SHALL write non-empty Haystack Environment `academy` variables/secrets for `APP_NAME`, `APP_ENV`, `LOG_LEVEL`, `NEED_DECOMPOSER`, `LLM_BASE_URL`, `LLM_API_KEY`, `LLM_MODEL`, `LLM_TIMEOUT_SECONDS`, `LLM_TEMPERATURE`, `INDEXING_EMBEDDER`, `INDEXING_EMBEDDING_DIM`, `INDEXING_SPLIT_LENGTH`, `INDEXING_SPLIT_OVERLAP`, `INDEXING_OPENAI_EMBEDDING_MODEL`, `INDEXING_ST_MODEL`, `INDEXING_DOCUMENT_STORE`, `INDEXING_CHUNK_TTL_SECONDS`, `IDEMPOTENCY_TTL_SECONDS`, `INDEXING_VIA_AGENT_GATE`, `FLEET_BACKEND`, `PRICING_SCHEMA`, `NEO4J_BACKEND`, `NEO4J_POPULATE_TIMEOUT_SECONDS`, `RECOMMEND_VIA_AGENT_GRAPH`, `RECOMMEND_FANOUT_CAP`, `KG_ARTIFACT_DIR`, `KG_APPLY_TRANSFORMS`, `PROJECT_AGENT_MODE`, and `PROJECT_AGENT_TOP_K`. Empty Environment values SHALL leave the SM, image `/app/.env` (from `.env.prod`), or app default. The overlay SHALL write the **guest** `.env` only. It SHALL NOT rebuild the image, SHALL NOT rewrite `/app/.env` inside the pulled tag, and SHALL NOT write `NEO4J_URI`, `NEO4J_POPULATE_URL`, `NEO4J_USER`, `NEO4J_PASSWORD`, `POSTGRES_*`, `DATABASE_URL`, `SOURCE_*`, or `TARGET_*`.
+On `deploy` and `configure-only`, after SM → `.env` and aliases, the haystack role SHALL write non-empty Haystack Environment (`academy` or `AWS_ACTUAL`) variables/secrets for `APP_NAME`, `APP_ENV`, `LOG_LEVEL`, `NEED_DECOMPOSER`, `LLM_BASE_URL`, `LLM_API_KEY`, `LLM_MODEL`, `LLM_TIMEOUT_SECONDS`, `LLM_TEMPERATURE`, `INDEXING_EMBEDDER`, `INDEXING_EMBEDDING_DIM`, `INDEXING_SPLIT_LENGTH`, `INDEXING_SPLIT_OVERLAP`, `INDEXING_OPENAI_EMBEDDING_MODEL`, `INDEXING_ST_MODEL`, `INDEXING_DOCUMENT_STORE`, `INDEXING_CHUNK_TTL_SECONDS`, `IDEMPOTENCY_TTL_SECONDS`, `INDEXING_VIA_AGENT_GATE`, `FLEET_BACKEND`, `PRICING_SCHEMA`, `NEO4J_BACKEND`, `NEO4J_POPULATE_TIMEOUT_SECONDS`, `RECOMMEND_VIA_AGENT_GRAPH`, `RECOMMEND_FANOUT_CAP`, `KG_ARTIFACT_DIR`, `KG_APPLY_TRANSFORMS`, `PROJECT_AGENT_MODE`, and `PROJECT_AGENT_TOP_K`. Empty Environment values SHALL leave the SM, image `/app/.env` (from `.env.prod`), or app default. The overlay SHALL write the **guest** `.env` only. It SHALL NOT rebuild the image, SHALL NOT rewrite `/app/.env` inside the pulled tag, and SHALL NOT write `NEO4J_URI`, `NEO4J_POPULATE_URL`, `NEO4J_USER`, `NEO4J_PASSWORD`, `POSTGRES_*`, `DATABASE_URL`, `SOURCE_*`, or `TARGET_*`.
 
 #### Scenario: NEED_DECOMPOSER set on academy
 - GIVEN Environment `academy` variable `NEED_DECOMPOSER` is `llm`
@@ -39,7 +41,7 @@ On `deploy` and `configure-only`, after SM → `.env` and aliases, the haystack 
 - AND `FLEET_BACKEND=sql` and `NEO4J_BACKEND=bolt` unless the secret already set them
 
 ### Requirement: Sync endpoints stay infra-owned
-Haystack CD SHALL pass `SOURCE_HOST` / `SOURCE_PORT` / `SOURCE_DATABASE` and `TARGET_HOST` / `TARGET_PORT` / `TARGET_DATABASE` through from `heavy-rental/haystack` when present. It SHALL NOT invent those keys, SHALL NOT copy `heavy-rental/rest`, and SHALL NOT bake RDS hostnames into the image or the workflow YAML.
+Haystack CD SHALL pass `SOURCE_HOST` / `SOURCE_PORT` / `SOURCE_DATABASE` and `TARGET_HOST` / `TARGET_PORT` / `TARGET_DATABASE` through from `heavy-rental/haystack` when present. It SHALL NOT invent those **host** keys, SHALL NOT copy `heavy-rental/rest`, and SHALL NOT bake RDS hostnames into the image or the workflow YAML. When those hosts exist and worker credential names are empty, it SHALL alias `SOURCE_USER` / `SOURCE_PASSWORD` / `SOURCE_DB` and `TARGET_USER` / `TARGET_PASSWORD` / `TARGET_DB` / `PG*` from `POSTGRES_*` / `SOURCE_DATABASE` / `TARGET_*`.
 
 #### Scenario: SM already has SOURCE and TARGET
 - GIVEN `heavy-rental/haystack` contains `SOURCE_HOST` (SoR RDS) and `TARGET_HOST` (Haystack RDS)
@@ -47,10 +49,17 @@ Haystack CD SHALL pass `SOURCE_HOST` / `SOURCE_PORT` / `SOURCE_DATABASE` and `TA
 - THEN both keys are on `.env` unchanged
 - AND Ansible does not add a different `SOURCE_HOST`
 
-### Requirement: Sidecar commands match the Release image
-`postgres-haystack-sync` and `neo4j-populate` SHALL use `uv run python -m …` (same image as uvicorn). Verify SHALL still pass if those processes exit, as long as uvicorn answers on `:8000`. The playbook SHALL fail if uvicorn never answers.
+#### Scenario: Worker credential aliases when SM omitted them
+- GIVEN `heavy-rental/haystack` has `POSTGRES_USERNAME` and `SOURCE_DATABASE` and no `SOURCE_USER`
+- WHEN the haystack role writes `.env`
+- THEN `.env` contains `SOURCE_USER` equal to `POSTGRES_USERNAME`
+- AND `SOURCE_DB` equal to `SOURCE_DATABASE`
 
-#### Scenario: Modules missing from the current app image
-- GIVEN the image has no `postgres_haystack_sync` / `neo4j_populate` packages
-- THEN those services may crash-loop
+### Requirement: Sidecar workers use estate scripts, not the uvicorn image
+`postgres-haystack-sync` SHALL run `postgres:17` with `sync-from-primary.sh`. `neo4j-populate` SHALL run `python:3.12-slim` with `populate-neo4j-from-haystack.sh` (wraps `populate_neo4j.py`). Compose SHALL NOT use `python -m postgres_haystack_sync` or `python -m neo4j_populate`. Scripts SHALL be copied to `/opt/heavy-rental/workers/`. Verify SHALL still pass if those processes exit, as long as uvicorn answers on `:8000`. The playbook SHALL fail if uvicorn never answers. `:8089` SHALL NOT be published on a host or ALB port.
+
+#### Scenario: Workers are not the Haystack API image
+- GIVEN Haystack CD compose is written
+- THEN `postgres-haystack-sync` image is `postgres:17`
+- AND `neo4j-populate` image is `python:3.12-slim`
 - AND `verify` is still green if `GET :8000/health` is 2xx

@@ -13,6 +13,7 @@ This file is a **design record**. Living specs: [`../../haystack-fast-api-pipeli
 | Example YAML is the workflow | Live: [`../../haystack-fast-api-pipeline/deploy-pipeline/`](../../haystack-fast-api-pipeline/deploy-pipeline/). Examples in this folder stay stubs |
 | Infra `apply` first-composes Haystack | Infra **`apply` / `configure-only`** run `configure.yml` (Docker + Neo4j only). First-compose is infra **`deploy-projects`** (`site.yml`) or this app CD |
 | Image tar `haystack-fast-api-v{version}-…` | Packaging artifact is **`haystack_recommender-image.tar.gz`** |
+| Sync/populate `uv run python -m` on the uvicorn image | **`postgres:17` + `sync-from-primary.sh`** and **`python:3.12-slim` + `populate_neo4j.py`** (estate ADR 0020 / Haystack ADR 0011). Scripts under `/opt/heavy-rental/workers/` |
 
 Haystack ALB stays **internal**. REST ALB is internet-facing :8080 (does not change Haystack CD).
 
@@ -30,9 +31,9 @@ Haystack ALB stays **internal**. REST ALB is internet-facing :8080 (does not cha
 
 ### Purpose
 
-Decide how **GitHub Actions** can **re-run the guest compose playbook** on an **already created** `asg-haystack` EC2, using the **haystack-fast-api** image Haystack CI Release already built. Infra CD Terraform created the instance; infra CD Ansible did the first compose. This pipeline is a **later, manual** compose run (new image only). No new EC2.
+Decide how **GitHub Actions** can **re-run the guest compose playbook** on an **already created** `asg-haystack` EC2, using the **haystack-fast-api** image Haystack CI Release already built. Infra CD Terraform created the instance. First-compose is infra **`deploy-projects`** (`site.yml`) or this app CD. This pipeline is a **later, manual** compose run (new image only). No new EC2.
 
-The Academy workflow (branch 1 discover + branch 2 compose) is in [`../../haystack-fast-api-pipeline/deploy-pipeline/`](../../haystack-fast-api-pipeline/deploy-pipeline/). Infra still does **first** compose on `apply`. This CD **re-runs** `guest_base` + `haystack` (no Neo4j container). See [`IMPLEMENTATION-PLAN.md`](IMPLEMENTATION-PLAN.md).
+The Academy workflow (branch 1 discover + branch 2 compose) is in [`../../haystack-fast-api-pipeline/deploy-pipeline/`](../../haystack-fast-api-pipeline/deploy-pipeline/). Infra `apply` / `configure-only` do **not** compose Haystack. This CD **re-runs** `guest_base` + `haystack` (no Neo4j container; workers are ADR 0011 scripts). See [`IMPLEMENTATION-PLAN.md`](IMPLEMENTATION-PLAN.md).
 
 ### Non-goals
 
@@ -62,8 +63,11 @@ CI never applies AWS. Infra CD never rebuilds Haystack. App CD never creates the
 Infra CD  action=apply
     Terraform     →  creates asg-haystack (EC2 InService)
     sync-secrets  →  heavy-rental/haystack
-    Ansible       →  first compose playbook on the guest
-                     (Docker, .env, uvicorn + sync + populate)
+    Ansible       →  configure.yml (Docker + Neo4j only; no Haystack compose)
+
+Infra CD  action=deploy-projects   (or Haystack app CD action=deploy)
+    Ansible       →  first compose on the guest
+                     (uvicorn + postgres:17 sync + python:3.12-slim populate)
 
 Later, when CI has a new image:
 Haystack app CD  (this study, workflow_dispatch only)

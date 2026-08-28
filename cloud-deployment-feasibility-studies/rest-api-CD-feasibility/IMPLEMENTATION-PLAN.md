@@ -78,7 +78,7 @@ develop
 3. Inputs: `action` (`deploy` / `configure-only` / `verify`), `aws_environment` (must be `academy`), optional `image_ref` / `image_http_url`, three Vocareum keys (optional if Environment set).
 4. Resolve keys like infra / portal CD (`$GITHUB_EVENT_PATH`, mask, Environment fallback). Refuse Environment ≠ `academy`.
 5. **`assert-lab`:** `sts get-caller-identity`. Output lab state bucket name for later SSM (`heavy-rental-tfstate-${ACCOUNT}-academy`).
-6. **`discover-targets`:** InService IDs on `asg-rest`; keep SSM Online. Fail if none or desired=0. `describe-secret heavy-rental/rest` (do not echo SecretString). Fail if the shell is missing. Do **not** print instance IPs or the internal REST ALB URL.
+6. **`discover-targets`:** InService IDs on `asg-rest`; keep SSM Online. Fail if none or desired=0. `describe-secret heavy-rental/rest` (do not echo SecretString). Fail if the shell is missing. Do **not** print instance IPs or the REST ALB URL.
 7. `deploy` / `configure-only` ansible job **failed closed** on branch 1 (`exit 1` — “branch 2”). **Superseded** by §6.
 8. **`verify`** was discover-only on branch 1. **Superseded** by §6 SSM `GET :8080/actuator/health` **2xx**.
 

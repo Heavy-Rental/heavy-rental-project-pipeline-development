@@ -15,7 +15,9 @@ Implement Academy Haystack CD compose (branch 2).
 - Overlay only non-empty Haystack Environment Profile knobs onto the **guest** `.env` (ADR 0009). Do not docker build. Do not rewrite `/app/.env` inside the pulled image.
 - Overlay keys include `APP_NAME`, `APP_ENV`, `LOG_LEVEL`, `INDEXING_ST_MODEL`, `PROJECT_AGENT_*`, `RECOMMEND_FANOUT_CAP` (same list as `haystack-cd-academy.yml`).
 - Do not invent `LLM_API_KEY` when the Environment secret is empty
+- Sidecar **commands** are ADR 0011 (`postgres:17` / `python:3.12-slim` scripts), not `uv run python -m`
+- Do not invent `SOURCE_HOST` / `TARGET_HOST`; worker credential aliases are ADR 0011
 
 ## Output
 
-OpenSpec + ADR 0003 + ADR 0004 + ADR 0009 + `deploy-pipeline/ansible/` + compose jobs + `docs/BOOTSTRAP.md` + `docs/PREPARE-HAYSTACK-REPO.md` + `docs/samples/.env.prod`.
+OpenSpec + ADR 0003 + ADR 0004 + ADR 0009 + ADR 0011 + `deploy-pipeline/ansible/` + compose jobs + `docs/BOOTSTRAP.md` + `docs/PREPARE-HAYSTACK-REPO.md` + `docs/samples/.env.prod`.

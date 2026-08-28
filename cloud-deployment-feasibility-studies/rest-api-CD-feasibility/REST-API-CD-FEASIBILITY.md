@@ -28,9 +28,9 @@ This file is a **design record**. Living specs: [`../../heavy-rental-rest-api/sp
 
 ### Purpose
 
-**Re-run the guest compose playbook** on an **already created** `asg-rest` EC2 with the **Tomcat + WAR image** REST CI Release already built. Infra Terraform created the instance; infra Ansible did the first compose. This pipeline is a **later, manual** compose run (new image only). No new EC2.
+**Re-run the guest compose playbook** on an **already created** `asg-rest` EC2 with the **Tomcat + WAR image** REST CI Release already built. Infra Terraform created the instance. First-compose is infra **`deploy-projects`** (`site.yml`) or this app CD. This pipeline is a **later, manual** compose run (new image only). No new EC2.
 
-The Academy workflow (branch 1 discover + branch 2 compose) is in [`../../heavy-rental-rest-api/deploy-pipeline/`](../../heavy-rental-rest-api/deploy-pipeline/). Infra still does **first** compose on `apply`. This CD **re-runs** `guest_base` + `rest` for a new image or a secret refresh. See [`IMPLEMENTATION-PLAN.md`](IMPLEMENTATION-PLAN.md).
+The Academy workflow (branch 1 discover + branch 2 compose) is in [`../../heavy-rental-rest-api/deploy-pipeline/`](../../heavy-rental-rest-api/deploy-pipeline/). Infra `apply` / `configure-only` do **not** compose REST. This CD **re-runs** `guest_base` + `rest` for a new image or a secret refresh. See [`IMPLEMENTATION-PLAN.md`](IMPLEMENTATION-PLAN.md). The REST ALB is internet-facing `:8080`.
 
 ### Non-goals
 

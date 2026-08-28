@@ -75,7 +75,7 @@ Academy CD consumes a public GHCR/ECR tag or the tar. The image must accept infr
 | Human DAST report | Combined PDF artifact `dast-combined-report-pdf` (`dast-reports/combined-dast-report.pdf`); download from the Release run Summary → Artifacts, the DAST job summary link, or the GitHub Release |
 | Code scanning | CodeQL `python` |
 | Package | `uv build` (Hatchling wheel + sdist) |
-| Image | Always-generated `python:3.12-slim-bookworm` + uv + `uvicorn app.main:app :8000` (app Dockerfile ignored). Publish pushes GHCR `haystack_recommender:<semver>` + `:latest` (semver is previous GHCR `x.y.z` + patch, or `1.0.0`) and creates the GitHub Release. No baked infra `ENV`/`ARG`. Sanitized `.env.prod` → `/app/.env` for pydantic product knobs (`APP_ENV=prod`, …). Estate keys stay out of that file. Packaging proves dummy `docker run -e` env (overrides the file) and `GET /docs` or `GET /health` on `:8000`. Sidecar dirs copied only if present. |
+| Image | Always-generated `python:3.12-slim-bookworm` + uv + `uvicorn app.main:app :8000` (app Dockerfile ignored). Tar artifact: `haystack_recommender-image.tar.gz`. Publish pushes GHCR `haystack_recommender:<semver>` + `:latest` (semver is previous GHCR `x.y.z` + patch, or `1.0.0`) and creates the GitHub Release. No baked infra `ENV`/`ARG`. Sanitized `.env.prod` → `/app/.env` for pydantic product knobs (`APP_ENV=prod`, …). Estate keys stay out of that file. Packaging proves dummy `docker run -e` env (overrides the file) and `GET /docs` or `GET /health` on `:8000`. Sidecar dirs copied only if present (Release image is still uvicorn-only; CD workers are not this image). |
 
 CI-safe Haystack profile (matches `tests/conftest.py` and `QUICKSTART.md` Profile A):
 
@@ -131,7 +131,7 @@ Copy each pair into `Heavy-Rental/haystack-fast-api`:
 | Scheduled model retrain | No (product OpenSpec in the application repo) |
 | Committing a Dockerfile to the application repo | No (Release always generates uvicorn; app Dockerfile is not the deploy image) |
 | Create or change infrastructure | No — infra project |
-| Deploy the packaged service | No — Academy CD family ([`haystack-cd.md`](haystack-cd.md)) |
+| Deploy the packaged service | No — Academy + paid CD family ([`haystack-cd.md`](haystack-cd.md)) |
 | Operate the live system | No — infra project (after go-live) |
 
 Operate requires knowledge of the running platform. It does not create that platform. This CI family does not provision cloud resources or apply IaC.

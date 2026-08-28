@@ -32,6 +32,7 @@ Use this table instead of the original study body when the two disagree.
 | CORS | Portal ALB origin only | `APP_CORS_ALLOWED_ORIGINS` = portal origin **and** `http://<rest_alb_dns>:8080` |
 | REST ALB health | `GET /` (Spring 401) | `tg-rest` waits for `GET <instance>:8080/actuator/health` matcher **`200-299`** (2xx) |
 | Haystack ALB health | `GET /` or `/docs` | `tg-haystack` waits for `GET <instance>:8000/health` matcher **`200-299`** (2xx) |
+| Haystack sync/populate workers | `uv run python -m` on the uvicorn image | **`postgres:17` + `sync-from-primary.sh`** and **`python:3.12-slim` + `populate_neo4j.py`** (infra ADR 0020 / Haystack ADR 0011) |
 | Portal health | `GET /` (unspecified matcher) | ALB `tg-portal` matcher **`200-399`**. App CD `verify` accepts **200 / 301 / 302** only (same path) |
 | Portal CI Environments | None / no Stripe in CI | Fast Feedback and Integration CI have **no** Environment. **Release Packaging** uses Environment **`academy`** to bake Stripe `pk_` (`VITE_STRIPE_PUBLISHABLE_KEY`). CD auth is still a different use of `academy` / `AWS_ACTUAL` |
 

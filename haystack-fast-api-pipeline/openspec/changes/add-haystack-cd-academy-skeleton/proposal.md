@@ -2,7 +2,7 @@
 
 ## Why
 
-Infra CD already creates `asg-haystack` and first-composes uvicorn + sync + populate. Haystack CI already builds `python:3.12-slim-bookworm` + uvicorn; Release Publish pushes public GHCR plus a Release tar. There is no Haystack **app CD** workflow that can authenticate to Vocareum and discover those guests without Terraform.
+Infra CD already creates `asg-haystack`. As-built first-compose is infra `deploy-projects` (`site.yml`) or this app CD (not infra `apply`). Haystack CI already builds `python:3.12-slim-bookworm` + uvicorn; Release Publish pushes public GHCR plus a Release tar. There is no Haystack **app CD** workflow that can authenticate to Vocareum and discover those guests without Terraform.
 
 ## What Changes
 

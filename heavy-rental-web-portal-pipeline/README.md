@@ -35,7 +35,7 @@ Release stops at **packaged artifacts** (`dist/` zip, image tar, public GHCR, Gi
 | --- | --- |
 | Build, test, and package | In scope |
 | Create or change infrastructure | Out of scope (infra project) |
-| Deploy the packaged service | Academy and paid CD in `deploy-pipeline/` |
+| Deploy the packaged service | Academy and paid CD in `deploy-pipeline/`. First-compose is infra `deploy-projects` or this CD |
 | Operate the live system | Infra estate (`stop` / `destroy` / monitor). This CD can `verify` / `configure-only` / `deploy` compose. See [`docs/BOOTSTRAP.md`](docs/BOOTSTRAP.md) |
 
 ## Toolchain

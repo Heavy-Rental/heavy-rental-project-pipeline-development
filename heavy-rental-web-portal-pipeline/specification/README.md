@@ -50,8 +50,10 @@ As-implemented spec of Fast Feedback / Integration Check / Release YAML (PR reus
 - [`../openspec/changes/add-portal-cd-paid-deploy/`](../openspec/changes/add-portal-cd-paid-deploy/)
 - SPDD: [`../spdd/analysis/add-portal-cd-academy-skeleton.md`](../spdd/analysis/add-portal-cd-academy-skeleton.md), [`../spdd/analysis/add-portal-cd-academy-deploy.md`](../spdd/analysis/add-portal-cd-academy-deploy.md), [`../spdd/analysis/add-portal-cd-paid-deploy.md`](../spdd/analysis/add-portal-cd-paid-deploy.md)
 - Walkthrough: [`pipelines/portal-cd.md`](pipelines/portal-cd.md) (`configure-only` three stores)
-- Two CD Actions: [ADR 0009](../docs/adr/0009-two-cd-actions-academy-paid.md)
 - Operator: [`../docs/BOOTSTRAP.md`](../docs/BOOTSTRAP.md), [`../docs/PREPARE-PORTAL-REPO.md`](../docs/PREPARE-PORTAL-REPO.md)
+- First-compose: infra `deploy-projects` (`site.yml`) or this CD (not infra `apply`)
+- CD / ALB health: `GET :80/` **200 / 301 / 302** (ALB `tg-portal` matcher `200-399`)
+- Two CD Actions: [ADR 0009](../docs/adr/0009-two-cd-actions-academy-paid.md)
 
 ## Workflows (implementation)
 

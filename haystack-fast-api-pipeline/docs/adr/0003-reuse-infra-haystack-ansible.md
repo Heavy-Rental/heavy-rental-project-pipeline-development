@@ -6,7 +6,7 @@
 
 ## Context
 
-`IMPLEMENTATION-PLAN.md` §6 requires `guest_base` + `haystack` with `--limit haystack`. A second compose file would drift from estate first-compose.
+`IMPLEMENTATION-PLAN.md` §6 requires `guest_base` + `haystack` with `--limit haystack`. A second compose file would drift from estate first-compose (`deploy-projects` / `site.yml`, not infra `apply`). Worker runtime is [ADR 0011](0011-devcontainer-worker-sidecars.md) / infra ADR 0020.
 
 ## Decision
 

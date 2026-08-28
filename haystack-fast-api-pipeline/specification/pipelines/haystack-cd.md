@@ -2,11 +2,11 @@
 
 **Application:** https://github.com/Heavy-Rental/haystack-fast-api  
 **Authoring tree:** `haystack-fast-api-pipeline/deploy-pipeline/`  
-**Consumes:** public GHCR/ECR tag or Release image tar from the CI family ([`haystack-ci.md`](haystack-ci.md))
+**Consumes:** public GHCR/ECR tag or Release image tar (`haystack_recommender-image.tar.gz`) from the CI family ([`haystack-ci.md`](haystack-ci.md))
 
-This family discovers `asg-haystack` and can re-run Haystack compose. It does **not** run Terraform, create the ASG, or start Neo4j. Infra `apply` + `sync-secrets` must already have created the guests and `heavy-rental/haystack`.
+This family discovers `asg-haystack` and can re-run Haystack compose. It does **not** run Terraform, create the ASG, or start Neo4j. Infra `apply` + `sync-secrets` must already have created the guests and `heavy-rental/haystack`. First-compose is infra `deploy-projects` (`site.yml`) or this CD (`action=deploy`); infra `apply` / `configure-only` do **not** compose Haystack.
 
-App-repo readiness and env/sidecar gaps: [`../../docs/PREPARE-HAYSTACK-REPO.md`](../../docs/PREPARE-HAYSTACK-REPO.md). Everyday operate: [`../../docs/BOOTSTRAP.md`](../../docs/BOOTSTRAP.md).
+App-repo readiness: [`../../docs/PREPARE-HAYSTACK-REPO.md`](../../docs/PREPARE-HAYSTACK-REPO.md). Everyday operate: [`../../docs/BOOTSTRAP.md`](../../docs/BOOTSTRAP.md).
 
 ## Actions
 
@@ -36,23 +36,26 @@ Two callers (same reusable jobs):
 | `configure-only` | Yes (refresh guest `.env` + overlay; does **not** rebuild the image) | `HAYSTACK_IMAGE` or `image_ref` (or tar **and** matching tag). **No stock uvicorn.** |
 | `deploy` | Yes | Same as configure-only. Prefer a **new** tag. |
 
-`verify` is SSM `GET :8000/health` and must be **2xx** (same as ALB `tg-haystack` matcher `200-299` on `<instance>:8000/health`). `GET /` (404) and `/docs` are **not** the ALB check. Sidecar crash-loops (`postgres-haystack-sync`, `neo4j-populate`) do not fail the job.
+`verify` is SSM `GET :8000/health` and must be **2xx** (same as ALB `tg-haystack` matcher `200-299` on `<instance>:8000/health`). `GET /` (404) and `/docs` are **not** the ALB check. Sync/populate worker failures do not fail the job.
 
 ## Sync env (SoR → Haystack RDS)
 
-`postgres-haystack-sync` shares the uvicorn image and `env_file: .env`. Database endpoints are **externalized** in `heavy-rental/haystack` by infra `sync-secrets`, not by this CD family and not by CI.
+`postgres-haystack-sync` is `postgres:17` + `sync-from-primary.sh` (estate ADR 0020 / CD ADR 0011), `env_file: .env`. It does **not** use the uvicorn image. Endpoints are **externalized** in `heavy-rental/haystack` by infra `sync-secrets`. `neo4j-populate` is `python:3.12-slim` + `populate-neo4j-from-haystack.sh` (wraps `populate_neo4j.py`; pip-installs `psycopg` / `neo4j` at start). Scripts live on the guest at `/opt/heavy-rental/workers/`. `:8089` is Compose DNS only (not published on the host or ALB). Both workers use `restart: unless-stopped`.
 
 | Key | Meaning | Who writes it |
 | --- | --- | --- |
 | `POSTGRES_*` / `DATABASE_URL` | Haystack RDS (uvicorn) | Infra `sync-secrets` |
 | `SOURCE_HOST` / `SOURCE_PORT` / `SOURCE_DATABASE` | SoR / REST RDS (`heavy_rental`) | Infra `sync-secrets` |
 | `TARGET_HOST` / `TARGET_PORT` / `TARGET_DATABASE` | Haystack RDS (same host as `POSTGRES_*`) | Infra `sync-secrets` |
+| `SOURCE_USER` / `SOURCE_PASSWORD` / `SOURCE_DB` | Worker login to SoR | CD aliases from `POSTGRES_USERNAME` / `POSTGRES_PASSWORD` / `SOURCE_DATABASE` when SM omitted them |
+| `TARGET_USER` / `TARGET_PASSWORD` / `TARGET_DB` / `PG*` | Worker login to Haystack RDS | CD aliases from `POSTGRES_*` / `TARGET_*` when SM omitted them |
 | `NEO4J_URI` | Bolt NLB | Infra Terraform → `sync-secrets` |
 | `NEO4J_POPULATE_URL` | Compose worker `http://neo4j-populate:8089/v1/populate` | Infra `sync-secrets` (not an ALB) |
+| `NEO4J_POPULATE_TRIGGER_URL` | Sync worker HTTP trigger (same Compose URL) | CD default if SM omitted it |
 | `FLEET_BACKEND` / `NEO4J_BACKEND` | `sql` / `bolt` | Infra SM; Haystack Environment may overlay |
-| `NEED_DECOMPOSER`, `LLM_*`, `INDEXING_*`, `PRICING_SCHEMA`, `KG_*`, `APP_ENV`, … | Product Profile A/B | Image `/app/.env` from `.env.prod`; Haystack Environment `academy` overlay (ADR 0009) |
+| `NEED_DECOMPOSER`, `LLM_*`, `INDEXING_*`, `PRICING_SCHEMA`, `KG_*`, `APP_ENV`, … | Product Profile A/B | Image `/app/.env` from `.env.prod`; Haystack Environment `academy` or `AWS_ACTUAL` overlay (ADR 0009) |
 
-Haystack CD SHALL map SM → `.env` and MAY add FastAPI aliases (`POSTGRES_HOSTNAME`, …). It SHALL NOT invent `SOURCE_*` / `TARGET_*`, SHALL NOT copy `heavy-rental/rest`, and SHALL NOT bake RDS DNS into the image or the workflow YAML. No `SOURCE_USER` / `SOURCE_PASSWORD` in SM today — same Academy master password on both instances.
+Haystack CD SHALL map SM → `.env` and MAY add FastAPI aliases (`POSTGRES_HOSTNAME`, …) and worker credential aliases (`SOURCE_USER`, `TARGET_USER`, `PG*`, …). It SHALL NOT invent `SOURCE_HOST` / `SOURCE_PORT` / `SOURCE_DATABASE` or `TARGET_HOST` / `TARGET_PORT` / `TARGET_DATABASE`, SHALL NOT copy `heavy-rental/rest`, and SHALL NOT bake RDS DNS into the image or the workflow YAML. No `SOURCE_USER` / `SOURCE_PASSWORD` in SM today — same Academy master password on both instances, aliased onto the worker names.
 
 ## Job graph
 
@@ -100,6 +103,7 @@ The academy **runner** uses Vocareum keys. The academy **EC2** uses `LabRole`. D
 | Variable | `AWS_REGION` | Defaults to `us-east-1` |
 | Variable | `HAYSTACK_IMAGE` | Public GHCR or ECR tag (**this** Environment’s copy) |
 | Variable | `IMAGE_HTTP_URL` | Optional HTTPS or `s3://` CI tar |
+| Secret (optional) | `LLM_API_KEY` | Overlay onto `.env`; never on the Run form |
 
 Paid caller declares **no** Vocareum key inputs. It fails if Environment is not `AWS_ACTUAL`, if `AWS_ACCESS_KEY_ID` is set, or if `AWS_ROLE_TO_ASSUME` is empty. The **EC2** uses `hr-paid-haystack`. Same optional Profile overlay names as academy, on **this** Environment.
 
@@ -135,9 +139,10 @@ actionlint haystack-fast-api-pipeline/deploy-pipeline/haystack-cd-paid-caller.ym
 | Rebuild the image | No — consume Release artifacts |
 | `stop` / `destroy` | No — infra CD |
 | Paid / OIDC | Yes — `haystack-cd-paid-caller.yml` (ADR 0010) |
+| SoR → Haystack RDS sync + Neo4j populate workers | Yes — `postgres:17` / `python:3.12-slim` scripts (ADR 0011). Worker failure does not fail `verify` |
 
 ## Specs
 
-- OpenSpec: [`../../openspec/changes/add-haystack-cd-academy-skeleton/`](../../openspec/changes/add-haystack-cd-academy-skeleton/), [`../../openspec/changes/add-haystack-cd-academy-deploy/`](../../openspec/changes/add-haystack-cd-academy-deploy/), [`../../openspec/changes/add-haystack-cd-paid-deploy/`](../../openspec/changes/add-haystack-cd-paid-deploy/)
-- OpenSPDD: [`../../spdd/analysis/add-haystack-cd-academy-deploy.md`](../../spdd/analysis/add-haystack-cd-academy-deploy.md), [`../../spdd/analysis/add-haystack-cd-paid-deploy.md`](../../spdd/analysis/add-haystack-cd-paid-deploy.md)
-- ADRs 0001–0004, 0009–0010: [`../../docs/adr/`](../../docs/adr/)
+- OpenSpec: [`../../openspec/changes/add-haystack-cd-academy-skeleton/`](../../openspec/changes/add-haystack-cd-academy-skeleton/), [`../../openspec/changes/add-haystack-cd-academy-deploy/`](../../openspec/changes/add-haystack-cd-academy-deploy/), [`../../openspec/changes/add-haystack-cd-paid-deploy/`](../../openspec/changes/add-haystack-cd-paid-deploy/), [`../../openspec/changes/add-haystack-cd-workers/`](../../openspec/changes/add-haystack-cd-workers/)
+- OpenSPDD: [`../../spdd/analysis/add-haystack-cd-academy-deploy.md`](../../spdd/analysis/add-haystack-cd-academy-deploy.md), [`../../spdd/analysis/add-haystack-cd-paid-deploy.md`](../../spdd/analysis/add-haystack-cd-paid-deploy.md), [`../../spdd/analysis/add-haystack-cd-workers.md`](../../spdd/analysis/add-haystack-cd-workers.md)
+- ADRs 0001–0004, 0009–0011: [`../../docs/adr/`](../../docs/adr/)
