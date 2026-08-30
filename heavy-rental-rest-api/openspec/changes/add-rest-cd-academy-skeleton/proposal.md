@@ -4,7 +4,7 @@
 
 ## Why
 
-Infra CD already creates `asg-rest` and first-composes Tomcat. REST CI already builds `tomcat:10.1-jdk21-temurin` + `ROOT.war` and pushes GHCR (non-PR) plus a Release tar. There is no REST **app CD** workflow that can authenticate to Vocareum and discover those guests without Terraform.
+Infra CD already creates `asg-rest`. First-compose is infra `deploy-projects` (`site.yml`) or this app CD (not infra `apply`). REST CI already builds `tomcat:10.1-jdk21-temurin` + `ROOT.war`; Publish on `workflow_dispatch` pushes GHCR plus a Release tar. There is no REST **app CD** workflow that can authenticate to Vocareum and discover those guests without Terraform.
 
 ## What Changes
 
@@ -22,5 +22,5 @@ Infra CD already creates `asg-rest` and first-composes Tomcat. REST CI already b
 
 ## Impact
 
-- Operators create GitHub Environment `academy` on this repo (same secret **names** as infra).
+- Operators create GitHub Environment `academy` on the Spring application repo (same secret **names** as infra).
 - **Not in this change:** Ansible compose, image pull, paid/OIDC, Terraform.

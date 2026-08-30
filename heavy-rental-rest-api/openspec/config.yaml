@@ -19,6 +19,7 @@ context: |
   When Fast Feedback / Integration CI run in the Heavy-Rental Spring repo,
   checkout is the calling commit.
   Feature-branch push runs Fast Feedback (Integration only). PR Integration Check
-  reuses that SHA and does not call fast-feedback-pipeline.yml. Integration CI
-  job name is Integration Check. Integration caller passes REST_API_DB_* via an
-  explicit secrets map (Repository secrets); Release QC reads Environment production.
+  reuses that SHA (waits if in-flight) and does not call fast-feedback-pipeline.yml.
+  Integration CI job name is Integration Check. Integration and Release callers
+  both pass REST_API_DB_* via an explicit secrets map (Repository secrets).
+  QC jobs still use Environment integration / production.

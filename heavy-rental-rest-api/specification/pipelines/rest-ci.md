@@ -14,7 +14,7 @@ Callers pass `github_environment` (`integration` / `production`). Quality Contro
 
 ```
 feature branch push  →  Fast Feedback (Integration only; sole Integration-stage run for that SHA)
-PR / push → develop  →  Integration CI (Integration Check reuses Fast Feedback on PR; full gates; SAST here)
+PR / push → develop  →  Integration CI (Integration Check reuses Fast Feedback on PR, waits if in-flight; full gates; SAST here)
 workflow_dispatch     →  Release (master + QC + image + DAST + public GHCR + GitHub Release)
 ```
 
@@ -24,7 +24,8 @@ workflow_dispatch     →  Release (master + QC + image + DAST + public GHCR + G
 assert-caller
       │
       ▼
- Integration Check    PR: reuse Fast Feedback for the head SHA (skip Maven/layout)
+ Integration Check    PR: reuse Fast Feedback for the head SHA (skip Maven/layout;
+                      wait if in-flight)
                       else: Java 21 + ./mvnw dependency:resolve + layout
                       job id integration-check (not environment: integration)
       │
@@ -39,6 +40,8 @@ assert-caller
 
 Do **not** `uses:` `fast-feedback-pipeline.yml` from `rest-api-ci-caller.yml`. Copy both Integration files into the Spring repo and call `./.github/workflows/integration-pipeline.yml`.
 
+On `pull_request`, Integration Check looks up `rest-api-fast-feedback-caller.yml` for the head SHA (`gh run list`). A successful run skips Maven/layout. An in-flight run is waited on with `gh run watch`. Push to `develop` and `workflow_dispatch` always run Maven/layout locally.
+
 ## Job graph (Release)
 
 SAST/CodeQL stay on Integration CI (`develop`). Release does **not** rerun them.
@@ -50,7 +53,7 @@ assert-caller
  Integration          checkout master, Java 21 + ./mvnw, layout
       │
       ▼
- Quality Control      environment: production + REST_API_DB_*
+ Quality Control      environment: production + REST_API_DB_* (caller map)
                       Docker postgres:16-alpine, compile, test, package WAR
       │
       ▼
@@ -63,7 +66,7 @@ assert-caller
  Publish              public GHCR + GitHub Release on master
 ```
 
-Release QC uses Environment `production` (hardcoded) and the same `REST_API_DB_*` names as Integration (still a **local** Docker Postgres). Packaging writes a versioned WAR, a Tomcat image tar, and a localhost JDBC env file **without password**. That env file is a workflow artifact only; Academy CD does not use it. The image must accept `POSTGRES_*` / `SPRING_DATASOURCE_*` / `HAYSTACK_BASE_URL` / Stripe / `APP_JWT_SECRET` at runtime (ADR 0007); Packaging proves that with dummy env and refuses baked hostnames. **Publish** (not Packaging) pushes `ghcr.io/<owner>/heavy_rental_rest_api:<x.y.z>` and `:latest`, then creates the GitHub Release. The Release caller is `workflow_dispatch` only, so GHCR always runs on a successful dispatch.
+Release QC uses Environment `production` (hardcoded) and the same `REST_API_DB_*` names as Integration (still a **local** Docker Postgres). The Release caller forwards those names via an explicit `secrets:` map from **Repository** secrets (same pattern as Integration). Packaging writes a versioned WAR, a Tomcat image tar, and a localhost JDBC env file **without password**. That env file is a workflow artifact only; Academy CD does not use it. The image must accept `POSTGRES_*` / `SPRING_DATASOURCE_*` / `HAYSTACK_BASE_URL` / Stripe / `APP_JWT_SECRET` at runtime (ADR 0007); Packaging proves that with dummy env and refuses baked hostnames. **Publish** (not Packaging) pushes `ghcr.io/<owner>/heavy_rental_rest_api:<x.y.z>` and `:latest`, then creates the GitHub Release. The Release caller is `workflow_dispatch` only (required input `run_name` sets the Actions-list title), so GHCR always runs on a successful dispatch. Publish warns if the GHCR package is not public; it does not flip visibility.
 
 QC “Package WAR” on Integration CI is **build verification**, not a deploy.
 
@@ -73,7 +76,7 @@ QC “Package WAR” on Integration CI is **build verification**, not a deploy.
 | --- | --- |
 | JDK | Temurin 21 |
 | Build | Maven wrapper (`./mvnw -B -ntp`) |
-| Integration | `dependency:resolve` + `pom.xml` / `mvnw` / `src/main/java` / `src/main/resources` |
+| Integration | `dependency:resolve` + `pom.xml` / `mvnw` / `src/main/java` / `src/main/resources`. On Integration CI pull_request, skip Maven/layout when Fast Feedback already succeeded for the head SHA. In-flight Fast Feedback is waited on (`gh run watch`) |
 | QC tests | `./mvnw test` against `jdbc:postgresql://localhost:<PORT>/<NAME>` |
 | QC package | `./mvnw -DskipTests package` (prefer `.war`) |
 | SAST | Two Semgrep passes. App: `p/java` + OWASP / security-audit / secrets / CWE Top 25 / FindSecBugs / Gitleaks / SQL injection / JWT / insecure-transport, plus custom ERROR rules for plaintext credentials in Spring properties/YAML (`p/spring` is gone); excludes `.github/**`. GHA: `p/github-actions` plus custom inherit / hardcoded-secret rules (`secrets: inherit` ERROR except paid CD caller; explicit secrets-context maps allowed). Reports: `semgrep.sarif` + `semgrep-gha.sarif` (all severities); gate is ERROR-only |
@@ -90,11 +93,11 @@ Configure on the **application** repo, not this pipeline-development repo.
 | Pipeline | Where | Names |
 | --- | --- | --- |
 | Integration CI QC | **Repository secrets** (required for the caller map). Optionally also Environment `integration`. | `REST_API_DB_NAME`, `REST_API_DB_USER`, `REST_API_DB_PASSWORD`, `REST_API_DB_PORT` |
-| Release QC + Packaging | Environment `production` (no caller map) | Same four names. Dummy local values are enough. |
+| Release QC + Packaging | **Repository secrets** (required for the caller map). Optionally also Environment `production`. | Same four names. Dummy local values are enough. |
 
 `REST_API_DB_URL` is **not** a secret. QC builds `jdbc:postgresql://localhost:<PORT>/<NAME>` after Docker Postgres starts. Do not add `REST_API_CLOUD_DB_*`. Guest CD config is `heavy-rental/rest` on the instance.
 
-Integration CI caller **does** pass `REST_API_DB_*` via an explicit `secrets:` map. A `uses:` job cannot read Environment secrets, so those values must be Repository secrets. Release caller must **not** pass a map (QC reads Environment `production`). Neither caller uses `secrets: inherit`. Do not set `environment:` on a `uses:` job.
+Both Integration CI and Release callers pass `REST_API_DB_*` via an explicit `secrets:` map. A `uses:` job cannot read Environment secrets, so those values must be Repository secrets. QC jobs still use `environment: integration` / `environment: production`. Neither caller uses `secrets: inherit`. Do not set `environment:` on a `uses:` job.
 
 ## Branch protection (application repo `develop`)
 

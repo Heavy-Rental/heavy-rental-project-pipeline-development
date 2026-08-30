@@ -11,13 +11,13 @@ When reality diverges, fix this prompt first — then update the YAML.
 
 - Three-pipeline GitHub Flow family for the Spring REST API.
 - Fast Feedback: Integration only, feature-branch pushes (ignore `master`/`develop`). No `pull_request` trigger. Sole Integration-stage run for a feature-branch SHA.
-- Integration CI: PR/push `develop` + `workflow_dispatch`. Jobs: Assert caller → Integration Check → (QC ∥ Security ∥ CodeQL) → GitHub Flow CI Gate. On `pull_request`, Integration Check reuses a successful Fast Feedback run for the head SHA (skip Maven/layout). The CI caller must not `uses:` `fast-feedback-pipeline.yml`.
+- Integration CI: PR/push `develop` + `workflow_dispatch`. Jobs: Assert caller → Integration Check → (QC ∥ Security ∥ CodeQL) → GitHub Flow CI Gate. On `pull_request`, Integration Check reuses a successful Fast Feedback run for the head SHA (skip Maven/layout; wait if in-flight). The CI caller must not `uses:` `fast-feedback-pipeline.yml`.
 - Release: `workflow_dispatch` only (creates the GitHub Release; do not use `on: release`). Jobs: Assert caller → Integration (checkout `master`) → QC → Packaging → DAST → Publish. No Security Testing or CodeQL on Release. Image is env-driven: refuse baked `POSTGRES_*` / `SPRING_DATASOURCE_*` / `HAYSTACK_*` / `STRIPE_*` / `APP_JWT_*`; prove dummy runtime env. Do not `COPY` `spring-datasource.env` into the image. Publish (not Packaging) pushes GHCR and `gh release create`.
 - Java 21 Temurin + `./mvnw`. QC starts Docker `postgres:16-alpine`.
 - Integration QC secrets: `REST_API_DB_*` as Repository secrets, forwarded by the caller explicit map; QC also uses Environment `integration`.
-- Release QC secrets: same `REST_API_DB_*` names / Environment `production` (no caller map). `REST_API_DB_URL` is derived.
+- Release QC secrets: same `REST_API_DB_*` names, forwarded by the Release caller explicit map; QC also uses Environment `production`. `REST_API_DB_URL` is derived.
 - Specs live under `heavy-rental-rest-api/`.
-- This family stops at packaging. Academy CD is `deploy-pipeline/`.
+- This family stops at packaging. Academy CD is `deploy-pipeline/`. The Security Report pair is a scheduled/manual Code Scanning summary (Monday 06:00 UTC); it is not a merge gate.
 
 ## E — Entities
 
@@ -60,7 +60,7 @@ Artifacts:
 
 ## A — Approach
 
-- Keep the six CI YAML files as the GitHub Flow implementation. Specs track Integration Check, Fast Feedback reuse, and the Integration explicit secrets map. Security Report is a seventh pair (caller + reusable) that summarizes existing Code Scanning alerts; it is not a merge gate.
+- Keep the six GitHub Flow YAML files as the GitHub Flow implementation. Specs track Integration Check, Fast Feedback reuse, and both callers’ explicit `REST_API_DB_*` maps. Security Report is a seventh pair (caller + reusable) that summarizes existing Code Scanning alerts (Monday 06:00 UTC); it is not a merge gate.
 - Fast Feedback `DEFAULT_APP_REPOSITORY`: `SA62-team1/heavy-rental-spring-rest-api` (act). Integration CI and Release: `Heavy-Rental/heavy-rental-spring-rest-api`. Installed Fast Feedback / CI callers check out the calling commit; Release always checks out `master`.
 
 ## S — Structure
@@ -89,6 +89,7 @@ Job `name:` values (branch protection):
 - `Packaging` (release only)
 - `DAST` (release only)
 - `Publish` (release only)
+- `Assert caller` / `Generate report` (Security Report pair only)
 
 ## O — Operations
 
@@ -101,7 +102,7 @@ Job `name:` values (branch protection):
 - `# ====...====` headers on YAML.
 - `set -euo pipefail` on multi-line `run:`.
 - No `secrets: inherit` on **CI** callers (paid CD does inherit; that is a different family).
-- Integration CI caller **must** pass an explicit `REST_API_DB_*` map from Repository secrets. Release caller must not pass a map.
+- Integration CI and Release callers **must** each pass an explicit `REST_API_DB_*` map from Repository secrets.
 - No `environment:` on caller `uses:` jobs.
 - Bind `github.*` / `inputs.*` through `env:` inside `run:`.
 - SARIF is the security report standard.

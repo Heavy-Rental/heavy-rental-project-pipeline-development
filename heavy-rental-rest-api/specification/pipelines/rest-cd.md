@@ -64,11 +64,15 @@ Paid Ansible SSM uses `heavy-rental-ssm-<account>-actual` (not the tfstate bucke
 | Kind | Name | Role |
 | --- | --- | --- |
 | Secret (optional fallback) | `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` / `AWS_SESSION_TOKEN` | Runner only |
-| Variable | `AWS_REGION` | Defaults to `us-east-1` |
-| Variable | `REST_IMAGE` | Public GHCR or ECR tag |
-| Variable | `IMAGE_HTTP_URL` | Optional HTTPS or `s3://` CI tar |
+| Variable | `AWS_REGION` | Defaults to `us-east-1` (Ansible SSM connection region in `inventory/aws_ssm.py` is hardcoded `us-east-1`) |
+| Variable | `REST_IMAGE` | Public GHCR or ECR tag. Required for `deploy` / `configure-only` unless `image_ref` is set. Tar URL does **not** replace this tag |
+| Variable | `IMAGE_HTTP_URL` | Optional HTTPS or `s3://` CI tar for `docker load` (still needs a matching compose tag) |
+| Variable | `DYNAMIC_PRICING_ENABLED` | Optional overlay `true`/`false`. Empty = SM / Spring default |
+| Variable | `PRICING_DEFAULT_DISTANCE_KM` | Optional overlay. Empty = SM / Spring default |
+| Variable | `PRICING_ORIGIN_POSTAL_CODE` | Optional overlay. Empty = SM / Spring default |
+| Variable | `PRICING_DISTANCE_LOOKUP_ENABLED` | Optional overlay. Empty = SM / Spring default |
 
-Do **not** point this workflow at CI Environments `integration` or `production`. Do not copy `REST_API_DB_*` onto the guest.
+Do **not** point this workflow at CI Environments `integration` or `production`. Do not copy `REST_API_DB_*` onto the guest. Non-empty pricing vars overlay onto guest `.env`; empty vars leave SM / Spring defaults. The overlay does **not** replace RDS, Stripe, JWT, CORS, or OneMap keys.
 
 The academy **runner** uses Vocareum keys. The academy **EC2** uses `LabRole`.
 
@@ -77,9 +81,10 @@ The academy **runner** uses Vocareum keys. The academy **EC2** uses `LabRole`.
 | Kind | Name | Role |
 | --- | --- | --- |
 | Variable | `AWS_ROLE_TO_ASSUME` | GitHub OIDC (`vars.AWS_ROLE_TO_ASSUME`). Required on paid |
-| Variable | `AWS_REGION` | Defaults to `us-east-1` |
-| Variable | `REST_IMAGE` | Public GHCR or ECR tag (**this** Environment’s copy) |
-| Variable | `IMAGE_HTTP_URL` | Optional HTTPS or `s3://` CI tar |
+| Variable | `AWS_REGION` | Defaults to `us-east-1` (Ansible SSM connection region in `inventory/aws_ssm.py` is hardcoded `us-east-1`) |
+| Variable | `REST_IMAGE` | Public GHCR or ECR tag (**this** Environment’s copy). Required for `deploy` / `configure-only` unless `image_ref` is set |
+| Variable | `IMAGE_HTTP_URL` | Optional HTTPS or `s3://` CI tar (still needs a matching compose tag) |
+| Variable | `DYNAMIC_PRICING_ENABLED` / `PRICING_DEFAULT_DISTANCE_KM` / `PRICING_ORIGIN_POSTAL_CODE` / `PRICING_DISTANCE_LOOKUP_ENABLED` | Optional overlay. Empty = SM / Spring default. Same names as academy |
 
 Paid caller declares **no** Vocareum key inputs. It fails if Environment is not `AWS_ACTUAL`, if `AWS_ACCESS_KEY_ID` is set, or if `AWS_ROLE_TO_ASSUME` is empty. The **EC2** uses `hr-paid-rest`. Do **not** copy `REST_API_DB_*` onto the guest.
 

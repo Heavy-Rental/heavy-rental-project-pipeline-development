@@ -166,10 +166,8 @@ The Integration CI caller SHALL NOT `uses:` `fast-feedback-pipeline.yml`. Fast F
 - THEN it does not reuse Fast Feedback
 - AND it runs Java 21, Maven dependency resolve, and layout checks locally
 
-### Requirement: Integration caller passes QC secrets explicitly
-The Integration CI caller SHALL pass `REST_API_DB_NAME`, `REST_API_DB_USER`, `REST_API_DB_PASSWORD`, and `REST_API_DB_PORT` via an explicit `secrets:` map. It SHALL NOT set `environment:` on the `uses:` job and SHALL NOT use `secrets: inherit`. Those names SHALL be Repository secrets on the application repo (a `uses:` job cannot read Environment secrets). Quality Control SHALL still use `environment: integration`. Neither caller SHALL pass `REST_API_DB_URL`.
-
-The Release caller SHALL NOT pass `REST_API_DB_*`, SHALL NOT set `environment:` on the `uses:` job, and SHALL NOT use `secrets: inherit`. Release Quality Control SHALL read `REST_API_DB_*` from Environment `production`.
+### Requirement: CI callers pass QC secrets explicitly
+The Integration CI caller and the Release caller SHALL each pass `REST_API_DB_NAME`, `REST_API_DB_USER`, `REST_API_DB_PASSWORD`, and `REST_API_DB_PORT` via an explicit `secrets:` map. Neither SHALL set `environment:` on the `uses:` job and neither SHALL use `secrets: inherit`. Those names SHALL be Repository secrets on the application repo (a `uses:` job cannot read Environment secrets). Quality Control SHALL still use `environment: integration` on Integration CI and `environment: production` on Release. Neither caller SHALL pass `REST_API_DB_URL`.
 
 #### Scenario: Integration caller has an explicit secrets map
 - GIVEN `rest-api-ci-caller.yml` invokes the reusable integration workflow
@@ -178,8 +176,9 @@ The Release caller SHALL NOT pass `REST_API_DB_*`, SHALL NOT set `environment:` 
 - AND the `uses:` job has no `environment:` key
 - AND `secrets: inherit` is absent
 
-#### Scenario: Release caller has no secrets map
+#### Scenario: Release caller has an explicit secrets map
 - GIVEN `rest-api-release-caller.yml` invokes the reusable release workflow
 - WHEN the job is declared
-- THEN the `uses:` job has no `secrets:` key
+- THEN the `uses:` job has an explicit `secrets:` map for `REST_API_DB_NAME`, `REST_API_DB_USER`, `REST_API_DB_PASSWORD`, and `REST_API_DB_PORT`
 - AND the `uses:` job has no `environment:` key
+- AND `secrets: inherit` is absent

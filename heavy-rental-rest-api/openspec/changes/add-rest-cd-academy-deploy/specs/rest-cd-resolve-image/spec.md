@@ -3,14 +3,22 @@
 ## ADDED Requirements
 
 ### Requirement: Pipeline chooses the REST image
-On `action=deploy`, a `resolve-image` job SHALL set extra-vars for Ansible. It SHALL prefer a non-empty `image_http_url` input or Environment `IMAGE_HTTP_URL` for `docker load`. Otherwise it SHALL use `image_ref` or Environment `REST_IMAGE` as a registry tag. It SHALL NOT run `docker build` or Maven.
+On `action=deploy`, a `resolve-image` job SHALL set extra-vars for Ansible. It SHALL require a non-empty compose tag from `image_ref` or Environment `REST_IMAGE`. A non-empty `image_http_url` input or Environment `IMAGE_HTTP_URL` SHALL be passed through for `docker load` and SHALL NOT replace the compose tag. It SHALL NOT run `docker build` or Maven.
 
 #### Scenario: Deploy with no image
 - GIVEN `action=deploy`
-- AND `image_http_url`, `IMAGE_HTTP_URL`, `image_ref`, and `REST_IMAGE` are all empty
+- AND `image_ref` and `REST_IMAGE` are both empty
 - WHEN resolve-image runs
 - THEN the job fails
 - AND it does not invent a stock Tomcat tag
+- AND a tar URL alone does not satisfy the compose tag
+
+#### Scenario: Tar without a compose tag
+- GIVEN `action=deploy`
+- AND `image_http_url` or `IMAGE_HTTP_URL` is set
+- AND `image_ref` and `REST_IMAGE` are both empty
+- WHEN resolve-image runs
+- THEN the job fails telling the operator that `docker load` still needs a compose tag
 
 #### Scenario: HTTPS string in image_ref
 - GIVEN `image_ref` starts with `http://` or `https://`
