@@ -13,7 +13,7 @@ Copy-pasting those YAML files unchanged would install the **wrong toolchain** (J
 - Fast feedback runs Integration only on feature-branch pushes (sole Integration-stage run for that SHA).
 - Release (`workflow_dispatch`) runs Integration + Quality Control, then Packaging (`uv build` + image tar), DAST, and Publish (public GHCR + GitHub Release). SAST and CodeQL stay on Integration CI. Packaging sanitizes `.env.prod` into `/app/.env` (product knobs only). Academy Environment variables are **not** read at Packaging (ADR 0009).
 - Specify the pipelines with OpenSpec (behavior) and OpenSPDD (REASONS Canvas implementation contract).
-- Bound the family to CI and packaging. Infrastructure, deploy, and operate are another project.
+- Bound the family to CI and packaging. A scheduled Security Report pair summarizes existing Code Scanning alerts (not a merge gate). Infrastructure, deploy, and operate are another project.
 
 ## Capabilities
 
@@ -33,6 +33,6 @@ Copy-pasting those YAML files unchanged would install the **wrong toolchain** (J
 
 ## Impact
 
-- **Application repo:** operators copy the six YAML files into `Heavy-Rental/haystack-fast-api` `.github/workflows/`.
+- **Application repo:** operators copy the six GitHub Flow YAML files plus the Security Report pair into `Heavy-Rental/haystack-fast-api` `.github/workflows/`.
 - **This repo:** new `haystack-fast-api-pipeline/` tree (specs + workflows). No change to REST API, portal, or mobile pipelines.
 - **Not in this change:** live pgvector/Neo4j/LLM CI, scheduled model retrain, committing an application Dockerfile as the deploy image (Release always generates uvicorn), edits to the application product OpenSpec, or infrastructure / operate workflows (another project). Academy app CD is a separate change in this tree.

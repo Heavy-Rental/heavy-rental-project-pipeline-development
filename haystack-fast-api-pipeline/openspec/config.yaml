@@ -6,6 +6,7 @@ context: |
   Two families live here:
     1. CI — Fast Feedback, Integration CI, and Release packaging
        (openspec/changes/add-haystack-ci-pipeline/). As-implemented of existing YAML.
+       Security Report is a scheduled/manual Code Scanning summary, not a merge gate.
     2. App CD — discover asg-haystack and compose (academy Vocareum +
        paid OIDC callers: add-haystack-cd-academy-skeleton,
        add-haystack-cd-academy-deploy, add-haystack-cd-paid-deploy,

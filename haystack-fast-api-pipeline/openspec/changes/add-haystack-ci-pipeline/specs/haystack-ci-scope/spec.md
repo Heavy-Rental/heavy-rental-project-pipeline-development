@@ -2,7 +2,7 @@
 
 ## Purpose
 
-This **CI** family is Fast Feedback, Integration CI, and Release packaging only. Estate IaC and operate (`stop` / `destroy`) live in the infra project. Academy and paid **app CD** (compose onto `asg-haystack`) is specified in `add-haystack-cd-*` in this same tree, not in this CI change.
+This **CI** family is Fast Feedback, Integration CI, and Release packaging. A scheduled Security Report pair summarizes existing Code Scanning alerts and is not a merge gate. Estate IaC and operate (`stop` / `destroy`) live in the infra project. Academy and paid **app CD** (compose onto `asg-haystack`) is specified in `add-haystack-cd-*` in this same tree, not in this CI change.
 
 ## ADDED Requirements
 
@@ -33,6 +33,15 @@ The haystack CI family SHALL NOT monitor, alert on, scale, or remediate a live e
 - GIVEN any pipeline in this family
 - WHEN jobs complete
 - THEN no job tails production logs, pages on-call, or mutates a running environment
+
+### Requirement: Security Report does not scan or deploy
+The scheduled Security Report pair SHALL summarize existing Code Scanning alerts only. It SHALL NOT run Semgrep, pip-audit, Trivy, or CodeQL, SHALL NOT produce a wheel or image, and SHALL NOT compose onto `asg-haystack`.
+
+#### Scenario: Report-only
+- GIVEN the Security Report workflow runs
+- WHEN jobs complete
+- THEN no scanner job ran
+- AND no Ansible or GHCR push ran
 
 ### Requirement: Packaging assumes the platform already exists
 Release packaging SHALL produce artifacts a later deploy project can consume and SHALL NOT require this family to have created the destination platform.

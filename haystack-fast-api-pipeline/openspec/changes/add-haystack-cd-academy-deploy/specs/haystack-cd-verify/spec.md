@@ -7,7 +7,7 @@ Verify SHALL SSM `GET http://127.0.0.1:8000/health` and accept HTTP **2xx only**
 
 #### Scenario: uvicorn answers
 - THEN the job succeeds even if SoR RDS or Bolt is down
-- AND the job succeeds even if `postgres-haystack-sync` or `neo4j-populate` crash (modules not in the current app image)
+- AND the job succeeds even if `postgres-haystack-sync` or `neo4j-populate` crash (ADR 0011 scripts; worker failure does not fail verify)
 
 #### Scenario: Summary is safe
 - THEN no instance IPs or internal ALB DNS

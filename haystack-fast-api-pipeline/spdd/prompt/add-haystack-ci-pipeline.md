@@ -13,10 +13,11 @@ When reality diverges, fix this prompt first — then update the YAML.
 - Fast Feedback: Integration only, feature-branch pushes (ignore `master`/`develop`). Sole Integration-stage run for that SHA.
 - Integration CI: PR/push `develop` + `workflow_dispatch`. Jobs: Assert caller → Integration → (QC ∥ Security ∥ CodeQL) → GitHub Flow CI Gate. CI caller does not `uses:` Fast Feedback. On `pull_request`, Integration reuses a successful Fast Feedback run for the head SHA and skips uv/layout.
 - Release: `workflow_dispatch` only (Actions → Haystack Release Pipeline Invoke). Jobs: Assert caller → Integration → QC → Packaging → DAST → Publish (public GHCR + GitHub Release). Do **not** use `on: release` — Publish creates the GitHub Release. SAST/CodeQL stay on Integration CI.
+- Security Report pair (`haystack-security-report-caller.yml` + `security-report-pipeline.yml`) summarizes existing Code Scanning alerts (Monday 06:00 UTC + `workflow_dispatch`). It is not a merge gate and does not scan.
 - Use **Python/Haystack tools only**: CPython 3.12, uv, Ruff, pytest, Haystack `Pipeline` constructors, Semgrep `p/python`, pip-audit report, CodeQL `python`.
 - Specs (OpenSpec + this canvas) and YAML all live under `haystack-fast-api-pipeline/`.
-- Install story: copy each caller + reusable pair into the application repo `.github/workflows/`.
-- This family stops at packaging. Infrastructure, deploy, and operate belong to another project.
+- Install story: copy each GitHub Flow caller + reusable pair into the application repo `.github/workflows/`, plus the Security Report pair.
+- This family stops at packaging. Academy CD is `deploy-pipeline/`. The Security Report pair is a scheduled/manual Code Scanning summary (Monday 06:00 UTC); it is not a merge gate.
 
 ## E — Entities
 
@@ -65,13 +66,16 @@ Artifacts:
 | Pytest HTML | `reports/pytest-report.html` |
 | SARIF | `security-reports/semgrep.sarif`, `security-reports/semgrep-gha.sarif`, `security-reports/trivy-fs.sarif` |
 | pip-audit | `security-reports/pip-audit.json` |
+| Combined security PDF | `security-combined-report-pdf` (Integration CI) |
 | Release wheel | `haystack-fast-api-v{version}-build{run}-{sha}.whl`, `haystack-fast-api.whl` |
 | Release sdist | matching `.tar.gz` names |
 | Release image tar | `haystack_recommender-image.tar.gz` (stable archive; GHCR tags are `<semver>` + `:latest`) |
 | GHCR | `ghcr.io/{owner}/haystack_recommender:{x.y.z}` and `:latest` (Publish after DAST) |
+| Combined DAST PDF | `dast-combined-report-pdf` |
 
 ## A — Approach
 
+- Keep the six CI YAML files as the GitHub Flow implementation. Specs track Integration and Fast Feedback reuse. Security Report is a seventh pair (caller + reusable) that summarizes existing Code Scanning alerts; it is not a merge gate.
 - Clone REST/mobile **orchestration** (header comments, `assert-caller` case on `github.workflow_ref`, Semgrep-safe source resolver, `APP_PATH: app`, artifact names, Fast Feedback reuse on PR).
 - Replace toolchain: `actions/setup-python` **v7.0.0** (SHA-pinned) **3.12** + `astral-sh/setup-uv` **v10.0.1** (SHA-pinned, cache on `uv.lock`). Pin third-party actions to latest stable SHAs (`github/codeql-action` v4.37.8, `actions/github-script` v9.0.0, `actions/download-artifact` v8.0.1, `docker/login-action` v4.6.0, `actions/upload-artifact` v7.0.1).
 - Integration resolve: `uv lock --check` then `uv sync --frozen --all-groups`, then a Haystack/FastAPI smoke (`create_app`, `build_indexing_pipeline`, `build_intake_front_pipeline`). Skip those steps on PR when Fast Feedback already succeeded for the head SHA.
@@ -86,6 +90,7 @@ haystack-fast-api-pipeline/
   specification/                 # human index
   openspec/                      # behavior
   spdd/                          # this canvas
+  docs/adr/
   fast-feedback-ci-pipeline/
     fast-feedback-pipeline.yml
     haystack-fast-feedback-caller.yml
@@ -95,6 +100,8 @@ haystack-fast-api-pipeline/
   release-pipeline/
     release-pipeline.yml
     haystack-release-caller.yml
+  security-report/               # scheduled/manual Code Scanning summary — not a merge gate
+  deploy-pipeline/               # CD family — not this canvas
 ```
 
 Install names (application repo):
@@ -102,7 +109,7 @@ Install names (application repo):
 | This repo | `.github/workflows/` |
 | --- | --- |
 | `haystack-*-caller.yml` | same filename |
-| `*-pipeline.yml` | same filename (`fast-feedback-pipeline.yml`, `integration-pipeline.yml`, `release-pipeline.yml`) |
+| `*-pipeline.yml` | same filename (`fast-feedback-pipeline.yml`, `integration-pipeline.yml`, `release-pipeline.yml`, `security-report-pipeline.yml`) |
 
 `DEFAULT_APP_REPOSITORY`: `Heavy-Rental/haystack-fast-api`.  
 `DEFAULT_APP_REF`: `develop` (fast feedback + CI), `master` (release).
@@ -123,20 +130,20 @@ Job `name:` values (branch protection):
 
 1. Write OpenSpec + OpenSPDD + `specification/` (this change; already required before YAML).
 2. Write `integration-pipeline.yml` with jobs in this order: `assert-caller`, `integration`, `quality-control`, `security-testing`, `codeql`, `github-flow-gate`.
-3. Write `haystack-ci-caller.yml` (`name: CI`, PR/push `develop`, `workflow_dispatch`, `security-events: write`).
+3. Write `haystack-ci-caller.yml` (`name: HayStack CI Pipeline Invoke`, PR/push `develop`, `workflow_dispatch`, `security-events: write`, `checks: write`).
 4. Write fast-feedback pair (Integration only, `branches-ignore: [master, develop]`).
 5. Write release pair (`workflow_dispatch` only; `cancel-in-progress: false`; Packaging + DAST + Publish). Do not use `on: release`.
 6. Header-comment each file with install path, triggers, and local `actionlint` command under `haystack-fast-api-pipeline/`.
 7. Bind every `github.*` / `inputs.*` / `needs.*.outputs.*` used in `run:` through `env:` (except GitHub-native `if:` expressions, which are not shell).
-8. `actionlint` all six files.
+8. `actionlint` the six GitHub Flow YAML files and the Security Report pair if YAML is later edited.
 
 ## N — Norms
 
 - `# ====...====` header block copied in spirit from REST/mobile (purpose, stages, install, secrets = none).
 - `set -euo pipefail` on every multi-line `run:`.
-- No `secrets: inherit`.
+- No `secrets: inherit` on **CI** callers (paid CD does inherit; that is a different family).
 - No `environment:` on caller `uses:` jobs (invalid) and none on haystack QC.
-- Third-party `uses:` MUST be SHA-pinned (40-char commit + `# tag` comment). Allowed: `actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1` # v7.0.1 (`persist-credentials: false`), `actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97` # v7.0.0, `astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d` # v10.0.1, `actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9` # v6.1.0, `actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a` # v7.0.1, `aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25` # v0.36.0, `github/codeql-action/*@ff2f1c621b7f889edc0d3c761ac2e6a3f8cdb0dd` # v4.37.7, `docker/login-action@dbcb813823bdd20940b903addbd779551569679f` # v4.6.0 (release only). Mutable tags (`@v4`, `@v5`, `@v3`, `@v0.36.0`) are forbidden.
+- Third-party `uses:` MUST be SHA-pinned (40-char commit + `# tag` comment). Allowed: `actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1` # v7.0.1 (`persist-credentials: false`), `actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97` # v7.0.0, `astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d` # v10.0.1, `actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9` # v6.1.0, `actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a` # v7.0.1, `aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25` # v0.36.0, `github/codeql-action/*@db488ddef3bf6cb639b32c2e9a7c0a7ea8271d28` # v4.37.8, `docker/login-action@dbcb813823bdd20940b903addbd779551569679f` # v4.6.0 (release only). Mutable tags (`@v4`, `@v5`, `@v3`, `@v0.36.0`) are forbidden.
 - uv invocations always `--frozen` for install (`uv sync --frozen --all-groups`).
 - Write `$GITHUB_STEP_SUMMARY` tables for source resolution, Integration, QC, gate, packaging.
 - SARIF is the security report standard; pip-audit JSON is a Python extra report; console tables are logs only.
@@ -153,7 +160,8 @@ Job `name:` values (branch protection):
 - **DO NOT** `docker push` from Packaging (Publish pushes after DAST).
 - **DO NOT** subscribe the Release caller to `release` or `pull_request` events.
 - **DO NOT** add a Mock Contract Tests / Prism / Node job.
-- **DO NOT** add a fourth pipeline (including scheduled model retrain — product OpenSpec, not this family).
+- **DO NOT** add a fourth GitHub Flow stage (scheduled model retrain is product OpenSpec). Security Report is a reporting-only pair, not a GitHub Flow stage.
+- **DO NOT** treat Security Report as a `develop` branch-protection check or run it on push / pull_request.
 - **DO NOT** provision infrastructure, apply IaC, or create cloud resources in this family.
 - **DO NOT** deploy packaged artifacts onto a runtime in this family.
 - **DO NOT** add operate jobs (monitor, page, remediate production) in this family.

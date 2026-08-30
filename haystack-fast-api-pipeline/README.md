@@ -2,7 +2,7 @@
 
 Workflows and specifications for [Heavy-Rental/haystack-fast-api](https://github.com/Heavy-Rental/haystack-fast-api).
 
-This tree (`haystack-fast-api-pipeline/`) authors Fast Feedback, Integration CI, Release packaging, and **Academy + paid app CD** (`deploy-pipeline/`). It does not provision the VPC or ASGs (infra project). Copy workflows into [haystack-fast-api](https://github.com/Heavy-Rental/haystack-fast-api) like Release.
+This tree (`haystack-fast-api-pipeline/`) authors Fast Feedback, Integration CI, Release packaging, a scheduled Security Report, and **Academy + paid app CD** (`deploy-pipeline/`). It does not provision the VPC or ASGs (infra project). Copy workflows into [haystack-fast-api](https://github.com/Heavy-Rental/haystack-fast-api) like Release.
 
 Start here: [`specification/README.md`](specification/README.md). App-repo CD checklist: [`docs/PREPARE-HAYSTACK-REPO.md`](docs/PREPARE-HAYSTACK-REPO.md).
 
@@ -16,6 +16,7 @@ Start here: [`specification/README.md`](specification/README.md). App-repo CD ch
 | `fast-feedback-ci-pipeline/` | Integration-only feature-branch pipeline |
 | `integration-pipeline/` | PR / `develop` merge gate |
 | `release-pipeline/` | Manual `workflow_dispatch` on `master`: QC + image + DAST + public GHCR + GitHub Release |
+| `security-report/` | Weekly/manual Code Scanning summary (not a merge gate) |
 | `deploy-pipeline/` | Academy + paid app CD (discover + compose; workers = estate scripts, ADR 0011) |
 | `act/` | Local `act` smoke tests (see [`act/README.md`](act/README.md)) |
 
@@ -27,7 +28,7 @@ PR / push → develop  →  Integration CI (Integration reuses Fast Feedback on 
 workflow_dispatch     →  Release (master + QC + image + DAST + public GHCR + GitHub Release)
 ```
 
-Release stops at **packaged artifacts** (wheel, sdist, image tar, public GHCR, GitHub Release). It does not deploy. Academy and paid CD in `deploy-pipeline/` consume a public GHCR/ECR tag or the tar. SAST and CodeQL stay on Integration CI.
+Release stops at **packaged artifacts** (wheel, sdist, image tar, public GHCR, GitHub Release). It does not deploy. Academy and paid CD in `deploy-pipeline/` consume a public GHCR/ECR tag or the tar. SAST and CodeQL stay on Integration CI. The Security Report pair is scheduled/manual only (Monday 06:00 UTC + `workflow_dispatch`); it summarizes existing Code Scanning alerts and is **not** a merge gate.
 
 ## Pipeline boundaries
 

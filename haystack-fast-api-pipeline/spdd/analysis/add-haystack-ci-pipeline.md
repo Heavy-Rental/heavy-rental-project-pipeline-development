@@ -10,7 +10,7 @@
 
 The application is already a uv project: Python 3.12, `uv.lock`, Ruff, pytest, Haystack pipelines that construct with mock/memory/stub backends.
 
-Infrastructure setup, project deployment, and operate are another project's problem. This change must not invent those workflows here.
+Infrastructure setup and operate are another project's problem. Academy + paid app CD is a separate family in `deploy-pipeline/`. The Security Report pair is reporting-only (not a merge gate). This change must not invent IaC or compose jobs in the CI family.
 
 ## Concepts
 
@@ -22,6 +22,7 @@ Infrastructure setup, project deployment, and operate are another project's prob
 | Quality Control | Ruff + pytest (Haystack + FastAPI TestClient). Not live pgvector, not LLM eval |
 | Security | Semgrep app + GHA (two passes) + pip-audit report + Trivy CRITICAL gate |
 | Packaging | `uv build` wheel/sdist plus env-driven Docker image tar (sanitized `.env.prod` → `/app/.env`). Publish (after DAST) pushes GHCR and creates the GitHub Release |
+| Security Report | Scheduled/manual summary of existing Code Scanning alerts. Not a merge gate and not a GitHub Flow stage |
 | Infrastructure | Create or change the platform (IaC). Infra project. Not this CI family |
 | Deploy | Put Release artifacts onto existing infrastructure. Academy CD in `deploy-pipeline/` |
 | Operate | Keep the live system healthy after deploy. Needs infra knowledge; does not create infra. Another project |
@@ -52,7 +53,7 @@ Infrastructure setup, project deployment, and operate are another project's prob
 
 ## Success
 
-- Six YAML files exist, `actionlint`-clean, Semgrep-safe.
+- Six GitHub Flow YAML files plus the Security Report pair exist, `actionlint`-clean, Semgrep-safe. The Security Report pair is reporting-only (Monday 06:00 UTC; not a merge gate).
 - Job names match the branch-protection list in the CI caller header.
 - Toolchain is Python 3.12 + uv + Ruff + pytest + Haystack smoke.
 - Release Packaging always generates uvicorn `app.main:app :8000` (`--extra neo4j`), sanitizes `.env.prod` → `/app/.env` (estate keys and `LLM_API_KEY` stripped), refuses `ENV`/`ARG` and raw `COPY .env`, proves dummy `-e` injection (process env wins) and `GET /docs` or `/health`, copies sidecar dirs only if present, and uploads a gzipped tar. DAST scans that image. Publish pushes GHCR `haystack_recommender` and creates the GitHub Release. Packaging does not read Environment `academy` and does not `docker push`. Fast Feedback and Integration CI still have no `packages: write`. The Release caller is `workflow_dispatch` only.

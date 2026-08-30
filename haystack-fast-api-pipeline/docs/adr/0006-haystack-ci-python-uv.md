@@ -15,5 +15,5 @@ Integration uses `actions/setup-python` 3.12 and `astral-sh/setup-uv` with cache
 ## Consequences
 
 - Semgrep `p/python`, pip-audit report, CodeQL `python`.
-- Release `uv build` plus a generated `python:3.12-slim-bookworm` + uv + uvicorn image when the app has no Dockerfile.
+- Release `uv build` plus an always-generated `python:3.12-slim-bookworm` + uv + uvicorn image (an app `Dockerfile` is moved aside; it is not the deploy image).
 - No `REST_API_DB_*`, no Android SDK, no `npm ci` on this family.

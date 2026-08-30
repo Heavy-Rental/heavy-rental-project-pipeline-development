@@ -6,13 +6,14 @@ The FastAPI / Haystack **product** specification (Call 1 / Call 2 / indexing / O
 
 https://github.com/Heavy-Rental/haystack-fast-api/tree/develop/openspec
 
-Infrastructure setup (VPC, ASGs, RDS, Neo4j) is **not** specified here. It belongs to the infra project. This tree authors **CI + Release packaging** and **Academy + paid app CD**.
+Infrastructure setup (VPC, ASGs, RDS, Neo4j) is **not** specified here. It belongs to the infra project. This tree authors **CI + Release packaging**, a scheduled **Security Report**, and **Academy + paid app CD**.
 
 ## Pipeline boundaries
 
 | Concern | Specified here? |
 | --- | --- |
 | Fast Feedback, Integration CI, Release packaging | Yes — CI family |
+| Security Report (summarize existing Code Scanning alerts) | Yes — reporting only; not a merge gate |
 | Academy and paid app CD (discover `asg-haystack` + compose) | Yes — CD family |
 | Create or change infrastructure | No — infra project |
 | Operate the live system (monitor, recover, `stop` / `destroy`) | No — infra project after go-live |
@@ -33,7 +34,7 @@ Conflict order: **OpenSpec scenarios → OpenSPDD Safeguards → ADR → YAML**.
 
 ### CI family — [`../openspec/changes/add-haystack-ci-pipeline/`](../openspec/changes/add-haystack-ci-pipeline/)
 
-As-implemented spec of Fast Feedback / Integration CI / Release YAML (PR Integration reuses Fast Feedback). `DEFAULT_APP_REPOSITORY` is `Heavy-Rental/haystack-fast-api` on Fast Feedback, Integration CI, and Release. Release checkout is always `master`. Packaging tar is `haystack_recommender-image.tar.gz`; Publish pushes `haystack_recommender:<semver>` + `:latest` on `workflow_dispatch` only. Semgrep publish is SARIF-only.
+As-implemented spec of Fast Feedback / Integration CI / Release YAML (PR Integration reuses Fast Feedback). `DEFAULT_APP_REPOSITORY` is `Heavy-Rental/haystack-fast-api` on Fast Feedback, Integration CI, and Release. Release checkout is always `master`. Packaging tar is `haystack_recommender-image.tar.gz`; Publish pushes `haystack_recommender:<semver>` + `:latest` on `workflow_dispatch` only. Semgrep publish is SARIF-only. Security Report is a scheduled/manual Code Scanning summary (Monday 06:00 UTC), not a merge gate.
 
 - Proposal: [`proposal.md`](../openspec/changes/add-haystack-ci-pipeline/proposal.md)
 - Design: [`design.md`](../openspec/changes/add-haystack-ci-pipeline/design.md)
@@ -65,5 +66,6 @@ As-implemented spec of Fast Feedback / Integration CI / Release YAML (PR Integra
 | Fast feedback | [`../fast-feedback-ci-pipeline/fast-feedback-pipeline.yml`](../fast-feedback-ci-pipeline/fast-feedback-pipeline.yml) | [`haystack-fast-feedback-caller.yml`](../fast-feedback-ci-pipeline/haystack-fast-feedback-caller.yml) |
 | Integration CI | [`../integration-pipeline/integration-pipeline.yml`](../integration-pipeline/integration-pipeline.yml) | [`haystack-ci-caller.yml`](../integration-pipeline/haystack-ci-caller.yml) |
 | Release | [`../release-pipeline/release-pipeline.yml`](../release-pipeline/release-pipeline.yml) | [`haystack-release-caller.yml`](../release-pipeline/haystack-release-caller.yml) |
+| Security Report | [`../security-report/security-report-pipeline.yml`](../security-report/security-report-pipeline.yml) | [`haystack-security-report-caller.yml`](../security-report/haystack-security-report-caller.yml) |
 | Academy CD | [`../deploy-pipeline/haystack-cd-academy.yml`](../deploy-pipeline/haystack-cd-academy.yml) | [`haystack-cd-academy-caller.yml`](../deploy-pipeline/haystack-cd-academy-caller.yml) |
 | Paid CD | same reusable | [`haystack-cd-paid-caller.yml`](../deploy-pipeline/haystack-cd-paid-caller.yml) |

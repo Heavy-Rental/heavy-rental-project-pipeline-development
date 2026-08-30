@@ -4,7 +4,7 @@
 **Authoring tree:** `haystack-fast-api-pipeline/` in this pipeline-development repo  
 **Stack:** Python 3.12 / uv / FastAPI / Haystack 2.x / Ruff / pytest
 
-This family validates and packages the service. It does not create infrastructure or operate production. Academy and paid **app CD** (compose onto `asg-haystack`) is a separate family: [`haystack-cd.md`](haystack-cd.md).
+This family validates and packages the service. It does not create infrastructure or operate production. Academy and paid **app CD** (compose onto `asg-haystack`) is a separate family: [`haystack-cd.md`](haystack-cd.md). A scheduled Security Report pair summarizes existing Code Scanning alerts; it is not a merge gate.
 
 ## GitHub Flow
 
@@ -102,6 +102,8 @@ actionlint haystack-fast-api-pipeline/integration-pipeline/integration-pipeline.
 actionlint haystack-fast-api-pipeline/integration-pipeline/haystack-ci-caller.yml
 actionlint haystack-fast-api-pipeline/release-pipeline/release-pipeline.yml
 actionlint haystack-fast-api-pipeline/release-pipeline/haystack-release-caller.yml
+actionlint haystack-fast-api-pipeline/security-report/security-report-pipeline.yml
+actionlint haystack-fast-api-pipeline/security-report/haystack-security-report-caller.yml
 
 # Local act smoke (caller gate). See haystack-fast-api-pipeline/act/README.md
 ./haystack-fast-api-pipeline/act/run-act.sh smoke
@@ -118,15 +120,20 @@ Copy each pair into `Heavy-Rental/haystack-fast-api`:
 .github/workflows/integration-pipeline.yml
 .github/workflows/haystack-release-caller.yml
 .github/workflows/release-pipeline.yml
+.github/workflows/haystack-security-report-caller.yml
+.github/workflows/security-report-pipeline.yml
 ```
 
-`DEFAULT_APP_REPOSITORY` in the reusable YAML is `Heavy-Rental/haystack-fast-api`. When the caller runs **in** the app repo, checkout is the calling repo (into `app/`).
+`DEFAULT_APP_REPOSITORY` in the reusable YAML is `Heavy-Rental/haystack-fast-api`. When the caller runs **in** the app repo, checkout is the calling repo (into `app/`). Release always checks out **`master`**.
+
+The Security Report pair is a **scheduled/manual summary** of existing Code Scanning alerts (Monday 06:00 UTC + `workflow_dispatch`). It does not scan, is not a `develop` branch-protection check, and does not run on push or pull_request.
 
 ## Pipeline boundaries
 
 | Concern | In this CI family? |
 | --- | --- |
 | Fast Feedback, Integration CI, Release packaging | Yes |
+| Security Report (summarize existing Code Scanning alerts) | Yes — reporting only; not a merge gate |
 | Live pgvector, Neo4j, LLM calls, Prism mocks | No |
 | Scheduled model retrain | No (product OpenSpec in the application repo) |
 | Committing a Dockerfile to the application repo | No (Release always generates uvicorn; app Dockerfile is not the deploy image) |
@@ -135,3 +142,9 @@ Copy each pair into `Heavy-Rental/haystack-fast-api`:
 | Operate the live system | No — infra project (after go-live) |
 
 Operate requires knowledge of the running platform. It does not create that platform. This CI family does not provision cloud resources or apply IaC.
+
+## Specs
+
+- OpenSpec: [`../../openspec/changes/add-haystack-ci-pipeline/`](../../openspec/changes/add-haystack-ci-pipeline/)
+- OpenSPDD: [`../../spdd/analysis/add-haystack-ci-pipeline.md`](../../spdd/analysis/add-haystack-ci-pipeline.md)
+- ADRs 0005–0009: [`../../docs/adr/`](../../docs/adr/)
