@@ -38,6 +38,7 @@ Infrastructure setup, project deployment, and operate are owned by another proje
 7. **Release artifacts are wheel/sdist plus a Docker image, then DAST and Publish.** `uv build` stages versioned + stable packages. Packaging always generates `python:3.12-slim-bookworm` + uv + `uvicorn app.main:app :8000` (`--extra neo4j`). An app `Dockerfile` is moved aside. The image is env-driven (ADR 0008 / 0009): **no** `ENV`/`ARG` for estate or Profile knobs; Packaging sanitizes `.env.prod` (or generated production defaults) into `/app/.env` so pydantic loads product knobs; estate keys and `LLM_API_KEY` are stripped. Dummy `docker run -e` proves process env still wins. Packaging does **not** read Haystack Environment `academy` variables. It starts uvicorn and requires `GET /docs` or `GET /health` on `:8000`. Packaging does **not** `docker push`. DAST scans the image; Publish pushes public GHCR and creates the GitHub Release. SAST/CodeQL stay on Integration CI. Fast Feedback and Integration CI do not request `packages: write`. The Release caller is `workflow_dispatch` only (do not use `on: release`).
 8. **Specs and YAML live under `haystack-fast-api-pipeline/`.** OpenSpec, OpenSPDD, and workflow files stay with the pipeline they describe. The application repository remains `Heavy-Rental/haystack-fast-api`.
 9. **This family stops at packaging.** It does not apply IaC, create cloud resources, compose onto `asg-haystack`, or monitor production. Academy + paid app CD lives in `deploy-pipeline/` in this tree. Operate is after deploy (infra project).
+10. **Security Report is reporting-only.** `haystack-security-report-caller.yml` + `security-report-pipeline.yml` summarize existing Code Scanning alerts (Monday 06:00 UTC + `workflow_dispatch`). They do not scan and are not a merge gate.
 
 ## Risks / Trade-offs
 
@@ -56,7 +57,7 @@ Infrastructure setup, project deployment, and operate are owned by another proje
 ## Migration Plan
 
 1. Land specs + YAML in this repo under `haystack-fast-api-pipeline/`.
-2. Copy the six workflow files into `Heavy-Rental/haystack-fast-api` `.github/workflows/`.
+2. Copy the six GitHub Flow YAML files plus the Security Report pair into `Heavy-Rental/haystack-fast-api` `.github/workflows/`.
 3. Require the named jobs on `develop` branch protection.
 4. Archive this OpenSpec change once the install copy is accepted.
 

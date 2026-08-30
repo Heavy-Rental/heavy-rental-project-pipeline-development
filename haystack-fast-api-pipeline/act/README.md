@@ -19,7 +19,7 @@ This pipeline-development repo already installs [nektos/act](https://github.com/
 ## What does not work well in act
 
 - **Integration from this repo without remote inputs** — checkout mode is `caller`, and this repo is not the Haystack app (`uv.lock` is missing).
-- **Full `uv sync` / Ruff / pytest** — the Haystack/ML lock is large. Prefer running act **inside a clone of** `Heavy-Rental/haystack-fast-api` after copying the six YAML files.
+- **Full `uv sync` / Ruff / pytest** — the Haystack/ML lock is large. Prefer running act **inside a clone of** `Heavy-Rental/haystack-fast-api` after copying the six GitHub Flow YAML files.
 - **CodeQL** — not supported by act.
 - **Release caller** — `workflow_dispatch` only (it does **not** fire on a published GitHub Release or a `develop` → `master` PR; Publish *creates* the GitHub Release). The run checks out `master` and is heavy (uv, Docker, DAST). Prefer running it **inside a clone of** `Heavy-Rental/haystack-fast-api`.
 
@@ -29,6 +29,6 @@ This pipeline-development repo already installs [nektos/act](https://github.com/
 git clone https://github.com/Heavy-Rental/haystack-fast-api.git
 cd haystack-fast-api
 mkdir -p .github/workflows
-# copy the six files from this pipeline-development tree, then:
+# copy the six GitHub Flow YAML files from this pipeline-development tree, then:
 act workflow_dispatch -W .github/workflows/haystack-fast-feedback-caller.yml
 ```

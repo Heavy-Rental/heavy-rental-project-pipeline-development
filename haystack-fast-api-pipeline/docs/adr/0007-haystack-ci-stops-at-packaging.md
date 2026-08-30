@@ -10,7 +10,7 @@ The CI OpenSpec (`haystack-ci-scope`) forbids Terraform, rollout, and operate jo
 
 ## Decision
 
-CI workflows end at versioned wheel/sdist + image tar, then Release DAST and Publish (public GHCR + GitHub Release). They do not SSH, compose, or apply IaC. Deploy lives in the CD family ([ADR 0001](0001-haystack-cd-academy-only.md)).
+CI workflows end at versioned wheel/sdist + image tar, then Release DAST and Publish (public GHCR + GitHub Release). They do not SSH, compose, or apply IaC. Deploy lives in the CD family ([ADR 0001](0001-haystack-cd-academy-only.md)). The Security Report pair summarizes existing Code Scanning alerts; it is not packaging, not a merge gate, and does not deploy.
 
 ## Consequences
 

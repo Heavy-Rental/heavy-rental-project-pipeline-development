@@ -6,7 +6,7 @@
 
 ## Context
 
-REST, portal, and mobile already ship as `workflow_call` files that reject any caller other than their matching `*-caller.yml`. Haystack needs the same install story: copy six YAML files into the app repo.
+REST, portal, and mobile already ship as `workflow_call` files that reject any caller other than their matching `*-caller.yml`. Haystack needs the same install story: copy the six GitHub Flow YAML files into the app repo, plus the Security Report pair (scheduled/manual only; not a merge gate).
 
 ## Decision
 

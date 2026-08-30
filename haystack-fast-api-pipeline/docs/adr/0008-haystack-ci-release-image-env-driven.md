@@ -2,13 +2,13 @@
 
 - **Status:** Accepted
 - **Date:** 2026-08-18
-- **Amended:** 2026-08-18 — sanitized `.env.prod` → `/app/.env` for product knobs; estate keys still not baked; Packaging does not read Environment `academy`
+- **Amended:** 2026-08-18 — sanitized `.env.prod` → `/app/.env` for product knobs; estate keys still not baked; Packaging does not read Environment `academy`. 2026-08-30 — compose workers are ADR 0011 images, not this Release image
 - **Change:** `add-haystack-ci-pipeline` (image contract)
-- **Related:** [0004](0004-haystack-env-aliases-and-uv-sidecars.md) (CD injects SM + overlay), [0007](0007-haystack-ci-stops-at-packaging.md), [0009](0009-haystack-project-profile-vs-infra-estate.md)
+- **Related:** [0004](0004-haystack-env-aliases-and-uv-sidecars.md) (CD injects SM + overlay), [0007](0007-haystack-ci-stops-at-packaging.md), [0009](0009-haystack-project-profile-vs-infra-estate.md), [0011](0011-devcontainer-worker-sidecars.md) (compose workers are not this image)
 
 ## Context
 
-Academy compose reuses the Release image for uvicorn, `postgres-haystack-sync`, and `neo4j-populate`. Infra `sync-secrets` (estate ground truth) writes `heavy-rental/haystack`: Haystack RDS `POSTGRES_*` / `DATABASE_URL`, `SOURCE_*` (SoR), `TARGET_*` (Haystack RDS), `FLEET_BACKEND=sql`, `NEO4J_BACKEND=bolt`, `NEO4J_URI` (Bolt NLB), `NEO4J_POPULATE_URL` (compose worker on `asg-haystack`), user / password, and optional `LLM_API_KEY`. Product knobs (`NEED_DECOMPOSER`, other `LLM_*`, `INDEXING_*`, `KG_*`, …) are Haystack Environment `academy` (ADR 0009) and/or a sanitized `.env.prod` shipped as `/app/.env`, not Dockerfile `ENV`. Baking estate hosts or secrets into the image would pin every tag to one lab or leak a key.
+Academy compose uses the Release image for **uvicorn only**. `postgres-haystack-sync` and `neo4j-populate` are estate/CD scripts on `postgres:17` and `python:3.12-slim` ([ADR 0011](0011-devcontainer-worker-sidecars.md)); they are not this image. Infra `sync-secrets` (estate ground truth) writes `heavy-rental/haystack`: Haystack RDS `POSTGRES_*` / `DATABASE_URL`, `SOURCE_*` (SoR), `TARGET_*` (Haystack RDS), `FLEET_BACKEND=sql`, `NEO4J_BACKEND=bolt`, `NEO4J_URI` (Bolt NLB), `NEO4J_POPULATE_URL` (compose worker on `asg-haystack`), user / password, and optional `LLM_API_KEY`. Product knobs (`NEED_DECOMPOSER`, other `LLM_*`, `INDEXING_*`, `KG_*`, …) are Haystack Environment `academy` or `AWS_ACTUAL` (ADR 0009) and/or a sanitized `.env.prod` shipped as `/app/.env`, not Dockerfile `ENV`. Baking estate hosts or secrets into the image would pin every tag to one lab or leak a key.
 
 ## Decision
 
@@ -16,8 +16,8 @@ Release Packaging **always generates** `python:3.12-slim-bookworm` + uv + `uvico
 
 ## Consequences
 
-- The same image tag works on Docker Desktop (`docker run -p 8000:8000 -e …`), compose, or any Academy lab. Product knobs have production-shaped file defaults; estate URLs still come from infra `sync-secrets`.
+- The same image tag works on Docker Desktop (`docker run -p 8000:8000 -e …`), compose (uvicorn service), or any Academy lab. Product knobs have production-shaped file defaults; estate URLs still come from infra `sync-secrets`.
 - An app `Dockerfile` is moved aside; it is not pushed to GHCR.
-- Missing `postgres_haystack_sync` is a warning, not a red Release (app `develop` still lacks the module).
+- Packaging may `COPY` sidecar Python packages if those directories exist; CD workers do not use them (ADR 0011). Missing `postgres_haystack_sync` is a warning, not a red Release.
 - Sample checklist: [`../samples/.env.prod`](../samples/.env.prod). Copy it to the app repo as `.env.prod` so Packaging uses the operator file instead of generated defaults.
-- Packaging does **not** read Haystack Environment `academy`. Setting a GitHub Profile variable does not change the image (ADR 0009).
+- Packaging does **not** read Haystack Environment `academy` or `AWS_ACTUAL`. Setting a GitHub Profile variable does not change the image (ADR 0009).

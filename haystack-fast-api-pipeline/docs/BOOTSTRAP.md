@@ -1,4 +1,4 @@
-# Haystack app CD (Academy)
+# Haystack app CD (Academy + paid)
 
 This workflow discovers `asg-haystack` and can re-run Haystack compose (branch 2). It does **not** run Terraform or create the ASG. It does **not** start Neo4j.
 

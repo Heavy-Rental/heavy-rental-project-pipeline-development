@@ -26,7 +26,7 @@
 
 ## 5. Verify
 
-- [x] 5.1 Run `actionlint` on all six YAML files
+- [x] 5.1 Run `actionlint` on all six GitHub Flow YAML files plus the Security Report pair
 - [x] 5.2 Confirm job `name:` values match branch-protection list in caller headers
 - [x] 5.3 Confirm no `github.*` / `inputs.*` interpolated inside `run:` scripts
 - [x] 5.4 Confirm toolchain is Python/uv/Ruff/pytest/Haystack (no Java, Gradle, Node, or Postgres)
@@ -34,6 +34,7 @@
 ## 6. Documentation rewrite (renamed tree + CI scope)
 
 - [x] 6.1 Rewrite `README.md`, `specification/README.md`, and `specification/pipelines/haystack-ci.md` for `haystack-fast-api-pipeline/`
+- [x] 6.6 Document the Security Report pair as reporting-only (Monday 06:00 UTC; not a merge gate)
 - [x] 6.2 Document CI vs infrastructure vs deploy vs operate (those last three are another project)
 - [x] 6.3 Add `haystack-ci-scope` capability and update proposal, design, OpenSPDD
 - [x] 6.4 Point YAML header `actionlint` / `act` paths at `haystack-fast-api-pipeline/`

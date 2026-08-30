@@ -6,7 +6,7 @@ Conflict order: **OpenSpec → OpenSPDD → ADR → YAML**.
 
 | ID | Title |
 | --- | --- |
-| [0005](0005-haystack-ci-reusable-caller.md) | Reusable workflows plus a sole-allowed caller |
+| [0005](0005-haystack-ci-reusable-caller.md) | Reusable workflows plus a sole-allowed caller; Security Report is a separate pair (not a merge gate) |
 | [0006](0006-haystack-ci-python-uv.md) | Toolchain is CPython 3.12 + uv |
 | [0007](0007-haystack-ci-stops-at-packaging.md) | CI family stops at packaging |
 | [0008](0008-haystack-ci-release-image-env-driven.md) | Estate from env; product defaults from sanitized `.env.prod` → `/app/.env` |

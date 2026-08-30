@@ -146,3 +146,6 @@
         argv: [docker, load, -i, /tmp/app.tar.gz]
       register: docker_load
       changed_when: "'Loaded image' in docker_load.stdout"
+
+- name: CloudWatch Logs (Docker awslogs)
+  ansible.builtin.include_tasks: cloudwatch_logs.yml

@@ -8,7 +8,7 @@
 
 This file is the operator checklist and readiness record. It does not apply Terraform, merge the app PR, or push images.
 
-**Verdict: not ready to deploy today.** The FastAPI process matches the image contract. The live repo cannot yet produce a pullable GHCR image (Release is not on `develop` / `master`). Compose workers no longer need app `postgres_haystack_sync` / `neo4j_populate` packages — CD copies estate scripts onto `postgres:17` / `python:3.12-slim` (ADR 0011). Product knobs ship as `/app/.env` from sanitized `.env.prod`; estate URLs still require infra `sync-secrets`. CD overlays academy / `AWS_ACTUAL` Profile vars onto guest `.env` after SM (see [`BOOTSTRAP.md`](BOOTSTRAP.md)).
+**Verdict (snapshot 2026-08-17): not ready to deploy.** The FastAPI process matches the image contract. At that check, the live repo could not yet produce a pullable GHCR image (Release was not on `develop` / `master`). Compose workers no longer need app `postgres_haystack_sync` / `neo4j_populate` packages — CD copies estate scripts onto `postgres:17` / `python:3.12-slim` (ADR 0011). Product knobs ship as `/app/.env` from sanitized `.env.prod`; estate URLs still require infra `sync-secrets`. CD overlays academy / `AWS_ACTUAL` Profile vars onto guest `.env` after SM (see [`BOOTSTRAP.md`](BOOTSTRAP.md)). The Security Report pair is scheduled/manual only (Monday 06:00 UTC); it is not CD and is not a merge gate.
 
 Everyday operate after install (academy inventory, every-run steps, do-nots): [`BOOTSTRAP.md`](BOOTSTRAP.md). Specification: [`../specification/pipelines/haystack-cd.md`](../specification/pipelines/haystack-cd.md). Sample product file: [`samples/.env.prod`](samples/.env.prod).
 
@@ -65,19 +65,19 @@ Release’s generated image runs `uv sync --frozen --no-dev --extra neo4j` so Bo
 
 ## 2. Already on the app repo vs still to copy
 
-| Ref | Fast Feedback | Integration | Release | App CD |
-| --- | --- | --- | --- | --- |
-| `develop` (default) | Missing | Missing | Missing | Missing |
-| `master` | Missing | Missing | Missing | Missing |
-| `HR-155` / [PR #99](https://github.com/Heavy-Rental/haystack-fast-api/pull/99) (open) | Present | Present | Present | **Missing** |
+| Ref | Fast Feedback | Integration | Release | Security Report | App CD |
+| --- | --- | --- | --- | --- | --- |
+| `develop` (default) | Missing | Missing | Missing | Missing | Missing |
+| `master` | Missing | Missing | Missing | Missing | Missing |
+| `HR-155` / [PR #99](https://github.com/Heavy-Rental/haystack-fast-api/pull/99) (open) | Present | Present | Present | **Missing** | **Missing** |
 
-Zero GitHub Releases. Zero GHCR packages for this repo (checked 2026-08-17).
+Zero GitHub Releases. Zero GHCR packages for this repo (checked 2026-08-17). Copy the six GitHub Flow YAML files plus the Security Report pair (`haystack-security-report-caller.yml` + `security-report-pipeline.yml`) from this tree. The Security Report pair is scheduled/manual only (Monday 06:00 UTC + `workflow_dispatch`). Do not add it to `develop` branch protection. CD files are a separate copy (section 4).
 
 ---
 
 ## 3. Produce a pullable image
 
-1. Merge HR-155 (or copy Fast Feedback + Integration + Release onto `develop`).
+1. Merge HR-155 (or copy Fast Feedback + Integration + Release + the Security Report pair onto `develop`). Do not add Security Report to `develop` branch protection.
 2. Merge to `master`, then run **Actions → Haystack Release Pipeline Invoke → Run workflow**. That checks out `master`, runs QC + Packaging + DAST, then Publish pushes public GHCR and creates the GitHub Release.
 3. Org Packages → `haystack_recommender` → visibility **Public**. Private GHCR fails CD on purpose (no PAT on the guest).
 4. Record the tag, for example `ghcr.io/heavy-rental/haystack_recommender:1.0.0` (or `:latest`). Prefer a **new** version tag each deploy (`compose up` is not `--pull always`).
