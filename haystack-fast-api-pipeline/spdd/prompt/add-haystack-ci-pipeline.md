@@ -17,7 +17,7 @@ When reality diverges, fix this prompt first — then update the YAML.
 - Use **Python/Haystack tools only**: CPython 3.12, uv, Ruff, pytest, Haystack `Pipeline` constructors, Semgrep `p/python`, pip-audit report, CodeQL `python`.
 - Specs (OpenSpec + this canvas) and YAML all live under `haystack-fast-api-pipeline/`.
 - Install story: copy each GitHub Flow caller + reusable pair into the application repo `.github/workflows/`, plus the Security Report pair.
-- This family stops at packaging. Academy CD is `deploy-pipeline/`. The Security Report pair is a scheduled/manual Code Scanning summary (Monday 06:00 UTC); it is not a merge gate.
+- This family does **not** compose onto guests (Academy CD is `deploy-pipeline/`). Release still runs Packaging → DAST → Publish. The Security Report pair is a scheduled/manual Code Scanning summary (Monday 06:00 UTC); it is not a merge gate.
 
 ## E — Entities
 

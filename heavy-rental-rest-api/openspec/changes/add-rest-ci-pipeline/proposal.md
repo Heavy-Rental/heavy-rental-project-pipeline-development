@@ -9,7 +9,7 @@
 - OpenSpec capabilities for orchestration, Integration, QC, Security, CodeQL, Release packaging, and CI scope (Integration Check, Fast Feedback reuse, Integration explicit secrets map, split Semgrep).
 - OpenSPDD analysis + REASONS Canvas bound to the existing six GitHub Flow YAML files plus the Security Report pair.
 - Human `specification/` index and `pipelines/rest-ci.md`.
-- CI ADRs 0004–0007 (caller gate, Integration repo-secret map vs Release Environment, CI stops at packaging, env-driven Tomcat image).
+- CI ADRs 0004–0007 (caller gate, both callers forward Repository `REST_API_DB_*` while QC still uses Environments `integration` / `production`, CI does not compose onto guests, env-driven Tomcat image).
 
 ## Capabilities
 

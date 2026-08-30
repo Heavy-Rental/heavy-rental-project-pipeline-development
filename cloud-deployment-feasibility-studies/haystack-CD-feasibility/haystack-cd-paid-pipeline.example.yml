@@ -25,7 +25,7 @@ on:
         type: environment
         default: AWS_ACTUAL
       image_ref:
-        description: Optional GHCR/ECR tag or https tar URL
+        description: Optional GHCR/ECR tag (not an HTTP URL). Empty is not :latest; deploy fails without a tag.
         required: false
         type: string
         default: ""

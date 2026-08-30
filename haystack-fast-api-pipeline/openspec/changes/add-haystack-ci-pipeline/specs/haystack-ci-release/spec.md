@@ -111,7 +111,7 @@ When Packaging generates a Dockerfile, it SHALL `COPY postgres_haystack_sync` an
 - AND it does not `COPY postgres_haystack_sync`
 
 ### Requirement: DAST scans the packaged image
-DAST SHALL run after Packaging succeeds. It SHALL start the packaged image and run OWASP ZAP, Dastardly, and Nuclei. It SHALL upload `dast-reports/` including `combined-dast-report.pdf` (artifact `dast-combined-report-pdf`).
+DAST SHALL run after Packaging succeeds. It SHALL start the packaged image and run OWASP ZAP baseline and Dastardly as gates, run Nuclei as report-only, and upload `dast-reports/` including `combined-dast-report.pdf` (artifact `dast-combined-report-pdf`). ZAP exit ≥ 2 or a non-zero Dastardly exit SHALL fail the job. Nuclei SHALL NOT fail the job (`continue-on-error`).
 
 #### Scenario: DAST needs Packaging
 - GIVEN Packaging failed

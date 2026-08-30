@@ -10,7 +10,7 @@ Academy branches 1–2 **and** paid portal CD are **delivered** (`add-portal-cd-
 
 **Status:** Infra branches 1–3 exist. Portal CD **branch 1** (discover), **branch 2** (compose), and **paid caller** are in `deploy-pipeline/`.
 
-Conflict order if that repo uses OpenSpec: OpenSpec → OpenSPDD → ADR → YAML / Ansible.
+Conflict order if that repo uses OpenSpec: OpenSpec scenarios → OpenSPDD Safeguards → ADR → YAML / Ansible.
 
 ---
 
@@ -22,7 +22,7 @@ Manually deploy a **CI-built nginx + Vite `dist/` image** onto the **existing** 
 - nginx `location /api/` → `REST_BASE_URL` from `heavy-rental/portal` (`http://<rest_alb_dns>:8080`, internet-facing REST ALB).
 - No Vite server in AWS. No `sk_` / `whsec_` on the portal.
 
-**Non-goals:** `terraform apply`; `npm run build` / `docker build`; REST / Haystack / Neo4j deploy; `stop` / `destroy` (infra CD); paid / OIDC; instance IDs on the Run form.
+**Non-goals of this original Academy plan:** `terraform apply`; `npm run build` / `docker build`; REST / Haystack / Neo4j deploy; `stop` / `destroy` (infra CD); instance IDs on the Run form. Paid / OIDC is **delivered** (`portal-cd-paid-caller.yml`, Environment `AWS_ACTUAL`) — not a current non-goal.
 
 ---
 
@@ -73,7 +73,7 @@ develop
 ### Tasks
 
 1. OpenSpec (if used): portal-cd-academy-auth, portal-cd-discover, portal-cd-scope (no terraform, no REST group).
-2. Copy example YAML → `web-portal-cd-academy.yml`.
+2. Author live YAML in `heavy-rental-web-portal-pipeline/deploy-pipeline/` (caller + reusable). Do not copy the fail-closed stub in this folder.
 3. Inputs: `action` (`deploy` / `configure-only` / `verify`), `aws_environment` (must be `academy`), optional `image_ref` / `image_http_url`, three Vocareum keys (optional if Environment set).
 4. Resolve keys like infra (`$GITHUB_EVENT_PATH`, mask, Environment fallback). Refuse Environment ≠ `academy`.
 5. **`assert-lab`:** `sts get-caller-identity`.

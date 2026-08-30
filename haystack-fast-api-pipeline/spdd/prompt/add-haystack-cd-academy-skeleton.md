@@ -1,5 +1,7 @@
 # REASONS Canvas: Haystack CD skeleton
 
+**Historical (branch 1).** These safeguards bound discover-only YAML. Live compose is [`../analysis/add-haystack-cd-academy-deploy.md`](../analysis/add-haystack-cd-academy-deploy.md). Do not treat “no ansible-playbook” as current CD behavior.
+
 ## Role
 
 Implement Academy Haystack CD discover only.

@@ -159,7 +159,7 @@ Gives `NEO4J_URI` (Bolt NLB), Haystack RDS Postgres, optional LLM. It does **not
 | --- | --- | --- |
 | `action` | Yes | `deploy` / `configure-only` / `verify` |
 | `aws_environment` | Yes | `academy` or `AWS_ACTUAL` |
-| `image_ref` | Optional | GHCR/ECR tag, or an `https://…` tar URL. Empty = latest Release tar / `:latest` |
+| `image_ref` | Optional | GHCR/ECR **tag** only (not an HTTP tar URL). Empty is **not** `:latest`. `deploy` fails unless `HAYSTACK_IMAGE` / `image_ref` or a tar URL **and** matching tag is set. There is no stock uvicorn. |
 | `image_http_url` | Optional | HTTPS URL of the CI `.tar.gz`. Empty = Environment `IMAGE_HTTP_URL`. Ansible `get_url` + `docker load` on the guest |
 | `aws_access_key_id` / `aws_secret_access_key` / `aws_session_token` | Academy only | Vocareum AWS Details (change every Start Lab). Empty = Environment `academy`. **Do not add these on paid.** |
 
@@ -210,7 +210,7 @@ aws secretsmanager describe-secret --secret-id heavy-rental/haystack
 
 # 6. Deploy (on the instance via SSM — not on the runner)
 #    get-secret-value heavy-rental/haystack → .env
-#    docker load < haystack-fast-api-*.tar.gz
+#    docker load < haystack_recommender-image.tar.gz
 #       or: docker pull ghcr.io/<owner>/haystack_recommender:<tag>
 #    docker compose up -d   # uvicorn :8000 + sync + populate; NO neo4j service
 
@@ -254,7 +254,7 @@ AWS keys **do not** push GHCR (`GITHUB_TOKEN` / CI). On **Academy**, the three k
 
 Haystack **CI** must keep `LLM_API_KEY` unset. CD may write it to Secrets Manager; it must **not** bake it into the image.
 
-Inventory: AWS study **§6.0c** and **§8.7**. Haystack CI uses **no** `academy`/`paid` secrets.
+Inventory: AWS study **§6.0c** and **§8.7**. Haystack CI uses **no** CD Environment secrets (`academy` / `AWS_ACTUAL`).
 
 ---
 
@@ -302,8 +302,8 @@ Actions → Run workflow  (action + environment; optional image_ref)
 
 **Enough from this study + AWS study to configure GitHub:**
 
-- Environments `academy` / `paid` (same copy as infra CD)
-- Copy example YAML into the CD repo
+- Environments `academy` / **`AWS_ACTUAL`** (same names as infra CD)
+- Copy **live** YAML from [`../../haystack-fast-api-pipeline/deploy-pipeline/`](../../haystack-fast-api-pipeline/deploy-pipeline/) — not the fail-closed stubs in this folder
 - Dispatch only after infra is up
 - Do not type instance IDs
 

@@ -65,7 +65,7 @@ Does **not** read `.env.api` / `.env.production` and does **not** run `npm`.
 | Store | Used? | Keys |
 | --- | --- | --- |
 | GitHub `academy` or `AWS_ACTUAL` | Runner + compose tag + Stripe `pk_` | Vocareum keys or form (academy only); OIDC role (`AWS_ACTUAL`); `AWS_REGION`; `PORTAL_IMAGE` (empty → stock `nginx`); `IMAGE_HTTP_URL`; `VITE_STRIPE_PUBLISHABLE_KEY` |
-| Guest `/opt/heavy-rental/.env` | Yes — SM then academy overlay | **Required** `REST_BASE_URL`. SM `pk_` unless academy `VITE_STRIPE_PUBLISHABLE_KEY` overlays it. SPA still uses the **baked** Release key. Refuse `sk_` / webhook / PEM |
+| Guest `/opt/heavy-rental/.env` | Yes — SM then Environment overlay | **Required** `REST_BASE_URL`. SM `pk_` unless this run’s Environment (`academy` or `AWS_ACTUAL`) `VITE_STRIPE_PUBLISHABLE_KEY` overlays it. SPA still uses the **baked** Release key. Refuse `sk_` / webhook / PEM |
 | App Vite dotenv | **No** | Release only |
 
 Infra must already have applied the estate and `sync-secrets` (`heavy-rental/portal`). Infra `apply` does **not** compose portal; first compose is infra `deploy-projects` or this CD `action=deploy`. Guests InService + SSM Online.

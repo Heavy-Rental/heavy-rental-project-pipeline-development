@@ -1,6 +1,6 @@
 # Architecture Decision Records (Haystack pipelines)
 
-Conflict order: **OpenSpec → OpenSPDD → ADR → YAML**.
+Conflict order: **OpenSpec scenarios → OpenSPDD Safeguards → ADR → YAML**.
 
 ## CI family (`add-haystack-ci-pipeline`)
 
@@ -8,7 +8,7 @@ Conflict order: **OpenSpec → OpenSPDD → ADR → YAML**.
 | --- | --- |
 | [0005](0005-haystack-ci-reusable-caller.md) | Reusable workflows plus a sole-allowed caller; Security Report is a separate pair (not a merge gate) |
 | [0006](0006-haystack-ci-python-uv.md) | Toolchain is CPython 3.12 + uv |
-| [0007](0007-haystack-ci-stops-at-packaging.md) | CI family stops at packaging |
+| [0007](0007-haystack-ci-stops-at-packaging.md) | CI family does not compose onto guests (Release still DAST + Publish) |
 | [0008](0008-haystack-ci-release-image-env-driven.md) | Estate from env; product defaults from sanitized `.env.prod` → `/app/.env` |
 | [0009](0009-haystack-project-profile-vs-infra-estate.md) | Profile knobs on the Haystack project (guest overlay, not image); `NEO4J_URI` / `NEO4J_POPULATE_URL` from AWS |
 

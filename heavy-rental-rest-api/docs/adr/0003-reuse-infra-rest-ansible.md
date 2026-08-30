@@ -10,7 +10,7 @@
 
 ## Decision
 
-Copy estate `ansible/roles/guest_base` and `ansible/roles/rest` into `deploy-pipeline/ansible/`. Add a rest-only inventory (`asg-rest` only) and `playbooks/rest.yml`. Keep compose limits (`1g` / `1.0`, `:8080`) identical to infra.
+Copy estate `ansible/roles/guest_base` and `ansible/roles/rest` into `deploy-pipeline/ansible/`. Add a rest-only inventory (`asg-rest` only) and `playbooks/rest.yml`. Keep compose limits (`1g` / `1.0`, `:8080`) identical to infra. Keep `guest_base` CloudWatch `daemon.json` in sync (Docker Engine `awslogs` log-opts, not ECS `awslogs-stream-prefix`).
 
 ## Consequences
 

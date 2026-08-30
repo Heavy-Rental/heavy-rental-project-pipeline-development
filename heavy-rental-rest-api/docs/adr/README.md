@@ -1,6 +1,6 @@
 # Architecture Decision Records (REST pipelines)
 
-Conflict order: **OpenSpec → OpenSPDD → ADR → YAML**.
+Conflict order: **OpenSpec scenarios → OpenSPDD Safeguards → ADR → YAML**.
 
 ## CI family (`add-rest-ci-pipeline`)
 
@@ -8,7 +8,7 @@ Conflict order: **OpenSpec → OpenSPDD → ADR → YAML**.
 | --- | --- |
 | [0004](0004-rest-ci-reusable-caller.md) | Reusable workflows plus a sole-allowed caller |
 | [0005](0005-rest-ci-secret-environments.md) | Both CI callers forward Repository `REST_API_DB_*`; QC uses Environments `integration` / `production` |
-| [0006](0006-rest-ci-stops-at-packaging.md) | CI family stops at packaging |
+| [0006](0006-rest-ci-stops-at-packaging.md) | CI family does not compose onto guests (Release still DAST + Publish) |
 | [0007](0007-rest-ci-release-image-env-driven.md) | Release image takes guest config from the environment |
 
 ## CD family (`add-rest-cd-academy-*`)

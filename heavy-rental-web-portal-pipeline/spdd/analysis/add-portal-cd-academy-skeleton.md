@@ -12,6 +12,6 @@ No workflow in this repo can see `asg-portal` after infra apply.
 
 Auth + discover only. Compose is the next branch.
 
-## Success
+## Success (branch 1, historical)
 
-`assert-lab` + `discover-targets` green after Start Lab. `deploy` fails closed.
+`assert-lab` + `discover-targets` green after Start Lab. On this branch `deploy` failed closed. Compose is delivered in [`add-portal-cd-academy-deploy`](add-portal-cd-academy-deploy.md); do not treat fail-closed as current YAML.

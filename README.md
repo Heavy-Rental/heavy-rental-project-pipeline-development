@@ -27,7 +27,7 @@ workflow_dispatch     →  Release (master + QC + package + DAST + publish)
 
 Haystack, REST, and portal Release publish a public GHCR image and a GitHub Release. Mobile Release publishes an unsigned APK, MobSF DAST, and a GitHub Release (no GHCR). Haystack, REST, and portal also have a scheduled **Security Report** (Haystack and REST: Monday 06:00 UTC; portal: Monday 08:00 UTC; or manual). It summarizes existing Code Scanning alerts; it is **not** a merge gate.
 
-Copy caller + reusable pairs into the application repo `.github/workflows/`.
+Copy caller + reusable pairs from each family folder into the application repo `.github/workflows/`. This repo’s own `.github/workflows/` copies (if present) can lag; they are not the install source.
 
 ## App CD vs the estate
 

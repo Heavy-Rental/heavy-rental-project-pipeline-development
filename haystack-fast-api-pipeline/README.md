@@ -16,7 +16,7 @@ Start here: [`specification/README.md`](specification/README.md). App-repo CD ch
 | `fast-feedback-ci-pipeline/` | Integration-only feature-branch pipeline |
 | `integration-pipeline/` | PR / `develop` merge gate |
 | `release-pipeline/` | Manual `workflow_dispatch` on `master`: QC + image + DAST + public GHCR + GitHub Release |
-| `security-report/` | Weekly/manual Code Scanning summary (not a merge gate) |
+| `security-report/` | Weekly/manual Code Scanning summary (Monday 06:00 UTC; not a merge gate) |
 | `deploy-pipeline/` | Academy + paid app CD (discover + compose; workers = estate scripts, ADR 0011) |
 | `act/` | Local `act` smoke tests (see [`act/README.md`](act/README.md)) |
 
