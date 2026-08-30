@@ -5,6 +5,8 @@
 
 Academy CD (`web-portal-cd-academy.yml`) does **not** log into GHCR. Guests pull a **public** tag with no token. This file is only about Release Publish.
 
+Packaging (before Publish) uses GitHub Environment **`academy`** so `vars.VITE_STRIPE_PUBLISHABLE_KEY` (`pk_` only) can be baked. Create that Environment before the first Release. Empty `pk_` warns and does not fail. CD overlay of the same name writes guest `.env` only; the browser still uses the baked key.
+
 Install checklist: [`PREPARE-PORTAL-REPO.md`](PREPARE-PORTAL-REPO.md). Everyday CD: [`BOOTSTRAP.md`](BOOTSTRAP.md).
 
 ---

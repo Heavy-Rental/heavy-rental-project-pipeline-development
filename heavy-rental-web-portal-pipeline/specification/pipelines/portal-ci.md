@@ -55,6 +55,7 @@ assert-caller
       │
       ▼
  Packaging            environment: academy; seed/scan .env.production
+                      (scan input; --mode api loads .env.api)
                       tsc -b + vite build --mode api (empty VITE_API_TARGET)
                       dist/ zip + nginx:1.27-alpine tar (no docker push)
       │
@@ -83,7 +84,7 @@ The nginx image is a React + npm + Vite static SPA (ADR 0007 / 0008). Packaging 
 | Human security report | Combined PDF artifact `security-combined-report-pdf`; download from the PR Checks tab (workflow Summary → Artifacts, or Security Testing job summary) |
 | Human DAST report | Combined PDF artifact `dast-combined-report-pdf` (`dast-reports/combined-dast-report.pdf`); download from the Release run Summary → Artifacts, the DAST job summary link, or the GitHub Release |
 | Code scanning | CodeQL `javascript-typescript` |
-| Package | Seed/scan `.env.production` + `tsc -b` + `vite build --mode api` (empty `VITE_API_TARGET`) → `dist/` zip + always-generated `nginx:1.27-alpine` try_files tar. Tar artifact: `heavy_rental_web_portal-image.tar.gz`. Publish (not Packaging) pushes `ghcr.io/<owner>/heavy_rental_web_portal:<semver>` + `:latest` and creates the GitHub Release. The Release caller is `workflow_dispatch` only, so GHCR always runs on a successful dispatch. Scan for `sk_`, localhost, `heavy-rental-rest-api`. |
+| Package | Seed/scan `.env.production` (Release scan input; `--mode api` loads `.env.api`) + `tsc -b` + `vite build --mode api` (empty `VITE_API_TARGET`) → `dist/` zip + always-generated `nginx:1.27-alpine` try_files tar. Tar artifact: `heavy_rental_web_portal-image.tar.gz`. Publish (not Packaging) pushes `ghcr.io/<owner>/heavy_rental_web_portal:<semver>` + `:latest` and creates the GitHub Release. The Release caller is `workflow_dispatch` only, so GHCR always runs on a successful dispatch. Scan for `sk_`, localhost, `heavy-rental-rest-api`. Sample: [`../../docs/samples/.env.production`](../../docs/samples/.env.production). |
 
 ## Branch protection (application repo `develop`)
 

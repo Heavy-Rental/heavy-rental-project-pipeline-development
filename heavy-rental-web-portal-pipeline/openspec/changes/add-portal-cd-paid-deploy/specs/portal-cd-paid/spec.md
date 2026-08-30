@@ -23,6 +23,15 @@ Paid portal CD SHALL pass `ansible_aws_ssm_bucket_name=heavy-rental-ssm-<account
 - WHEN `action=deploy` runs Ansible
 - THEN extra-var `ansible_aws_ssm_bucket_name` is the SSM bucket
 
+### Requirement: Paid overlays the same Stripe pk_ extra-var
+On `deploy` and `configure-only`, Environment `AWS_ACTUAL` variable `VITE_STRIPE_PUBLISHABLE_KEY` SHALL overlay guest `.env` the same way as academy (`pk_` only; `sk_` / `whsec_` fail). The overlay SHALL NOT rewrite `/usr/share/nginx/html`.
+
+#### Scenario: Paid pk_ overlay does not rebuild the SPA
+- GIVEN Environment `AWS_ACTUAL` variable `VITE_STRIPE_PUBLISHABLE_KEY` is a `pk_` value
+- WHEN `action=configure-only` runs
+- THEN guest `.env` contains that `pk_`
+- AND the pulled image `dist/` is unchanged
+
 ### Requirement: Academy caller stays Vocareum-only
 `portal-cd-academy-caller.yml` SHALL fail if `aws_environment` is not `academy`.
 

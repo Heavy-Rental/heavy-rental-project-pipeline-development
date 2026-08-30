@@ -5,9 +5,9 @@
 **App CD:** `deploy-pipeline/` (this tree — copy when ready)  
 **Estate:** infra `apply` + `sync-secrets` must have created `asg-portal` and `heavy-rental/portal`
 
-This file is the operator checklist. It does not apply Terraform or push images.
+This file is the operator checklist. It does not apply Terraform or push images. It is not a live inventory of the application repo.
 
-Everyday operate after install (academy inventory, every-run steps, do-nots): [`BOOTSTRAP.md`](BOOTSTRAP.md). Specification: [`../specification/pipelines/portal-cd.md`](../specification/pipelines/portal-cd.md). Vite production sample: [`samples/.env.production`](samples/.env.production).
+Everyday operate after install (academy inventory, every-run steps, do-nots): [`BOOTSTRAP.md`](BOOTSTRAP.md). Specification: [`../specification/pipelines/portal-cd.md`](../specification/pipelines/portal-cd.md). Vite scan sample: [`samples/.env.production`](samples/.env.production) (Release scans it; `--mode api` loads `.env.api`).
 
 This is a **React + npm + Vite** SPA. Spring REST ([heavy-rental-spring-rest-api](https://github.com/Heavy-Rental/heavy-rental-spring-rest-api)) owns `/api`. Infra `aws-infra-academy.yml` writes ALB DNS and Stripe into Secrets Manager. Do not copy REST `application-prod.properties` keys into Vite.
 
@@ -24,9 +24,9 @@ This is a **React + npm + Vite** SPA. Spring REST ([heavy-rental-spring-rest-api
 | App `Dockerfile` ignored | Release **always** generates the nginx + Vite `dist/` image. A Node/Vite-preview Dockerfile is not used for GHCR/CD |
 | Same-origin `/api` + Spring login | Release `tsc -b` + **`vite build --mode api`** (not `npm run build`). Process env empties `VITE_API_TARGET` (do not bake `http://heavy-rental-rest-api:8080`). CD mounts `/api` → SM `REST_BASE_URL` |
 
-Packaging seeds/scans `.env.production`, then `tsc -b` + `vite build --mode api` (empty `VITE_API_TARGET`). It scans `dist/` and the image for `sk_`, lab hosts, and `heavy-rental-rest-api`. Stripe `pk_` is allowed. Generated nginx has no `proxy_pass` host and does **not** `COPY` `.env`. After `action=deploy`, the browser uses same-origin `/api` against Spring REST.
+Packaging seeds/scans `.env.production` (scan input only), then `tsc -b` + `vite build --mode api` (empty `VITE_API_TARGET`). `--mode api` loads `.env.api`, not `.env.production`. It scans `dist/` and the image for `sk_`, lab hosts, and `heavy-rental-rest-api`. Stripe `pk_` is allowed. Generated nginx has no `proxy_pass` host and does **not** `COPY` `.env`. After `action=deploy`, the browser uses same-origin `/api` against Spring REST.
 
-Operator checklist: [`samples/.env.production`](samples/.env.production). Copy it to the React repo root as `.env.production`.
+Operator checklist: [`samples/.env.production`](samples/.env.production). Copy it to the React repo root as `.env.production` so Packaging scans your values instead of generated empty-backend defaults. Create Environment **`academy`** before the first Release — Packaging uses `environment: academy` to bake `VITE_STRIPE_PUBLISHABLE_KEY` (`pk_` only).
 
 GHCR name: `ghcr.io/<owner>/heavy_rental_web_portal` (lowercase). On `Heavy-Rental` that is `ghcr.io/heavy-rental/heavy_rental_web_portal:<x.y.z>` and `:latest`. The version tag is the previous GHCR semver with the patch bumped (first publish is `1.0.0`). Packaging uploads `heavy_rental_web_portal-image.tar.gz`; Publish (dispatch-only) pushes GHCR.
 
@@ -44,7 +44,7 @@ Fast Feedback, Integration CI, and Release `DEFAULT_APP_REPOSITORY` is `Heavy-Re
 
 ## 2. Already on the app repo vs still to copy
 
-Typical app `develop` today:
+Typical app `develop` (checklist, not live inventory):
 
 - Present or pending: Fast Feedback, Integration CI, Release, Security Report (copy the six GitHub Flow YAML files plus the Security Report pair from this tree)
 - **Missing until you copy:** `deploy-pipeline/` (both CD callers, reusable workflow, `resolve-aws-profile`, `ansible/`)
@@ -93,13 +93,14 @@ Copy from this tree’s `deploy-pipeline/`:
 | `ansible/` | **`deploy-pipeline/ansible/`** (keep this path) |
 
 Do **not** copy `resolve-vocareum-aws/` (unused; academy masking lives in `resolve-aws-profile`).
-| [`docs/samples/.env.production`](samples/.env.production) | **`.env.production`** at the React repo root (scanned at Release; `vite build --mode api`) |
+
+Also copy [`docs/samples/.env.production`](samples/.env.production) to the React repo root as **`.env.production`**. Release **scans** that file; `vite build --mode api` loads `.env.api`, not `.env.production`.
 
 ---
 
 ## 5. GitHub Environment `academy`
 
-Create Environment **`academy`** on the portal repo. Do **not** point CD at CI Environments `integration` or `production`.
+Create Environment **`academy`** on the portal repo. Release Packaging also uses it (`environment: academy`) to bake `VITE_STRIPE_PUBLISHABLE_KEY`. Do **not** point CD at CI Environments `integration` or `production`.
 
 ### Secrets (runner only — optional fallback)
 
@@ -137,7 +138,7 @@ Create Environment **`AWS_ACTUAL`**. Variable `AWS_ROLE_TO_ASSUME` (OIDC). **No*
 This CD does **not** create the ASG. Before any `deploy`:
 
 1. Infra `action=apply` created `asg-portal` (public ALB `:80`). Infra `apply` / `configure-only` do **not** compose portal. First compose is infra `deploy-projects` (`site.yml`) or this CD `action=deploy`.
-2. Infra `aws-infra-academy.yml` `sync-secrets` filled **`heavy-rental/portal`** with `REST_BASE_URL=http://<rest_alb_dns>:8080` and Stripe `pk_`. REST SM separately gets `HAYSTACK_BASE_URL`, `APP_CORS_ALLOWED_ORIGINS=http://<portal_alb_dns>`, `sk_` / `whsec_`, JWT, RDS.
+2. Infra `aws-infra-academy.yml` `sync-secrets` filled **`heavy-rental/portal`** with `REST_BASE_URL=http://<rest_alb_dns>:8080` and Stripe `pk_`. REST SM separately gets `HAYSTACK_BASE_URL`, `APP_CORS_ALLOWED_ORIGINS=http://<portal_alb_dns>,http://<rest_alb_dns>:8080` (ADR 0018), `sk_` / `whsec_`, JWT, RDS. Guest nginx `/api` hairpins to that public REST DNS via NAT.
 3. Guests are InService and SSM Online (Start Lab if the session ended). Desired=0 → infra, not this CD.
 
 ---

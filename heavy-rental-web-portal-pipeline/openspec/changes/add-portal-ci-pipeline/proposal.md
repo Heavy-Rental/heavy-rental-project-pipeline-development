@@ -9,8 +9,8 @@
 - OpenSpec capabilities for orchestration, Integration, QC, Security, CodeQL, REST endpoint tests, Release packaging, and CI scope (Integration Check, Fast Feedback reuse).
 - OpenSPDD analysis + REASONS Canvas bound to the existing six GitHub Flow YAML files plus the Security Report pair.
 - Human `specification/` index and `pipelines/portal-ci.md`.
-- CI ADRs 0004–0008 (0007 = static SPA; 0008 = Vite `.env.production` vs AWS REST host).
-- Release is `workflow_dispatch` only. Packaging seeds/scans `.env.production` then `npx tsc -b` + `npx vite build --mode api`. DAST scans the image. Publish pushes GHCR `heavy_rental_web_portal:<semver>` + `:latest` and creates the GitHub Release. Academy GitHub `VITE_*` vars other than Stripe `pk_` are not SPA config.
+- CI ADRs 0004–0008 (0007 = static SPA; 0008 = Vite `.env.production` scan file vs `--mode api` vs AWS REST host).
+- Release is `workflow_dispatch` only. Packaging seeds/scans `.env.production` (scan input; `--mode api` loads `.env.api`) then `npx tsc -b` + `npx vite build --mode api`. DAST scans the image. Publish pushes GHCR `heavy_rental_web_portal:<semver>` + `:latest` and creates the GitHub Release. Academy GitHub `VITE_*` vars other than Stripe `pk_` are not SPA config.
 
 ## Capabilities
 

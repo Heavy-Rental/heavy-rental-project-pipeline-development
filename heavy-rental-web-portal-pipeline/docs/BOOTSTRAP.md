@@ -1,8 +1,8 @@
-# Portal app CD (Academy)
+# Portal app CD (Academy + paid)
 
 This workflow discovers `asg-portal` and can re-run portal compose (branch 2). It does **not** run Terraform or create the ASG. The Release image is a **React + Vite static SPA** (`vite build --mode api` → nginx). This CD mounts nginx `/api` → `REST_BASE_URL`.
 
-Specification index: [`../specification/README.md`](../specification/README.md). CD walkthrough: [`../specification/pipelines/portal-cd.md`](../specification/pipelines/portal-cd.md). App-repo checklist: [`PREPARE-PORTAL-REPO.md`](PREPARE-PORTAL-REPO.md). GHCR publish (dispatch Release after merge; Publish creates the GitHub Release; no `GITHUB_TOKEN` secret): [`GHCR-RELEASE.md`](GHCR-RELEASE.md). Vite production sample: [`samples/.env.production`](samples/.env.production).
+Specification index: [`../specification/README.md`](../specification/README.md). CD walkthrough: [`../specification/pipelines/portal-cd.md`](../specification/pipelines/portal-cd.md). App-repo checklist: [`PREPARE-PORTAL-REPO.md`](PREPARE-PORTAL-REPO.md). GHCR publish (dispatch Release after merge; Publish creates the GitHub Release; no `GITHUB_TOKEN` secret): [`GHCR-RELEASE.md`](GHCR-RELEASE.md). Vite scan sample: [`samples/.env.production`](samples/.env.production) (Release scans it; `--mode api` loads `.env.api`).
 
 Install from **`deploy-pipeline/`** into the React repo (same paths as PREPARE §4):
 
@@ -14,7 +14,7 @@ Install from **`deploy-pipeline/`** into the React repo (same paths as PREPARE �
 
 Do **not** copy `resolve-vocareum-aws/` (portal CD does not `uses:` it; `resolve-aws-profile` already masks Vocareum keys).
 
-Do **not** copy `specification/`. Copy [`samples/.env.production`](samples/.env.production) to the **React** repo as `.env.production` (scanned at Release). GHCR is built with **`vite build --mode api`** so Spring login works. Vite inlines `VITE_*` at build time; CD does not read the file.
+Do **not** copy `specification/`. Copy [`samples/.env.production`](samples/.env.production) to the **React** repo as `.env.production` (Release **scan** input). GHCR is built with **`vite build --mode api`** (loads `.env.api`, not `.env.production`) so Spring login works. Vite inlines `VITE_*` at build time; CD does not read the file.
 
 ## Env ownership (Spring REST + AWS)
 
@@ -24,12 +24,12 @@ Infra `aws-infra-academy.yml` `configure-only` / `apply` runs `scripts/sync-secr
 | --- | --- | --- |
 | Terraform → `heavy-rental/portal` | `REST_BASE_URL=http://<rest_alb_dns>:8080` | Portal CD nginx `/api` (not the JS bundle) |
 | Infra academy Stripe `pk_` → portal SM | `STRIPE_PUBLISHABLE_KEY`, `VITE_STRIPE_PUBLISHABLE_KEY` | Stored on the guest `.env`. The static SPA **cannot** read SM. Bake `pk_` only via academy `VITE_STRIPE_PUBLISHABLE_KEY` + new `vite build --mode api` |
-| Terraform → `heavy-rental/rest` | `HAYSTACK_BASE_URL=http://<haystack_alb_dns>:8000`, `APP_CORS_ALLOWED_ORIGINS=http://<portal_alb_dns>`, SoR `POSTGRES_*` | **Spring REST** (`application-prod.properties` `${…}`). Not the React SPA |
+| Terraform → `heavy-rental/rest` | `HAYSTACK_BASE_URL=http://<haystack_alb_dns>:8000`, `APP_CORS_ALLOWED_ORIGINS=http://<portal_alb_dns>,http://<rest_alb_dns>:8080` (ADR 0018), SoR `POSTGRES_*` | **Spring REST** (`application-prod.properties` `${…}`). Not the React SPA |
 | Infra academy secrets → REST SM | `STRIPE_API_KEY`, `STRIPE_WEBHOOK_SECRET`, `APP_JWT_SECRET`, optional OneMap, optional pricing vars | **Spring REST** only. Never in Vite or the nginx image |
-| Image `dist/` from `vite build --mode api` | `MODE=api` + empty `VITE_API_TARGET` / `VITE_*` backends (same-origin `/api`) | Browser JS → guest `/api` → Spring REST |
-| Portal Environment `academy` | `PORTAL_IMAGE`, `IMAGE_HTTP_URL`, Vocareum keys | Which tag to pull. **Not** SPA `VITE_*` |
+| Image `dist/` from `vite build --mode api` | `MODE=api` + empty `VITE_API_TARGET` / `VITE_*` backends (same-origin `/api`) | Browser JS → guest `/api` → NAT → public REST ALB → Spring REST |
+| Portal Environment `academy` (or `AWS_ACTUAL`) | `PORTAL_IMAGE`, `IMAGE_HTTP_URL`, Vocareum keys (academy) or OIDC role (paid), optional `VITE_STRIPE_PUBLISHABLE_KEY` (`pk_`) | Which tag to pull. Packaging (academy only) bakes `pk_`. CD overlays `pk_` onto guest `.env` only — **not** the SPA bundle. Other `VITE_*` stay off these Environments |
 
-Setting a GitHub `VITE_*` variable on portal Environment `academy` does **not** change GHCR or the running React app. There is no haystack-style overlay for Vite.
+Setting a GitHub `VITE_*` variable does **not** rebuild GHCR and does **not** reconfigure the running SPA. CD may overlay `VITE_STRIPE_PUBLISHABLE_KEY` (`pk_` only) onto guest `.env`; nginx does not run Node, so the browser still uses the key **baked at Release**. That is not a Haystack-style process-env overlay.
 
 Haystack is private (REST → Haystack). The SPA must not call Haystack or RDS.
 
@@ -64,7 +64,7 @@ Does **not** read `.env.api` / `.env.production` and does **not** run `npm`.
 
 | Store | Used? | Keys |
 | --- | --- | --- |
-| GitHub `academy` | Runner + compose tag + Stripe `pk_` | Vocareum keys or form; `AWS_REGION`; `PORTAL_IMAGE` (empty → stock `nginx`); `IMAGE_HTTP_URL`; `VITE_STRIPE_PUBLISHABLE_KEY` |
+| GitHub `academy` or `AWS_ACTUAL` | Runner + compose tag + Stripe `pk_` | Vocareum keys or form (academy only); OIDC role (`AWS_ACTUAL`); `AWS_REGION`; `PORTAL_IMAGE` (empty → stock `nginx`); `IMAGE_HTTP_URL`; `VITE_STRIPE_PUBLISHABLE_KEY` |
 | Guest `/opt/heavy-rental/.env` | Yes — SM then academy overlay | **Required** `REST_BASE_URL`. SM `pk_` unless academy `VITE_STRIPE_PUBLISHABLE_KEY` overlays it. SPA still uses the **baked** Release key. Refuse `sk_` / webhook / PEM |
 | App Vite dotenv | **No** | Release only |
 

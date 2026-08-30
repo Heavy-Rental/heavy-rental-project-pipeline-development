@@ -12,7 +12,7 @@ Start here: [`specification/README.md`](specification/README.md). App-repo CD ch
 | `openspec/` | OpenSpec behavior (requirements + scenarios) |
 | `spdd/` | OpenSPDD analysis + REASONS Canvas |
 | `docs/adr/` | ADRs 0001–0009 (CI 0004–0007; CD 0001–0003, 0009 two Actions; 0008 spans both) |
-| `docs/` | App CD operate ([`BOOTSTRAP.md`](docs/BOOTSTRAP.md), [`PREPARE-PORTAL-REPO.md`](docs/PREPARE-PORTAL-REPO.md), [`samples/.env.production`](docs/samples/.env.production)) |
+| `docs/` | App CD operate ([`BOOTSTRAP.md`](docs/BOOTSTRAP.md), [`PREPARE-PORTAL-REPO.md`](docs/PREPARE-PORTAL-REPO.md), [`samples/.env.production`](docs/samples/.env.production) — Release scan input, not the Vite `--mode api` file) |
 | `fast-feedback-ci-pipeline/` | Integration-only feature-branch pipeline |
 | `integration_pipeline/` | PR / `develop` merge gate (**underscore** in this tree) |
 | `release-pipeline/` | Manual `workflow_dispatch` on `master`: QC + image + DAST + public GHCR + GitHub Release |

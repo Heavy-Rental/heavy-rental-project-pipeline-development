@@ -10,7 +10,7 @@ Infra CD already creates `asg-portal`. Portal CI already builds `nginx` + `dist/
 
 - OpenSpec, OpenSPDD, ADRs 0001–0002.
 - `.github/workflows/web-portal-cd-academy.yml`: `assert-lab` + `discover-targets`.
-- `deploy` / `configure-only` compose fail closed (branch 2).
+- `deploy` / `configure-only` compose fail closed (branch 2). **Superseded** by `add-portal-cd-academy-deploy`.
 
 ## Capabilities
 
