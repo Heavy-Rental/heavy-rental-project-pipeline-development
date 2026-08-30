@@ -32,7 +32,7 @@ Conflict order: **OpenSpec scenarios → OpenSPDD Safeguards → ADR → YAML**.
 
 ### CI family — [`../openspec/changes/add-rest-ci-pipeline/`](../openspec/changes/add-rest-ci-pipeline/)
 
-As-implemented spec of Fast Feedback / Integration Check / Release YAML (PR reuses Fast Feedback and waits if in-flight; both callers pass `REST_API_DB_*` from Repository secrets). Fast Feedback `DEFAULT_APP_REPOSITORY` is `SA62-team1/...` (act); Integration CI and Release are `Heavy-Rental/...`. Security Report is a scheduled/manual Code Scanning summary (Monday 06:00 UTC), not a merge gate.
+As-implemented spec of Fast Feedback / Integration Check / Release YAML (PR reuses Fast Feedback and waits if in-flight; both callers pass `REST_API_DB_*` from Repository secrets). Checkout is the calling repo (`github.sha`; Release always `master`). Env `DEFAULT_APP_REPOSITORY` is set (`SA62-team1/…` on Fast Feedback, `Heavy-Rental/…` on Integration CI and Release) but is **not interpolated**. Security Report is a scheduled/manual Code Scanning summary (Monday 06:00 UTC), not a merge gate.
 
 - Proposal: [`proposal.md`](../openspec/changes/add-rest-ci-pipeline/proposal.md)
 - Design: [`design.md`](../openspec/changes/add-rest-ci-pipeline/design.md)

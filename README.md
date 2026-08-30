@@ -1,6 +1,6 @@
 # Heavy Rental — application GitHub Actions families
 
-Reusable GitHub Actions for the Heavy Rental **application** pipelines: Fast Feedback, Integration CI, Release packaging, a scheduled Security Report (REST and portal), and (except mobile) Academy + paid app CD.
+Reusable GitHub Actions for the Heavy Rental **application** pipelines: Fast Feedback, Integration CI, Release packaging, a scheduled Security Report (Haystack, REST, and portal), and (except mobile) Academy + paid app CD.
 
 This tree does **not** provision the VPC, ASGs, RDS, or NAT. That is [`heavy-rental-project-instructure-and-cloud-deploy`](../heavy-rental-project-instructure-and-cloud-deploy/). Product behaviour (FastAPI, Spring, React, Android screens) lives in each application repository.
 
@@ -9,7 +9,7 @@ This tree does **not** provision the VPC, ASGs, RDS, or NAT. That is [`heavy-ren
 | Path | Contents |
 | --- | --- |
 | `specification/` | Human index for all families |
-| `haystack-fast-api-pipeline/` | Haystack FastAPI CI + Academy/paid CD (compose workers match estate) |
+| `haystack-fast-api-pipeline/` | Haystack FastAPI CI + Security Report + Academy/paid CD (compose workers match estate) |
 | `heavy-rental-rest-api/` | Spring REST API CI + Security Report + Academy/paid CD |
 | `heavy-rental-web-portal-pipeline/` | React portal CI + Security Report + Academy/paid CD |
 | `heavy-rental-mobile/` | Android CI only (unsigned APK + MobSF; no app CD) |
@@ -21,11 +21,11 @@ This tree does **not** provision the VPC, ASGs, RDS, or NAT. That is [`heavy-ren
 
 ```
 feature branch push  →  Fast Feedback (Integration only; sole Integration-stage run for that SHA)
-PR / push → develop  →  Integration CI (reuses Fast Feedback on PR; full gates; SAST here)
+PR / push → develop  →  Integration CI (reuses Fast Feedback on PR, waits if in-flight; full gates; SAST here)
 workflow_dispatch     →  Release (master + QC + package + DAST + publish)
 ```
 
-Haystack, REST, and portal Release publish a public GHCR image and a GitHub Release. Mobile Release publishes an unsigned APK, MobSF DAST, and a GitHub Release (no GHCR). REST and portal also have a scheduled **Security Report** (Monday 08:00 UTC or manual). It summarizes existing Code Scanning alerts; it is **not** a merge gate.
+Haystack, REST, and portal Release publish a public GHCR image and a GitHub Release. Mobile Release publishes an unsigned APK, MobSF DAST, and a GitHub Release (no GHCR). Haystack, REST, and portal also have a scheduled **Security Report** (Haystack and REST: Monday 06:00 UTC; portal: Monday 08:00 UTC; or manual). It summarizes existing Code Scanning alerts; it is **not** a merge gate.
 
 Copy caller + reusable pairs into the application repo `.github/workflows/`.
 
@@ -37,7 +37,7 @@ Haystack, REST, and portal CD each have **two callers**: Environment `academy` (
 
 App CD `verify` uses the same **paths** as estate ALB probes: REST `GET :8080/actuator/health` **2xx** (ALB matcher `200-299`); Haystack `GET :8000/health` **2xx** (ALB matcher `200-299`); portal `GET :80/` **200 / 301 / 302** (ALB `tg-portal` matcher is `200-399`). Portal **Release Packaging** uses Environment `academy` only to bake Stripe `pk_`; that is not CD auth.
 
-Haystack compose workers are `postgres:17` + `sync-from-primary.sh` and `python:3.12-slim` + `populate_neo4j.py` (Haystack ADR 0011 / infra ADR 0020). They are not `python -m` on the uvicorn image. Worker failure does not fail Haystack `verify`.
+Haystack compose workers are `postgres:17` + `sync-from-primary.sh` and `python:3.12-slim` + `populate-neo4j-from-haystack.sh` (wraps `populate_neo4j.py`; Haystack ADR 0011 / infra ADR 0020). They are not `python -m` on the uvicorn image. Worker failure does not fail Haystack `verify`.
 
 GHCR names (Publish after DAST): `haystack_recommender`, `heavy_rental_rest_api`, `heavy_rental_web_portal` (`:<semver>` + `:latest`). REST ALB is internet-facing `:8080`; Haystack ALB stays internal.
 

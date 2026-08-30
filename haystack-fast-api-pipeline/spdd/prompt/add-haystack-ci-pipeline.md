@@ -11,7 +11,7 @@ When reality diverges, fix this prompt first — then update the YAML.
 
 - Provide the same three-pipeline GitHub Flow family used by REST API, portal, and mobile, adapted for Heavy Rental haystack-fast-api (`Heavy-Rental/haystack-fast-api`).
 - Fast Feedback: Integration only, feature-branch pushes (ignore `master`/`develop`). Sole Integration-stage run for that SHA.
-- Integration CI: PR/push `develop` + `workflow_dispatch`. Jobs: Assert caller → Integration → (QC ∥ Security ∥ CodeQL) → GitHub Flow CI Gate. CI caller does not `uses:` Fast Feedback. On `pull_request`, Integration reuses a successful Fast Feedback run for the head SHA and skips uv/layout.
+- Integration CI: PR/push `develop` + `workflow_dispatch`. Jobs: Assert caller → Integration → (QC ∥ Security ∥ CodeQL) → GitHub Flow CI Gate. CI caller does not `uses:` Fast Feedback. On `pull_request`, Integration reuses a successful Fast Feedback run for the head SHA (skip uv/layout; wait if in-flight; inlined pending-run jq).
 - Release: `workflow_dispatch` only (Actions → Haystack Release Pipeline Invoke). Jobs: Assert caller → Integration → QC → Packaging → DAST → Publish (public GHCR + GitHub Release). Do **not** use `on: release` — Publish creates the GitHub Release. SAST/CodeQL stay on Integration CI.
 - Security Report pair (`haystack-security-report-caller.yml` + `security-report-pipeline.yml`) summarizes existing Code Scanning alerts (Monday 06:00 UTC + `workflow_dispatch`). It is not a merge gate and does not scan.
 - Use **Python/Haystack tools only**: CPython 3.12, uv, Ruff, pytest, Haystack `Pipeline` constructors, Semgrep `p/python`, pip-audit report, CodeQL `python`.

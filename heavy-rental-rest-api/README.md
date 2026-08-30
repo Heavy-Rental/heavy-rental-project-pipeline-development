@@ -16,7 +16,7 @@ Start here: [`specification/README.md`](specification/README.md). App-repo CD ch
 | `fast-feedback-ci-pipeline/` | Integration-only feature-branch pipeline |
 | `integration-pipeline/` | PR / `develop` merge gate |
 | `release-pipeline/` | `workflow_dispatch` Release: checkout `master` + WAR + DAST + GHCR + GitHub Release |
-| `security-report/` | Weekly/manual Code Scanning summary (not a merge gate) |
+| `security-report/` | Weekly/manual Code Scanning summary (Monday 06:00 UTC; not a merge gate) |
 | `deploy-pipeline/` | Academy + paid app CD (discover + compose; copy into the app repo) |
 
 ## GitHub Flow
@@ -27,7 +27,7 @@ PR / push → develop  →  Integration CI (Integration Check reuses Fast Feedba
 workflow_dispatch     →  Release (master + QC + image + DAST + public GHCR + GitHub Release)
 ```
 
-Release does **not** rerun SAST/CodeQL. Packaging writes the WAR and image tar; **Publish** pushes public GHCR and creates the GitHub Release. The caller is `workflow_dispatch` only (it must not use `on: release` — it **creates** the GitHub Release). Academy and paid CD consume a public GHCR/ECR tag or the tar.
+Release does **not** rerun SAST/CodeQL. Packaging writes the WAR and image tar; **Publish** pushes public GHCR and creates the GitHub Release. The caller is `workflow_dispatch` only (it must not use `on: release` — it **creates** the GitHub Release). Academy and paid CD consume a public GHCR/ECR tag or the tar. The Security Report pair is scheduled/manual only (Monday 06:00 UTC + `workflow_dispatch`); it summarizes existing Code Scanning alerts and is **not** a merge gate.
 
 ## Pipeline boundaries
 
@@ -52,4 +52,4 @@ Release does **not** rerun SAST/CodeQL. Packaging writes the WAR and image tar; 
 | Code scanning | CodeQL `java-kotlin` |
 | Package | versioned WAR + `tomcat:10.1-jdk21-temurin` + `ROOT.war` |
 
-Reusable YAML `DEFAULT_APP_REPOSITORY` is `SA62-team1/heavy-rental-spring-rest-api` on Fast Feedback only (local `act` fallback). Integration CI and Release use `Heavy-Rental/heavy-rental-spring-rest-api`. When Fast Feedback or Integration CI runs **in** `Heavy-Rental/heavy-rental-spring-rest-api`, checkout is the calling commit. Release always checks out **`master`**.
+Checkout is the calling repository into `app/` (Fast Feedback / Integration: `github.sha`). Release always checks out **`master`**. Env `DEFAULT_APP_REPOSITORY` is set (`SA62-team1/…` on Fast Feedback, `Heavy-Rental/…` on Integration CI and Release) but is **not interpolated**. `DEFAULT_APP_REF` is used only when a caller passes a different `app_repository`.

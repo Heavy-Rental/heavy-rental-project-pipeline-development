@@ -32,7 +32,7 @@ Conflict order: **OpenSpec scenarios → OpenSPDD Safeguards → ADR → YAML**.
 
 ### CI family — [`../openspec/changes/add-portal-ci-pipeline/`](../openspec/changes/add-portal-ci-pipeline/)
 
-As-implemented spec of Fast Feedback / Integration Check / Release YAML (PR reuses Fast Feedback; inlined pending-run jq). Fast Feedback, Integration CI, and Release `DEFAULT_APP_REPOSITORY` is `Heavy-Rental/heavy-rental-react-web-portal`. Release is `workflow_dispatch` only (Packaging → DAST → Publish GHCR + GitHub Release). Security Report is a scheduled/manual Code Scanning summary, not a merge gate.
+As-implemented spec of Fast Feedback / Integration Check / Release YAML (PR reuses Fast Feedback; inlined pending-run jq). Checkout is the calling repo (`github.sha`; Release always `master`). Env `DEFAULT_APP_REPOSITORY` is set to `Heavy-Rental/heavy-rental-react-web-portal` but is **not interpolated**. Release is `workflow_dispatch` only (Packaging → DAST → Publish GHCR + GitHub Release). Security Report is a scheduled/manual Code Scanning summary, not a merge gate.
 
 - Proposal: [`proposal.md`](../openspec/changes/add-portal-ci-pipeline/proposal.md)
 - Design: [`design.md`](../openspec/changes/add-portal-ci-pipeline/design.md)

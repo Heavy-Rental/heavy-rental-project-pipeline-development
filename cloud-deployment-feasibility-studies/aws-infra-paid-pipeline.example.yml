@@ -116,9 +116,9 @@ jobs:
           echo "Replace this step with terraform init && terraform ${TF_ACTION} (paid workspace/state only)."
           echo "Must create three subnet tiers: public, private-app, private-data (2 AZs each)."
           echo "RDS + asg-neo4j in the data subnet group/subnets only. Never public or app subnets."
-          echo "Create Secrets Manager shells: heavy-rental/{portal,rest,haystack,neo4j} and empty heavy-rental/ssh/*."
-          echo "No PEM, Stripe secret, or DB password in .tf. Prefer no key_name on launch templates."
-          echo "SSH PEMs are written later by sync-ssh-keys AFTER instances are InService."
+          echo "Create Secrets Manager shells: heavy-rental/{portal,rest,haystack,neo4j} and empty heavy-rental/ssh/{portal,rest,haystack,neo4j,bastion}."
+          echo "No PEM, Stripe secret, or DB password in .tf. Prefer no key_name on launch templates. hr-bastion is a single public-subnet EC2 (not an ASG)."
+          echo "SSH PEMs are written later by sync-ssh-keys AFTER app ASGs are InService and hr-bastion is running."
           echo "RDS deletion_protection must be off (or flipped in this job) so action=destroy can delete RDS."
           echo "Secrets recovery_window_in_days=0 so destroy actually removes them."
           echo "::error::Stub. Other project: terraform init (paid remote state) && terraform ${TF_ACTION}."
@@ -217,8 +217,8 @@ jobs:
 
       - name: Stop placeholder
         run: |
-          echo "Replace with stop/scale-in for paid EC2 (including asg-neo4j) / RDS in data subnets / ECS. Do not target academy resources. stop is pause — destroy deletes the paid estate."
-          echo "::error::Stub. Other project: stop paid ASGs + RDS."
+          echo "Replace with stop/scale-in for paid EC2 (four app ASGs + stop-instances hr-bastion) / RDS in data subnets. Do not target academy resources. stop is pause — destroy deletes the paid estate."
+          echo "::error::Stub. Other project: stop paid ASGs + hr-bastion + RDS."
           exit 1
 
   destroy:

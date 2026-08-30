@@ -1,6 +1,6 @@
 # Delta for haystack-cd-ansible
 
-> **Later modified by** [`add-haystack-cd-workers`](../../../add-haystack-cd-workers/proposal.md) / [ADR 0011](../../../../../docs/adr/0011-devcontainer-worker-sidecars.md): workers are `postgres:17` + `sync-from-primary.sh` and `python:3.12-slim` + `populate_neo4j.py`, not uvicorn `-m`.
+> **Later modified by** [`add-haystack-cd-workers`](../../../add-haystack-cd-workers/proposal.md) / [ADR 0011](../../../../../docs/adr/0011-devcontainer-worker-sidecars.md): workers are `postgres:17` + `sync-from-primary.sh` and `python:3.12-slim` + `populate-neo4j-from-haystack.sh` (wraps `populate_neo4j.py`), not uvicorn `-m`.
 
 ## ADDED Requirements
 

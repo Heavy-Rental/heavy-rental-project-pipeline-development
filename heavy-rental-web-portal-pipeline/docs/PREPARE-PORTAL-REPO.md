@@ -38,7 +38,7 @@ Step-by-step (do not set `GITHUB_TOKEN`, dispatch after merge, public package, `
 
 Academy guests pull **public** GHCR with no token. A `develop` → `master` PR does **not** run Release. You need this dispatch (or `docker load` the tar via `image_http_url` / `IMAGE_HTTP_URL`, or copy the image to ECR).
 
-Fast Feedback, Integration CI, and Release `DEFAULT_APP_REPOSITORY` is `Heavy-Rental/heavy-rental-react-web-portal`. When Fast Feedback or Integration CI runs **in** the Heavy-Rental portal repo, checkout is the calling commit. On pull_request, Integration Check reuses a successful Fast Feedback run for the PR head SHA instead of repeating `npm ci`. If Fast Feedback is still queued or in progress, Integration Check waits for that run (`gh run watch`); the pending-run jq filter is inlined (do not split it into `PENDING_FILTER`). When Release runs **in** the Heavy-Rental portal repo, checkout is still **`master`** (into `app/`), not the calling SHA. That is correct.
+Checkout is the calling repository into `app/` (Fast Feedback / Integration: calling commit). Env `DEFAULT_APP_REPOSITORY` is set to `Heavy-Rental/heavy-rental-react-web-portal` but is **not interpolated**. On pull_request, Integration Check reuses a successful Fast Feedback run for the PR head SHA instead of repeating `npm ci`. If Fast Feedback is still queued or in progress, Integration Check waits for that run (`gh run watch`); the pending-run jq filter is inlined (do not split it into `PENDING_FILTER`). When Release runs **in** the Heavy-Rental portal repo, checkout is still **`master`** (into `app/`), not the calling SHA. That is correct.
 
 ---
 
@@ -158,7 +158,7 @@ Same sequence as [`BOOTSTRAP.md`](BOOTSTRAP.md) “Every run”:
 ## 8. Do not
 
 - Use CI Environments `integration` / `production` as CD
-- Put Vocareum keys or Stripe `sk_` in the image, in `.env.production`, or on the Run form
+- Put Stripe `sk_` / `whsec_` or Vocareum keys in the image or `.env.production`. Vocareum keys **belong** on the academy Run form (or Environment fallback); never in SM or on the EC2
 - Bake `REST_BASE_URL` / `http://heavy-rental-rest-api:8080` / Haystack ALB / `localhost:8080` into the Vite bundle
 - Expect GitHub `VITE_*` vars to reconfigure the running SPA
 - Type instance IDs on the Run form

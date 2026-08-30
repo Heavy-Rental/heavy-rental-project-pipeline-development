@@ -11,7 +11,7 @@ Infrastructure setup, project deployment, and operate are owned by another proje
 **Goals:**
 
 - Same GitHub Flow family as REST/portal/mobile (fast feedback / CI / release).
-- Integration is the highest-priority job; later jobs `needs: [integration]`. PR Integration reuses Fast Feedback for the head SHA (CI caller does not `uses:` Fast Feedback).
+- Integration is the highest-priority job; later jobs `needs: [integration]`. PR Integration reuses Fast Feedback for the head SHA (waits if in-flight; pending-run jq is inlined; CI caller does not `uses:` Fast Feedback).
 - Python/Haystack-appropriate toolchain: CPython 3.12 + uv + Ruff + pytest + Haystack `Pipeline` smoke.
 - Semgrep-safe scripts (bind `github.*` / `inputs.*` through `env:`).
 - Release artifacts are consumable by a later deploy project (wheel/sdist + image tar; Publish pushes public GHCR and creates the GitHub Release).
@@ -23,13 +23,13 @@ Infrastructure setup, project deployment, and operate are owned by another proje
 - Prism / Mock Contract Tests (Haystack *is* the API; pytest `TestClient` covers HTTP)
 - Scheduled pricing-model retrain (product OpenSpec in the application repo)
 - Changing the application product `openspec/`
-- Creating or changing cloud infrastructure (another project)
-- Deploying the packaged service onto a runtime (another project)
-- Operating the live system after go-live (another project)
+- Creating or changing cloud infrastructure (infra project)
+- Deploying the packaged service onto a runtime (**this tree’s** `deploy-pipeline/` CD family, not the CI YAML)
+- Operating the live system after go-live (infra project)
 
 ## Decisions
 
-1. **Reusable + caller gate.** Copy the REST/portal/mobile model. Each reusable file rejects any `github.workflow_ref` that is not its matching caller. Integration CI does not `uses:` Fast Feedback; on `pull_request` it looks up a successful Fast Feedback run for the head SHA and skips uv/layout.
+1. **Reusable + caller gate.** Copy the REST/portal/mobile model. Each reusable file rejects any `github.workflow_ref` that is not its matching caller. Integration CI does not `uses:` Fast Feedback; on `pull_request` it looks up a successful Fast Feedback run for the head SHA (waits if in-flight; pending-run jq is inlined) and skips uv/layout.
 2. **Python 3.12, not 3.11 or 3.13.** Matches `.python-version` and `requires-python = ">=3.12"`.
 3. **uv is the package manager.** `astral-sh/setup-uv` v10.0.1 (SHA-pinned) with cache on `uv.lock`. Integration runs `uv lock --check` then `uv sync --frozen --all-groups`. Do not use pip/poetry/pdm. Do not `--extra neo4j` on Fast Feedback / Integration / QC. The **Release image** install uses `--extra neo4j`.
 4. **Haystack smoke is the Integration resolve step.** After sync, import `haystack.Pipeline`, `create_app`, `build_indexing_pipeline`, and `build_intake_front_pipeline` with mock/memory/stub env. Analog of Gradle `:app:preBuild`.

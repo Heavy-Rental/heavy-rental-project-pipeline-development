@@ -5,7 +5,7 @@
 Academy branches 1–2 **and** paid Haystack CD are **delivered** (`add-haystack-cd-academy-deploy`, `add-haystack-cd-paid-deploy`, ADR 0010, Environment `AWS_ACTUAL`). GHCR is `haystack_recommender`. Release is `workflow_dispatch` only. Living specs: [`../../haystack-fast-api-pipeline/specification/`](../../haystack-fast-api-pipeline/specification/). Body below is the original Academy two-branch split.
 
 **Contract:** [`HAYSTACK-CD-FEASIBILITY.md`](HAYSTACK-CD-FEASIBILITY.md), [`../ANSIBLE-PROCESS.md`](../ANSIBLE-PROCESS.md) §4.3, AWS study §6.0c / §6.4a.  
-**Live estate:** `heavy-rental-project-instructure-and-cloud-deploy`. Infra `apply` does **not** compose Haystack. First compose is infra `deploy-projects` (`site.yml`) or this app CD (uvicorn + `postgres:17` `sync-from-primary.sh` + `python:3.12-slim` `populate_neo4j.py`, **no** Neo4j container; Haystack ADR 0011).  
+**Live estate:** `heavy-rental-project-instructure-and-cloud-deploy`. Infra `apply` does **not** compose Haystack. First compose is infra `deploy-projects` (`site.yml`) or this app CD (uvicorn + `postgres:17` `sync-from-primary.sh` + `python:3.12-slim` `populate-neo4j-from-haystack.sh` wrapping `populate_neo4j.py`, **no** Neo4j container; Haystack ADR 0011).  
 **This plan is the delivery split.** Live YAML is in `haystack-fast-api-pipeline/deploy-pipeline/`.
 
 **Status:** Infra branches 1–3 exist. Haystack CD **branch 1** (discover), **branch 2** (compose), and **paid caller** are in `deploy-pipeline/`.

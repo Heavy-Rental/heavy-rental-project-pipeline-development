@@ -16,7 +16,7 @@ Start here: [`specification/README.md`](specification/README.md). App-repo CD ch
 | `fast-feedback-ci-pipeline/` | Integration-only feature-branch pipeline |
 | `integration_pipeline/` | PR / `develop` merge gate (**underscore** in this tree) |
 | `release-pipeline/` | Manual `workflow_dispatch` on `master`: QC + image + DAST + public GHCR + GitHub Release |
-| `security-report/` | Weekly/manual Code Scanning summary (not a merge gate) |
+| `security-report/` | Weekly/manual Code Scanning summary (Monday 08:00 UTC; not a merge gate) |
 | `deploy-pipeline/` | Academy + paid app CD (discover + compose; copy into the app repo) |
 
 ## GitHub Flow
@@ -27,7 +27,7 @@ PR / push → develop  →  Integration CI (Integration Check reuses Fast Feedba
 workflow_dispatch     →  Release (master + QC + image + DAST + public GHCR + GitHub Release)
 ```
 
-Release stops at **packaged artifacts** (`dist/` zip, image tar, public GHCR, GitHub Release). It does not deploy. Academy and paid CD in `deploy-pipeline/` consume a public GHCR/ECR tag or the tar. SAST and CodeQL stay on Integration CI.
+Release stops at **packaged artifacts** (`dist/` zip, image tar, public GHCR, GitHub Release). It does not deploy. Academy and paid CD in `deploy-pipeline/` consume a public GHCR/ECR tag or the tar. SAST and CodeQL stay on Integration CI. The Security Report pair is scheduled/manual only (Monday 08:00 UTC + `workflow_dispatch`); it summarizes existing Code Scanning alerts and is **not** a merge gate.
 
 ## Pipeline boundaries
 
@@ -52,4 +52,4 @@ Release stops at **packaged artifacts** (`dist/` zip, image tar, public GHCR, Gi
 | Code scanning | CodeQL `javascript-typescript` |
 | Package | `tsc -b` + `vite build --mode api` → `dist/` zip + `nginx:1.27-alpine` tar; Publish pushes GHCR |
 
-Reusable YAML `DEFAULT_APP_REPOSITORY` is `Heavy-Rental/heavy-rental-react-web-portal` on Fast Feedback, Integration CI, and Release. When Fast Feedback or Integration CI runs **in** `Heavy-Rental/heavy-rental-react-web-portal`, checkout is the calling commit. Release always checks out **`master`**.
+Checkout is the calling repository into `app/` (Fast Feedback / Integration: `github.sha`). Release always checks out **`master`**. Env `DEFAULT_APP_REPOSITORY` is set to `Heavy-Rental/heavy-rental-react-web-portal` but is **not interpolated**. `DEFAULT_APP_REF` is used only when a caller passes a different `app_repository`.

@@ -83,7 +83,7 @@ The **runner** uses Vocareum keys. The **EC2** uses `LabRole`.
 ## Do not (same as PREPARE §8)
 
 - Use CI Environments `integration` / `production` as CD
-- Put Vocareum keys or Stripe `sk_` in the image, in `.env.production`, or on the Run form
+- Put Stripe `sk_` / `whsec_` or Vocareum keys in the image or `.env.production`. Vocareum keys **belong** on the academy Run form (or Environment fallback); never in SM or on the EC2
 - Bake `REST_BASE_URL` / Haystack ALB / `localhost:8080` into `vite build --mode api`
 - Expect GitHub `VITE_*` vars to reconfigure the running SPA
 - Type instance IDs on the Run form
@@ -91,4 +91,4 @@ The **runner** uses Vocareum keys. The **EC2** uses `LabRole`.
 - Expect GHCR from a `develop` → `master` PR alone (run **Actions → Release** after merge; the pipeline creates the GitHub Release)
 - Treat a green `verify` as proof that `/api` reached REST
 
-Release `workflow_dispatch` Publish pushes `ghcr.io/<owner>/heavy_rental_web_portal:<x.y.z>` and `:latest` and uploads `heavy_rental_web_portal-image.tar.gz`.
+Release `workflow_dispatch` **Packaging** uploads `heavy_rental_web_portal-image.tar.gz`. **Publish** pushes `ghcr.io/<owner>/heavy_rental_web_portal:<x.y.z>` and `:latest` and creates the GitHub Release (zip + DAST assets, not the tar).

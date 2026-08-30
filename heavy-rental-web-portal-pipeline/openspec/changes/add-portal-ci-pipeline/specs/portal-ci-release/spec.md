@@ -101,7 +101,7 @@ After `docker build`, Packaging SHALL inspect `Config.Env` (no baked REST/Vite/S
 - AND the container is removed before Packaging finishes
 
 ### Requirement: DAST scans the packaged image
-DAST SHALL run after Packaging succeeds. It SHALL start the packaged image and run OWASP ZAP, Dastardly, and Nuclei. It SHALL upload `dast-reports/` including `combined-dast-report.pdf` (artifact `dast-combined-report-pdf`).
+DAST SHALL run after Packaging succeeds. It SHALL start the packaged image and run OWASP ZAP (fail if exit ≥ 2), Dastardly (fail if exit ≠ 0), and Nuclei (report-only; `continue-on-error`). It SHALL upload `dast-reports/` including `combined-dast-report.pdf` (artifact `dast-combined-report-pdf`).
 
 #### Scenario: DAST needs Packaging
 - GIVEN Packaging failed

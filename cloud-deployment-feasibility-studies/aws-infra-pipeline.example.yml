@@ -165,9 +165,9 @@ jobs:
         run: |
           set -euo pipefail
           echo "::error::Stub. Other project: terraform init (S3 use_lockfile=true; no DynamoDB) && terraform ${TF_ACTION}."
-          echo "Must create three subnet tiers; asg-portal+public ALB; asg-rest+internal ALB; asg-haystack+internal ALB."
-          echo "asg-neo4j max=1 data subnets; RDS data subnet group only; deletion_protection=false."
-          echo "MUST create secret shells heavy-rental/{portal,rest,haystack,neo4j} and empty heavy-rental/ssh/*."
+          echo "Must create three subnet tiers; asg-portal+public ALB; asg-rest+internet-facing ALB :8080; asg-haystack+internal ALB."
+          echo "asg-neo4j desired=2 data subnets; hr-bastion single public-subnet EC2 (not an ASG); RDS data subnet group only; deletion_protection=false."
+          echo "MUST create secret shells heavy-rental/{portal,rest,haystack,neo4j} and empty heavy-rental/ssh/{portal,rest,haystack,neo4j,bastion}."
           echo "sync-secrets (next job) must fill required JSON fields or app CD will fail describe-secret."
           echo "This job must not report success until those commands exist."
           exit 1
@@ -275,8 +275,8 @@ jobs:
       - name: Wait for ASG instances then put SSH PEMs
         run: |
           set +x
-          echo "Wait until asg-portal, asg-rest, asg-haystack, asg-neo4j each have an InService instance."
-          echo "::error::Stub. Other project: wait for InService then put PEMs."
+          echo "Wait until asg-portal, asg-rest, asg-haystack, asg-neo4j are InService and hr-bastion is running."
+          echo "::error::Stub. Other project: wait then put PEMs; hop private key on hr-bastion only."
           exit 1
 
   ansible:
@@ -372,7 +372,7 @@ jobs:
       - name: Stop placeholder
         run: |
           echo "stop is pause. That is not terraform destroy."
-          echo "::error::Stub. Other project: ASG desired=0 + rds stop-db-instance."
+          echo "::error::Stub. Other project: four app ASGs desired=0 + stop-instances hr-bastion + rds stop-db-instance."
           exit 1
 
   destroy:

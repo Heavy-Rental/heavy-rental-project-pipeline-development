@@ -12,7 +12,7 @@ This family validates the app and produces an unsigned APK, then MobSF DAST and 
 
 ```
 feature branch push  →  Fast Feedback (Integration only)
-PR / push → develop  →  Integration CI (full gates, no packaging)
+PR / push → develop  →  Integration CI (reuses Fast Feedback on PR, waits if in-flight; full gates, no packaging)
 workflow_dispatch     →  Release (master + QC + APK + MobSF + GitHub Release)
 ```
 
@@ -75,7 +75,7 @@ assert-caller
 | Human DAST report | Combined PDF artifact `dast-combined-report-pdf` (`dast-reports/combined-dast-report.pdf`); download from the Release run Summary → Artifacts, the DAST job summary link, or the GitHub Release |
 | Code scanning | CodeQL `java-kotlin` |
 | Package | `:app:assembleRelease` unsigned APK |
-| DAST | MobSF static scan of the unsigned APK (Release only) |
+| DAST | MobSF static scan of the unsigned APK (Release only). High-severity heuristic is a **warning**, not a fail |
 | Publish | `gh release create` on `master` (no GHCR) |
 
 ## GitHub Actions
@@ -136,7 +136,7 @@ Copy each pair into `Heavy-Rental/heavy-rental-mobile`:
 .github/workflows/release-pipeline.yml
 ```
 
-`DEFAULT_APP_REPOSITORY` is `Heavy-Rental/heavy-rental-mobile`. When the caller runs **in** the app repo, checkout is the calling repo (into `app/`). Release always checks out **`master`**.
+Checkout is the calling repository into `app/` (Fast Feedback / Integration: `github.sha`). Release always checks out **`master`** and ignores `app_ref`. Env `DEFAULT_APP_REPOSITORY` is set to `Heavy-Rental/heavy-rental-mobile` but is **not interpolated**. The Release caller does not pass `app_repository` / `app_ref`.
 
 ## Pipeline boundaries
 

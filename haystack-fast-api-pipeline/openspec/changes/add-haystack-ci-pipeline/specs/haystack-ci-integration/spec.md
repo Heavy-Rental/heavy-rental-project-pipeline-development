@@ -4,7 +4,7 @@
 
 Highest-priority gate: fetch the FastAPI + Haystack application, install CPython 3.12 and uv, sync the locked environment, and prove the project layout plus Haystack pipeline imports.
 
-On Integration CI the job id is `integration` and the check name is **Integration** (Haystack has no `environment: integration`). Fast Feedback and Release keep the same job id and name. On `pull_request`, uv/layout SHALL be skipped when Fast Feedback already succeeded for the PR head SHA.
+On Integration CI the job id is `integration` and the check name is **Integration** (Haystack has no `environment: integration`). Fast Feedback and Release keep the same job id and name. On `pull_request`, uv/layout SHALL be skipped when Fast Feedback already succeeded for the PR head SHA (wait if that run is still in flight; see `haystack-ci-orchestration`).
 
 ## ADDED Requirements
 

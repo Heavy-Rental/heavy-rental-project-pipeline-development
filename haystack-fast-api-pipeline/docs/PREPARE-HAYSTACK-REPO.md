@@ -57,7 +57,7 @@ GHCR name: `ghcr.io/<owner>/haystack_recommender` (lowercase). On `Heavy-Rental`
 
 Academy guests pull **public** GHCR with no token. A `develop` → `master` PR does **not** run Release. You need this dispatch (or `docker load` the tar via `image_http_url` / `IMAGE_HTTP_URL`, or copy the image to ECR).
 
-`DEFAULT_APP_REPOSITORY: Heavy-Rental/haystack-fast-api` in the reusable YAML is correct. When Release runs **in** the app repo, checkout is the calling repo (into `app/`). That is correct.
+Checkout is the calling repository into `app/`. Env `DEFAULT_APP_REPOSITORY` is set to `Heavy-Rental/haystack-fast-api` but is **not interpolated**. When Release runs **in** the app repo, checkout is still **`master`**, not the calling SHA. That is correct.
 
 Release’s generated image runs `uv sync --frozen --no-dev --extra neo4j` so Bolt has a driver. If the app adds its own `Dockerfile`, it must include that extra (or move `neo4j` into main deps).
 
@@ -220,7 +220,7 @@ CD / estate compose (no `neo4j` service):
 | --- | --- | --- |
 | `haystack` (uvicorn) | `768m` / `1.0` | Haystack Release image `CMD` (`uv run uvicorn … :8000`) |
 | `postgres-haystack-sync` | `256m` / `0.25` | `postgres:17` + `sync-from-primary.sh` (`unless-stopped`, 60s) |
-| `neo4j-populate` | `256m` / `0.25` | `python:3.12-slim` + `populate_neo4j.py` (`unless-stopped`, 60s + Compose `:8089`) |
+| `neo4j-populate` | `256m` / `0.25` | `python:3.12-slim` + `populate-neo4j-from-haystack.sh` (wraps `populate_neo4j.py`; `unless-stopped`, 60s + Compose `:8089`) |
 
 Scripts are copied from this CD / estate Ansible `files/` (Fast API `.devcontainer`). They are **not** `python -m` on the uvicorn image (ADR 0011). App `develop` missing those Python packages no longer blocks the workers.
 

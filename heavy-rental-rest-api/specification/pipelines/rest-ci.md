@@ -6,7 +6,7 @@
 
 This family validates and packages the service. It does not create infrastructure or operate production. Academy and paid **app CD** is [`rest-cd.md`](rest-cd.md). A scheduled Security Report pair summarizes existing Code Scanning alerts; it is not a merge gate.
 
-Reusable YAML `DEFAULT_APP_REPOSITORY` is `SA62-team1/heavy-rental-spring-rest-api` on Fast Feedback only (local `act` fallback). Integration CI and Release use `Heavy-Rental/heavy-rental-spring-rest-api`. When a caller runs **in** the Heavy-Rental Spring repo, Fast Feedback and Integration CI check out the calling commit (into `app/`). Release always checks out **`master`**.
+Checkout is the calling repository into `app/` (Fast Feedback / Integration: `github.sha`). Release always checks out **`master`**. Env `DEFAULT_APP_REPOSITORY` is set (`SA62-team1/heavy-rental-spring-rest-api` on Fast Feedback, `Heavy-Rental/heavy-rental-spring-rest-api` on Integration CI and Release) but is **not interpolated**. `DEFAULT_APP_REF` is used only when a caller passes a different `app_repository`.
 
 Callers pass `github_environment` (`integration` / `production`). Quality Control **hardcodes** `environment: integration` or `environment: production`; the input is unused.
 
@@ -60,7 +60,7 @@ assert-caller
  Packaging            versioned WAR + Tomcat image tar (needs Integration + QC)
       │
       ▼
- DAST                 run image; OWASP ZAP + Dastardly + Nuclei
+ DAST                 run image; wait `GET :8080/actuator/health`; OWASP ZAP (gate) + Dastardly (gate) + Nuclei (report-only)
       │
       ▼
  Publish              public GHCR + GitHub Release on master

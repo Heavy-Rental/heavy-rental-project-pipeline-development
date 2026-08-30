@@ -1,10 +1,10 @@
 # Haystack app CD (Academy + paid)
 
-This workflow discovers `asg-haystack` and can re-run Haystack compose (branch 2). It does **not** run Terraform or create the ASG. It does **not** start Neo4j.
+This workflow discovers `asg-haystack` and can re-run Haystack compose. It does **not** run Terraform or create the ASG. It does **not** start Neo4j.
 
 Specification index: [`../specification/README.md`](../specification/README.md). CD walkthrough: [`../specification/pipelines/haystack-cd.md`](../specification/pipelines/haystack-cd.md).
 
-**App repo is not ready yet.** Checklist, image contract, worker env aliases, and the full env-name table: [`PREPARE-HAYSTACK-REPO.md`](PREPARE-HAYSTACK-REPO.md). Production-shaped product knobs: [`samples/.env.prod`](samples/.env.prod). Compose workers are estate/CD scripts (ADR 0011), not uvicorn `-m`.
+Checklist, image contract, worker env aliases, and the full env-name table: [`PREPARE-HAYSTACK-REPO.md`](PREPARE-HAYSTACK-REPO.md) (the “not ready” verdict there is a **2026-08-17 snapshot**, not live inventory). Production-shaped product knobs: [`samples/.env.prod`](samples/.env.prod). Compose workers are estate/CD scripts (ADR 0011), not uvicorn `-m`.
 
 Install from **`deploy-pipeline/`** into the Haystack app repo (same paths as PREPARE §4):
 

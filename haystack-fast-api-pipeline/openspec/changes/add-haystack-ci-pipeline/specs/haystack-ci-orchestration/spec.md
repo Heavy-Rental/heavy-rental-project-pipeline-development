@@ -82,7 +82,7 @@ Each caller SHALL use the GitHub Flow triggers defined for its pipeline and SHAL
 - AND Publish in a `workflow_dispatch` run is what creates the GitHub Release
 
 ### Requirement: Source resolution
-Each reusable workflow SHALL check out the calling repository at the calling commit unless `app_repository` names a different repository, in which case it SHALL check out that repository at `app_ref` or the pipeline default ref.
+Fast Feedback and Integration CI SHALL check out the calling repository at the calling commit unless `app_repository` names a different repository, in which case they SHALL check out that repository at `app_ref` or the pipeline default ref. Release SHALL always check out **`master`** (same-repo or remote) and SHALL ignore `app_ref`. Env `DEFAULT_APP_REPOSITORY` MAY be set for documentation; it SHALL NOT be interpolated as the checkout default.
 
 #### Scenario: Same-repo caller
 - GIVEN the caller is the haystack-fast-api repository and `app_repository` is empty
@@ -94,7 +94,13 @@ Each reusable workflow SHALL check out the calling repository at the calling com
 - GIVEN `app_repository` is a different owner/name than the calling repository
 - WHEN Integration resolves the source
 - THEN checkout mode is `remote`
-- AND the named repository is checked out at `app_ref` or the default ref (`develop` for fast feedback and CI, `master` for release)
+- AND the named repository is checked out at `app_ref` or the default ref (`develop` for fast feedback and CI)
+
+#### Scenario: Release always checks out master
+- GIVEN the Release caller
+- WHEN source is resolved
+- THEN the application is checked out at `master`
+- AND `app_ref` is ignored
 
 ### Requirement: Concurrency
 Fast Feedback and Integration CI SHALL cancel superseded runs for the same PR or branch. Release SHALL NOT cancel an in-flight packaging run.

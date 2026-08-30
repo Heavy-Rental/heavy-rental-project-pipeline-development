@@ -1,0 +1,56 @@
+# STUDY STUB (fail-closed). Not live YAML.
+# Verdict: aws-infra-paid.yml cannot spin up EKS (same compose estate, Environment AWS_ACTUAL).
+#   See EKS-FEASIBILITY.md
+# Live paid Action:
+#   heavy-rental-project-instructure-and-cloud-deploy/.github/workflows/aws-infra-paid.yml
+# Do not copy this stub into .github/workflows.
+#
+# If a rubric ever forces EKS, the real file would be aws-eks-paid.yml
+# (OIDC, terraform/eks/, state key eks/terraform.tfstate in the -actual bucket).
+# Do NOT add Vocareum key inputs. Do NOT set AWS_ACCESS_KEY_ID on Environment AWS_ACTUAL.
+
+name: AWS EKS (paid) — STUDY STUB
+
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: Study stub — every action exits 1
+        required: true
+        type: choice
+        default: plan
+        options:
+          - plan
+          - apply
+          - kube-apply
+          - stop
+          - destroy
+      aws_environment:
+        description: Must be AWS_ACTUAL
+        required: true
+        type: environment
+        default: AWS_ACTUAL
+      confirm_destroy:
+        description: Type destroy to confirm (required when action=destroy)
+        required: false
+        type: string
+        default: ""
+
+concurrency:
+  group: aws-eks-paid-${{ github.repository }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  refuse:
+    name: EKS is not the live estate
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Fail closed
+        run: |
+          echo "::error::This is a feasibility stub. Live paid infra CD is aws-infra-paid.yml (VPC + four ASGs + Compose, OIDC). It does not create EKS. A real paid EKS pipeline would be a new workflow + terraform/eks/ + IRSA, not a flag on apply. See cloud-deployment-feasibility-studies/eks-feasibility/EKS-FEASIBILITY.md"
+          exit 1

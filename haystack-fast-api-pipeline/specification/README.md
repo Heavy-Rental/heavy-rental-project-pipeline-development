@@ -34,7 +34,7 @@ Conflict order: **OpenSpec scenarios → OpenSPDD Safeguards → ADR → YAML**.
 
 ### CI family — [`../openspec/changes/add-haystack-ci-pipeline/`](../openspec/changes/add-haystack-ci-pipeline/)
 
-As-implemented spec of Fast Feedback / Integration CI / Release YAML (PR Integration reuses Fast Feedback). `DEFAULT_APP_REPOSITORY` is `Heavy-Rental/haystack-fast-api` on Fast Feedback, Integration CI, and Release. Release checkout is always `master`. Packaging tar is `haystack_recommender-image.tar.gz`; Publish pushes `haystack_recommender:<semver>` + `:latest` on `workflow_dispatch` only. Semgrep publish is SARIF-only. Security Report is a scheduled/manual Code Scanning summary (Monday 06:00 UTC), not a merge gate.
+As-implemented spec of Fast Feedback / Integration CI / Release YAML (PR Integration reuses Fast Feedback and waits if in-flight). Checkout is the calling repo (`github.sha`; Release always `master`). Env `DEFAULT_APP_REPOSITORY` is set to `Heavy-Rental/haystack-fast-api` but is **not interpolated**. Packaging tar is `haystack_recommender-image.tar.gz`; Publish pushes `haystack_recommender:<semver>` + `:latest` on `workflow_dispatch` only. Semgrep writes `semgrep.sarif` + `semgrep-gha.sarif` (no required `semgrep.json` / `semgrep.txt`) and a combined PDF; Code Scanning upload is best-effort. Security Report is a scheduled/manual Code Scanning summary (Monday 06:00 UTC), not a merge gate.
 
 - Proposal: [`proposal.md`](../openspec/changes/add-haystack-ci-pipeline/proposal.md)
 - Design: [`design.md`](../openspec/changes/add-haystack-ci-pipeline/design.md)

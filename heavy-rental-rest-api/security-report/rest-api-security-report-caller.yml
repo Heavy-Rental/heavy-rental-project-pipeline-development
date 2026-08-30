@@ -4,8 +4,9 @@
 # =============================================================================
 # Security Report caller — schedules + manually triggers the reusable report.
 # Reads this repo's existing Code Scanning alerts (Semgrep / Trivy / CodeQL,
-# already uploaded by integration-pipeline.yml / release-pipeline.yml) and
-# publishes a Job Summary + downloadable markdown artifact. No new scanning.
+# already uploaded by Integration CI `integration-pipeline.yml`). Release does
+# not upload SARIF. Publishes a Job Summary + downloadable markdown artifact.
+# No new scanning.
 #
 # Place both files in this repository:
 #   .github/workflows/rest-api-security-report-caller.yml  ← this file (triggers)

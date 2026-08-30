@@ -114,7 +114,7 @@ Start Lab → Run workflow → `assert-lab` + `discover-targets` green. No image
 
 ### Done when (branch 2)
 
-`action=deploy` with a public GHCR or ECR tag updates **both** `asg-portal` guests. Public ALB `:80` serves the new SPA. `/api` still proxies to `REST_BASE_URL` (REST ALB :8080). `verify` is green if nginx answers. **Shipped** in `deploy-pipeline/` (`web-portal-cd-academy.yml` + `ansible/`).
+`action=deploy` with a public GHCR or ECR tag updates **both** `asg-portal` guests. Public ALB `:80` serves the new SPA. `/api` still proxies to `REST_BASE_URL` (public REST ALB :8080, NAT hairpin). `verify` is green if nginx answers (`GET /`); it does **not** prove `/api` reached Spring. **Shipped** in `deploy-pipeline/` (`web-portal-cd-academy.yml` + `ansible/`).
 
 ---
 
