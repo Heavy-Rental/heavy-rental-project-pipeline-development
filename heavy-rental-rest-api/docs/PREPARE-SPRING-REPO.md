@@ -51,7 +51,7 @@ The Release caller is dispatch-only. Do not add `on: release` — this workflow 
 
 Academy guests pull **public** GHCR with no token. If GHCR is private, `docker load` the tar (`image_http_url` / `IMAGE_HTTP_URL`) or copy the image to ECR.
 
-Fast Feedback `DEFAULT_APP_REPOSITORY: SA62-team1/…` is only for local `act`. Integration CI and Release default to `Heavy-Rental/heavy-rental-spring-rest-api`. When Fast Feedback or Integration CI runs **in** `heavy-rental-spring-rest-api`, checkout is the calling commit. On pull_request, Integration Check reuses a successful Fast Feedback run for the PR head SHA instead of repeating Maven/layout. If Fast Feedback is still queued or in progress, Integration Check waits for that run (`gh run watch`). When Release runs **in** `heavy-rental-spring-rest-api`, checkout is still **`master`** (into `app/`), not the calling SHA. That is correct.
+Checkout is the calling repository into `app/` (Fast Feedback / Integration: calling commit). Env `DEFAULT_APP_REPOSITORY` is set (`SA62-team1/…` on Fast Feedback, `Heavy-Rental/…` on Integration CI and Release) but is **not interpolated**. On pull_request, Integration Check reuses a successful Fast Feedback run for the PR head SHA instead of repeating Maven/layout. If Fast Feedback is still queued or in progress, Integration Check waits for that run (`gh run watch`). When Release runs **in** `heavy-rental-spring-rest-api`, checkout is still **`master`** (into `app/`), not the calling SHA. That is correct.
 
 ---
 

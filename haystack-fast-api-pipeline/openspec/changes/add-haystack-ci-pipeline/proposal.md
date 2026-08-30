@@ -9,7 +9,7 @@ Copy-pasting those YAML files unchanged would install the **wrong toolchain** (J
 ## What Changes
 
 - Add three reusable workflows plus three sole-allowed callers, authored in this pipeline-development repo under `haystack-fast-api-pipeline/`.
-- Integration CI is the merge gate: Integration first, then Quality Control, Security Testing, and CodeQL in parallel, then an aggregate GitHub Flow CI Gate. On `pull_request`, Integration reuses a successful Fast Feedback run for the head SHA (the CI caller does not `uses:` Fast Feedback).
+- Integration CI is the merge gate: Integration first, then Quality Control, Security Testing, and CodeQL in parallel, then an aggregate GitHub Flow CI Gate. On `pull_request`, Integration reuses a successful Fast Feedback run for the head SHA (waits if in-flight; the CI caller does not `uses:` Fast Feedback).
 - Fast feedback runs Integration only on feature-branch pushes (sole Integration-stage run for that SHA).
 - Release (`workflow_dispatch`) runs Integration + Quality Control, then Packaging (`uv build` + image tar), DAST, and Publish (public GHCR + GitHub Release). SAST and CodeQL stay on Integration CI. Packaging sanitizes `.env.prod` into `/app/.env` (product knobs only). Academy Environment variables are **not** read at Packaging (ADR 0009).
 - Specify the pipelines with OpenSpec (behavior) and OpenSPDD (REASONS Canvas implementation contract).

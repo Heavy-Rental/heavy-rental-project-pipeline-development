@@ -7,14 +7,14 @@ This file is a **design record**. Living specs: [`../../heavy-rental-web-portal-
 | Study body (original) | As-built |
 | --- | --- |
 | GitHub Environment `paid` | **`AWS_ACTUAL`** (portal ADR 0009; infra ADR 0017) |
-| `REST_BASE_URL` = internal REST ALB | **`http://<rest_alb_dns>:8080`** (internet-facing REST ALB, ADR 0018) |
+| `REST_BASE_URL` = internal REST ALB | **`http://<rest_alb_dns>:8080`** (internet-facing REST ALB, ADR 0018). nginx `/api` hairpins via NAT |
 | Paid portal CD later | **Delivered:** `portal-cd-paid-caller.yml` |
 | GHCR `heavy-rental-web-portal` | **`ghcr.io/<owner>/heavy_rental_web_portal:<semver>`** + `:latest` |
 | GHCR only off PR / published Release | Release is **`workflow_dispatch` only**; Publish always pushes public GHCR on success |
 | Infra `apply` first-composes portal | Infra **`apply` / `configure-only`** run `configure.yml` (Docker + Neo4j only). First-compose is infra **`deploy-projects`** (`site.yml`) or this app CD |
 | Portal CI has no Environments / no Stripe | Fast Feedback / Integration CI have none. **Release Packaging** uses Environment **`academy`** for Stripe `pk_` only |
 
-Portal ALB stays the only public **:80**. REST has its own public **:8080**. nginx `/api` still proxies.
+Portal ALB stays the only public **:80**. REST has its own public **:8080**. nginx `/api` still proxies (NAT hairpin from private portal guests).
 
 **Status:** Study + as-built table. Example workflows are stubs.
 
@@ -34,7 +34,7 @@ Decide how **GitHub Actions** can **re-run the guest compose playbook** on an **
 
 The Academy workflow (branch 1 discover + branch 2 compose) is in [`../../heavy-rental-web-portal-pipeline/deploy-pipeline/`](../../heavy-rental-web-portal-pipeline/deploy-pipeline/). This CD **runs** `guest_base` + `portal` for a new image or a secret refresh. See [`IMPLEMENTATION-PLAN.md`](IMPLEMENTATION-PLAN.md).
 
-Portal is the **only public :80** ALB target. The browser talks to the public portal ALB. nginx on `asg-portal` proxies `/api` to the **internet-facing** REST ALB `:8080`. A Vite **dev server does not run in AWS**.
+Portal is the **only public :80** ALB target. The browser talks to the public portal ALB. nginx on `asg-portal` proxies `/api` to the **internet-facing** REST ALB `:8080` (public DNS; private guests hairpin via the same-AZ NAT Gateway — infra `sg-portal` egress TCP 8080 to `0.0.0.0/0`). A Vite **dev server does not run in AWS**.
 
 ### Non-goals
 
@@ -42,7 +42,7 @@ Portal is the **only public :80** ALB target. The browser talks to the public po
 - `terraform apply` / creating AWS resources
 - Deploying REST, Haystack, or Neo4j
 - Running `vite` / `npm run dev` as the AWS process
-- Putting REST or Haystack on the public ALB
+- Putting REST or Haystack on the **portal** ALB (REST has its own internet-facing ALB :8080; Haystack stays internal)
 - Putting `STRIPE_API_KEY` / `STRIPE_WEBHOOK_SECRET` on the portal or in the image
 - Baking the REST ALB URL into a public GHCR / Vite `VITE_*` bundle
 - Using portal CI as CD auth (Fast Feedback / Integration CI have no Environments; Release Packaging uses `academy` only to bake Stripe `pk_`)
@@ -56,7 +56,7 @@ Infra, estate-wide secrets, and operate/stop live in the **AWS infrastructure** 
 | Pipeline | Tree / file | Role |
 | --- | --- | --- |
 | **Portal CI** | `heavy-rental-web-portal-pipeline/` | Fast Feedback → Integration → **Release** (`dist/` zip + **`heavy_rental_web_portal-image.tar.gz`** + dispatch-only GHCR). Security Report is scheduled/manual only. |
-| **Infra CD** | `aws-infra-pipeline.example.yml` / paid | VPC, four ASGs, public portal ALB `:80`, internet-facing REST ALB `:8080`, internal Haystack ALB, RDS, secret **shells**, `sync-secrets`, `sync-ssh-keys` |
+| **Infra CD** | `aws-infra-pipeline.example.yml` / paid | VPC, four ASGs, **`hr-bastion`**, public portal ALB `:80`, internet-facing REST ALB `:8080`, internal Haystack ALB, RDS, secret **shells**, `sync-secrets`, `sync-ssh-keys` |
 | **Portal app CD (this study)** | Live: `heavy-rental-web-portal-pipeline/deploy-pipeline/`. Examples in this folder stay stubs. | Manual deploy of **this** image onto existing `asg-portal` (`resolve-image` → Ansible `--limit portal` → SSM `GET /`). |
 
 CI never applies AWS. Infra CD never rebuilds the SPA. App CD never creates the ASG.
@@ -101,7 +101,7 @@ CI-generated `nginx-spa.conf` (used when the app repo has no Dockerfile) has **S
 
 Specs: [`../../heavy-rental-web-portal-pipeline/specification/`](../../heavy-rental-web-portal-pipeline/specification/).
 
-CI Environments: **none** for app config. Only `GITHUB_TOKEN` for GHCR. **No Stripe in CI.** Those names are **not** CD `academy` / `paid`. See AWS study §6.0c.
+CI Environments: Fast Feedback and Integration CI have **none**. **Release Packaging** uses Environment **`academy`** so `VITE_STRIPE_PUBLISHABLE_KEY` (`pk_` only) can be baked. That is not CD auth. CD Environments are still `academy` / `AWS_ACTUAL`. See AWS study §6.0c.
 
 ---
 
@@ -111,7 +111,7 @@ CI Environments: **none** for app config. Only `GITHUB_TOKEN` for GHCR. **No Str
 | --- | --- |
 | Compute | Auto Scaling group **`asg-portal`** (private **app** subnets). Estate default **desired=2**, both **InService** |
 | Ingress | **Public** ALB `tg-portal` **:80** (HTTPS `:443` only if an ACM cert exists). **Only** public target. HTTP :80 always |
-| Egress to REST | Instance SG allows portal → **internal** REST ALB `tg-rest` **:8080** |
+| Egress to REST | Instance SG allows portal → **internet-facing** REST ALB `tg-rest` **:8080** (NAT hairpin; `sg-portal` egress TCP 8080 to `0.0.0.0/0`) |
 | Auth on instance | `LabInstanceProfile` (Academy) or paid instance profile. SSM agent up |
 | Secret | `heavy-rental/portal` already filled by infra `sync-secrets` |
 | Limits | AWS study §6.4a: nginx `mem_limit: 256m`, `cpus: 0.5` on `t3.micro` (~1 GiB). Leave 256–512 MiB for OS + SSM + Docker |
@@ -131,7 +131,7 @@ Portal instances have **no public IP** (they sit behind the public ALB). IDs and
 | Auto Scaling group name | Stable handle (`asg-portal`) |
 | Instance IDs that are **InService** and **SSM Online** | Ansible / SSM target |
 | Public portal ALB DNS | Operator-facing URL after verify (the **one** public name). Do not print instance IPs |
-| Internal REST ALB DNS | Comes from `REST_BASE_URL` in `heavy-rental/portal`. Used by nginx, not by the browser |
+| Internet-facing REST ALB DNS | Comes from `REST_BASE_URL` in `heavy-rental/portal`. Used by nginx `/api` (NAT hairpin), not baked into the Vite bundle |
 | Confirmation `heavy-rental/portal` exists | `REST_BASE_URL` + `STRIPE_PUBLISHABLE_KEY` already there |
 
 The runner does **not** need instance public IPs, SSH PEMs (everyday path is SSM), or Vocareum keys on the **instance**.
@@ -185,7 +185,7 @@ Dynamic inventory, **one group** `portal`:
 - No `ansible_host` public IP
 - REST ALB is **not** in inventory; nginx reads `REST_BASE_URL` from the secret
 
-SSH PEM (`heavy-rental/ssh/portal`) is **break-glass** only, and only after infra `sync-ssh-keys`. Deploy does not require it.
+SSH `private_key_pem` (`heavy-rental/ssh/portal`) is the **private** key, **break-glass** only, and only after infra `sync-ssh-keys`. Everyday hop is **`hr-bastion`** then `ssh portal` / `ssh portal-2` (bastion holds `id_portal` + hop key). Deploy does not require a private key on the runner.
 
 ### 5.5 AWS CLI on the Actions runner
 
@@ -258,7 +258,7 @@ Browser  →  public portal ALB :80/:443
 | Claim | Valid? | Why |
 | --- | --- | --- |
 | Static Vite SPA interfaces the **public** ALB | **Yes** | Browser loads `index.html` + hashed assets from `tg-portal` :80 |
-| Something on the portal host talks to the **internal** REST ALB | **Yes** | nginx on `asg-portal` `proxy_pass`es `/api` to `REST_BASE_URL` |
+| Something on the portal host talks to the **internet-facing** REST ALB | **Yes** | nginx on `asg-portal` `proxy_pass`es `/api` to `REST_BASE_URL` (public REST DNS via NAT hairpin) |
 | A **Vite server** in AWS talks to REST | **No** | CI ships static `dist/` on nginx. `vite` / `npm run dev` is local only |
 | Browser `fetch()` to the REST ALB DNS | **As-built: allowed** | ADR 0018 CORS includes portal + REST ALB. Do **not** bake that DNS into a Vite `VITE_*` bundle; prefer same-origin `/api` |
 | REST on the **portal** ALB so the SPA can call it | **No** | Portal listener stays :80. REST has its **own** internet-facing ALB :8080 |

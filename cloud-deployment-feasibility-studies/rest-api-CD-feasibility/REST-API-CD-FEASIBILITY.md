@@ -46,8 +46,8 @@ The Academy workflow (branch 1 discover + branch 2 compose) is in [`../../heavy-
 
 | Pipeline | Tree | Role |
 | --- | --- | --- |
-| **REST CI** | `heavy-rental-rest-api/` | Fast Feedback → Integration → **Release** (WAR + **Docker tar** + GHCR off PR) |
-| **Infra CD** | `aws-infra-*.example.yml` | VPC, four ASGs, ALBs, RDS, SM, first compose |
+| **REST CI** | `heavy-rental-rest-api/` | Fast Feedback → Integration → **Release** (WAR + **`heavy_rental_rest_api-image.tar.gz`** + dispatch-only GHCR) |
+| **Infra CD** | `aws-infra-*.example.yml` | VPC, four ASGs, **`hr-bastion`**, ALBs, RDS, SM. `apply` / `configure-only` run `configure.yml` (Docker + Neo4j only). First-compose is `deploy-projects` or this app CD |
 | **REST app CD (this study)** | Live: `heavy-rental-rest-api/deploy-pipeline/`. Examples in this folder stay stubs. | Manual deploy of **this** image onto existing `asg-rest` (`resolve-image` → Ansible `--limit rest` → SSM `GET :8080/actuator/health` **2xx**). |
 
 ### 2.1 Sequence
@@ -56,10 +56,12 @@ The Academy workflow (branch 1 discover + branch 2 compose) is in [`../../heavy-
 Infra CD  action=apply
     Terraform     →  creates asg-rest (EC2 InService)
     sync-secrets  →  heavy-rental/rest
-    Ansible       →  first compose (Tomcat, §6.4a 1g / 1.0 cpu)
+    configure.yml →  Docker + Neo4j only (does not compose REST)
 
-Later, new CI image:
-REST app CD  (workflow_dispatch only)
+First compose (either path):
+Infra CD  action=deploy-projects   (site.yml)
+    OR
+REST app CD  action=deploy         (guest_base + rest; §6.4a 1g / 1.0 cpu)
     discover  →  asg-rest InService + SSM Online
     compose   →  same guest playbook, rest group only
                  docker load/pull CI image; compose up :8080

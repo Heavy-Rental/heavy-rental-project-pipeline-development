@@ -1,8 +1,8 @@
 # REST app CD (paid). STUDY STUB. Not CI. Not terraform apply.
 # Live: ../../heavy-rental-rest-api/deploy-pipeline/rest-api-cd-paid-caller.yml
 # Environment AWS_ACTUAL. REST ALB internet-facing :8080. GHCR heavy_rental_rest_api.
-# Order: infra Terraform creates EC2 → infra Ansible first compose
-#        → THIS workflow re-runs compose on asg-rest with a new CI Tomcat image.
+# Order: infra Terraform creates EC2. Infra apply does not compose REST.
+#        First compose is infra deploy-projects or THIS workflow (action=deploy).
 # OIDC only. No Vocareum keys. No instance IDs on the form.
 
 name: REST API CD (paid)

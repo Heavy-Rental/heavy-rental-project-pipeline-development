@@ -24,7 +24,7 @@ Start here: [`specification/README.md`](specification/README.md). App-repo CD ch
 
 ```
 feature branch push  →  Fast Feedback (Integration only; sole Integration-stage run for that SHA)
-PR / push → develop  →  Integration CI (Integration reuses Fast Feedback on PR; full gates; SAST here)
+PR / push → develop  →  Integration CI (Integration reuses Fast Feedback on PR, waits if in-flight; full gates; SAST here)
 workflow_dispatch     →  Release (master + QC + image + DAST + public GHCR + GitHub Release)
 ```
 
@@ -52,6 +52,6 @@ Operate needs knowledge of the running platform. It does not create that platfor
 | Integration smoke | `haystack.Pipeline`, `create_app`, indexing + intake builders |
 | Lint | Ruff |
 | Tests | pytest |
-| SAST / SCA | Semgrep `p/python`, pip-audit (report), Trivy |
+| SAST / SCA | Two Semgrep passes (app: `p/python` / `p/fastapi` + OWASP/audit/secrets packs; GHA: `p/github-actions`), pip-audit (report), Trivy CRITICAL. Combined PDF artifact `security-combined-report-pdf` (not the scheduled Security Report) |
 | Code scanning | CodeQL `python` |
 | Package | `uv build` + Docker image tar; Publish pushes GHCR + GitHub Release |

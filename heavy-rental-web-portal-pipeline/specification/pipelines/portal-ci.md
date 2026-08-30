@@ -6,7 +6,7 @@
 
 This family validates and packages the SPA. It does not create infrastructure or operate production. Academy and paid **app CD** is [`portal-cd.md`](portal-cd.md). A scheduled Security Report pair summarizes existing Code Scanning alerts; it is not a merge gate.
 
-Reusable YAML `DEFAULT_APP_REPOSITORY` is `Heavy-Rental/heavy-rental-react-web-portal` on Fast Feedback, Integration CI, and Release. When a caller runs **in** the Heavy-Rental portal repo, Fast Feedback and Integration CI check out the calling commit (into `app/`). Release always checks out **`master`**.
+Checkout is the calling repository into `app/` (Fast Feedback / Integration: `github.sha`). Release always checks out **`master`**. Env `DEFAULT_APP_REPOSITORY` is set to `Heavy-Rental/heavy-rental-react-web-portal` but is **not interpolated**. `DEFAULT_APP_REF` is used only when a caller passes a different `app_repository`. The Release caller does not pass those inputs.
 
 ## GitHub Flow
 
@@ -60,7 +60,7 @@ assert-caller
                       dist/ zip + nginx:1.27-alpine tar (no docker push)
       │
       ▼
- DAST                 ZAP + Dastardly + Nuclei against the image
+ DAST                 ZAP (gate) + Dastardly (gate) + Nuclei (report-only) against the image
       │
       ▼
  Publish              public GHCR heavy_rental_web_portal:<semver> + :latest

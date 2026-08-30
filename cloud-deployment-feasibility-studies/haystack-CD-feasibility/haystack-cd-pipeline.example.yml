@@ -1,7 +1,7 @@
 # Haystack app CD (Academy) — STUDY STUB (exit 1). Not live YAML.
 # Live workflow: ../../haystack-fast-api-pipeline/deploy-pipeline/
-# Order: infra Terraform creates EC2 → infra Ansible first compose
-#        → THIS workflow re-runs compose on asg-haystack with a new CI image.
+# Order: infra Terraform creates EC2. Infra apply does not compose Haystack.
+#        First compose is infra deploy-projects or THIS workflow (action=deploy).
 # Vocareum-only. Paid is haystack-cd-paid (OIDC — no key fields).
 # Paste aws_access_key_id / secret / session_token on Run workflow (they change every Start Lab)
 # or leave empty and use Environment academy. Do not put instance IDs on the form.

@@ -2,7 +2,7 @@
 
 **Status:** Contract. Live playbooks are in `heavy-rental-project-instructure-and-cloud-deploy` (`ansible/`) and each app family's `deploy-pipeline/ansible/`. Example YAML **in this folder** stays fail-closed. As-built index: [`README.md`](README.md).
 
-**As-built:** paid GitHub Environment is **`AWS_ACTUAL`**. REST ALB is **internet-facing :8080**; portal nginx `/api` uses `REST_BASE_URL=http://<rest_alb_dns>:8080`. GHCR tags are `haystack_recommender`, `heavy_rental_rest_api`, `heavy_rental_web_portal`. App CD paid callers are delivered. Infra `apply` / `configure-only` run `configure.yml` (Docker + Neo4j); first-compose of portal / REST / Haystack is `deploy-projects` (`site.yml`) or app CD. ALB `tg-rest` / CD verify: `GET :8080/actuator/health` **2xx**. `tg-haystack` / CD verify: `GET :8000/health` **2xx**.
+**As-built:** paid GitHub Environment is **`AWS_ACTUAL`**. REST ALB is **internet-facing :8080**; portal nginx `/api` uses `REST_BASE_URL=http://<rest_alb_dns>:8080`. GHCR tags are `haystack_recommender`, `heavy_rental_rest_api`, `heavy_rental_web_portal`. App CD paid callers are delivered. Infra `apply` / `configure-only` run `configure.yml` (Docker + Neo4j on **app** guests); first-compose of portal / REST / Haystack is `deploy-projects` (`site.yml`) or app CD. **`hr-bastion` is in inventory but is not a compose host** (hop + role **private** keys only). ALB `tg-rest` / CD verify: `GET :8080/actuator/health` **2xx**. `tg-haystack` / CD verify: `GET :8000/health` **2xx**. Ansible SSM compose is **not** an EKS deploy path ([`eks-feasibility/EKS-FEASIBILITY.md`](eks-feasibility/EKS-FEASIBILITY.md)).
 
 **Sources:** [`AWS-INFRASTRUCTURE-FEASIBILITY.md`](AWS-INFRASTRUCTURE-FEASIBILITY.md) §7.1a, §6.0c, §6.4a, §6.6; Haystack / REST / portal CD studies (same guest playbook, one group).
 
@@ -24,7 +24,7 @@ Infra CD  action=apply
     Terraform        →  EC2 InService (not Ansible)
     sync-secrets     →  fill Secrets Manager (not Ansible)
     sync-ssh-keys    →  PEMs after InService (not Ansible)
-    Ansible          →  configure.yml (Docker all guests; Neo4j compose only)
+    Ansible          →  configure.yml (Docker on app guests; Neo4j compose only; not hr-bastion)
 
 Infra CD  action=configure-only
     sync-secrets + sync-ssh-keys + Ansible configure.yml
@@ -47,15 +47,17 @@ Infra CD  action=stop | destroy
 
 ## 2. How it connects
 
-1. Actions runner installs Ansible (or uses an image that has it). Academy runner AWS creds: Vocareum form keys (masked via `$GITHUB_EVENT_PATH`) or Environment `academy` (not paid). Guest identity: **`LabInstanceProfile`** / **`LabRole`**.
-2. Dynamic inventory: four groups — `portal`, `rest`, `haystack`, `neo4j`. Discover **all** InService + SSM Online instances (two per ASG at desired=2).
-3. `ansible_connection=amazon.aws.aws_ssm`; instance id from the ASG. No public IP. `ansible_host` is the instance id.
+1. Actions runner installs Ansible (or uses an image that has it). Academy runner AWS creds: Vocareum form keys (masked via `$GITHUB_EVENT_PATH`) or Environment `academy` (not `AWS_ACTUAL`). Guest identity: **`LabInstanceProfile`** / **`LabRole`**.
+2. Dynamic inventory: four **compose** groups — `portal`, `rest`, `haystack`, `neo4j`. Discover **all** InService + SSM Online instances (two per ASG at desired=2). Inventory also lists **`bastion`** (`hr-bastion`, running, tag `Role=bastion`). `configure.yml` / `site.yml` **do not** target that group.
+3. `ansible_connection=amazon.aws.aws_ssm`; instance id from the ASG (or from `hr-bastion` for the bastion group). App guests have no public IP. `ansible_host` is the instance id.
 4. RDS is **not** in inventory (no SSH guest OS).
-5. Everyday path is SSM. SSH PEM (`heavy-rental/ssh/*`) is break-glass only.
+5. Everyday path is SSM. SSH `private_key_pem` (`heavy-rental/ssh/*`) is the **private** key, break-glass only: SSM or CIDR onto **`hr-bastion`**, then `ssh portal` / `rest-2` / …. App SGs never open `:22` from `0.0.0.0/0`.
 
 ---
 
-## 3. Shared guest steps (every ASG)
+## 3. Shared guest steps (every **app** ASG)
+
+`hr-bastion` skips this section. `sync-ssh-keys` installs hop + role **private** keys (`private_key_pem`, not the `.pub`) and Host aliases; Ansible does not install Docker there.
 
 1. Reach the instance via SSM (`LabInstanceProfile` / paid instance profile).
 2. Install Amazon `docker`. Try `docker-compose-plugin`; if `docker compose version` fails, install Compose v2 from GitHub (AL2023 has no Docker CE repo).
@@ -74,7 +76,7 @@ Ansible does **not** invent the URL. The **app CD** (or infra first-compose) job
 | Environment **variable** `PORTAL_IMAGE` | Portal registry tag | Empty = stock `nginx`. Not a secret. |
 | Environment **variable** `REST_IMAGE` / `HAYSTACK_IMAGE` | REST / Haystack tags | Empty = Run `image_ref`; still empty → that play fails |
 | `workflow_dispatch` input `image_ref` | Registry tag | Infra: REST **and** Haystack fallback only (portal uses `PORTAL_IMAGE`). Portal **app** CD `action=deploy`: tag if `PORTAL_IMAGE` is empty. |
-| `workflow_dispatch` input `image_http_url` | Optional HTTPS / `s3://` `.tar.gz` | `docker load` on **all** guests. Empty = `vars.IMAGE_HTTP_URL`. Leave empty for normal pulls. |
+| `workflow_dispatch` input `image_http_url` | Optional HTTPS / `s3://` `.tar.gz` | `docker load` on **app** guests. Empty = `vars.IMAGE_HTTP_URL`. Leave empty for normal pulls. |
 
 CI image names (Release; do not rebuild on the guest): portal **`nginx:1.27-alpine`** → `ghcr.io/<owner>/heavy_rental_web_portal` (Node **22** at build); REST **`tomcat:10.1-jdk21-temurin`** → `ghcr.io/<owner>/heavy_rental_rest_api` (Java **21**); Haystack **`python:3.12-slim-bookworm`** → `ghcr.io/<owner>/haystack_recommender`. Portal CD (`heavy-rental-web-portal-pipeline/deploy-pipeline/ansible/`) copies estate `guest_base` + `portal` and re-runs `--limit portal`. REST CD (`heavy-rental-rest-api/deploy-pipeline/ansible/`) copies estate `guest_base` + `rest` and re-runs `--limit rest`. Haystack CD (`haystack-fast-api-pipeline/deploy-pipeline/ansible/`) copies estate `guest_base` + `haystack` and re-runs `--limit haystack` (no Neo4j container). It does **not** replace infra first-compose (`action=deploy-projects` / `site.yml`). Infra `apply` does **not** compose portal / REST / Haystack.
 
@@ -123,7 +125,7 @@ Instance still needs outbound HTTPS (same-AZ NAT Gateway or S3 endpoint). Live `
 2. Compose:
    - uvicorn (CI image) **:8000** — `768m` / `1.0`
    - `postgres-haystack-sync` — `postgres:17` + `sync-from-primary.sh` — `256m` / `0.25`
-   - `neo4j-populate` — `python:3.12-slim` + `populate_neo4j.py` — `256m` / `0.25`
+   - `neo4j-populate` — `python:3.12-slim` + `populate-neo4j-from-haystack.sh` (wraps `populate_neo4j.py`) — `256m` / `0.25`
 3. **Must not** start a `neo4j` container. Do not start a pgvector container unless the Haystack RDS cannot load `vector` (credit fallback).
 4. Sync `SOURCE_HOST` = SoR RDS endpoint. `TARGET_HOST` = Haystack RDS endpoint. Populate Bolt = NLB `NEO4J_URI`.
 5. Health: wait for `GET :8000/health` **2xx** (ALB `tg-haystack` matcher `200-299` on each instance IP). Do **not** use `GET /` (404) or `/docs` as the ALB check.
@@ -169,6 +171,7 @@ Discover **every** `InService` + SSM Online instance in the ASG first (two at de
 - Put `STRIPE_API_KEY` on the portal
 - Run on `action=stop` or `action=destroy`
 - Mix CodeDeploy and Ansible on the same files without a split
+- Compose onto `hr-bastion` or install Docker there
 
 ---
 

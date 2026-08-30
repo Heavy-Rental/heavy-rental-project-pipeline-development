@@ -21,5 +21,5 @@ Conflict order: **OpenSpec → OpenSPDD → ADR → YAML**.
 | [0002](0002-vocareum-keys-masked.md) | Vocareum keys from the event payload, masked |
 | [0003](0003-reuse-infra-haystack-ansible.md) | Reuse infra Haystack Ansible (copy, do not fork) |
 | [0004](0004-haystack-env-aliases-and-uv-sidecars.md) | App env aliases and Profile overlay (**sidecars amended** by 0011) |
-| [0011](0011-devcontainer-worker-sidecars.md) | CD workers match estate: `sync-from-primary.sh` / `populate_neo4j.py` |
+| [0011](0011-devcontainer-worker-sidecars.md) | CD workers match estate: `sync-from-primary.sh` / `populate-neo4j-from-haystack.sh` |
 | [0009](0009-haystack-project-profile-vs-infra-estate.md) | Also CD: academy / `AWS_ACTUAL` vars overlay guest `.env` only; they do not change GHCR |

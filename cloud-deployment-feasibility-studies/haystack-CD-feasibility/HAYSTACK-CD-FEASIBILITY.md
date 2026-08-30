@@ -13,7 +13,7 @@ This file is a **design record**. Living specs: [`../../haystack-fast-api-pipeli
 | Example YAML is the workflow | Live: [`../../haystack-fast-api-pipeline/deploy-pipeline/`](../../haystack-fast-api-pipeline/deploy-pipeline/). Examples in this folder stay stubs |
 | Infra `apply` first-composes Haystack | Infra **`apply` / `configure-only`** run `configure.yml` (Docker + Neo4j only). First-compose is infra **`deploy-projects`** (`site.yml`) or this app CD |
 | Image tar `haystack-fast-api-v{version}-…` | Packaging artifact is **`haystack_recommender-image.tar.gz`** |
-| Sync/populate `uv run python -m` on the uvicorn image | **`postgres:17` + `sync-from-primary.sh`** and **`python:3.12-slim` + `populate_neo4j.py`** (estate ADR 0020 / Haystack ADR 0011). Scripts under `/opt/heavy-rental/workers/` |
+| Sync/populate `uv run python -m` on the uvicorn image | **`postgres:17` + `sync-from-primary.sh`** and **`python:3.12-slim` + `populate-neo4j-from-haystack.sh`** (wraps `populate_neo4j.py`; estate ADR 0020 / Haystack ADR 0011). Scripts under `/opt/heavy-rental/workers/` |
 
 Haystack ALB stays **internal**. REST ALB is internet-facing :8080 (does not change Haystack CD).
 
@@ -51,8 +51,8 @@ Infra, estate-wide secrets, and operate/stop live in the **AWS infrastructure** 
 
 | Pipeline | Tree / file | Role |
 | --- | --- | --- |
-| **Haystack CI** | `haystack-fast-api-pipeline/` | Fast Feedback → Integration → **Release** (wheel + **Docker tar** + GHCR off PR) |
-| **Infra CD** | `aws-infra-pipeline.example.yml` / paid | VPC, four ASGs, ALBs, RDS, secret **shells**, `sync-secrets`, `sync-ssh-keys` |
+| **Haystack CI** | `haystack-fast-api-pipeline/` | Fast Feedback → Integration → **Release** (wheel + **`haystack_recommender-image.tar.gz`** + dispatch-only GHCR) |
+| **Infra CD** | `aws-infra-pipeline.example.yml` / paid | VPC, four ASGs, **`hr-bastion`**, ALBs, RDS, secret **shells**, `sync-secrets`, `sync-ssh-keys` |
 | **Haystack app CD (this study)** | Live: `haystack-fast-api-pipeline/deploy-pipeline/`. Examples in this folder stay stubs. | Manual deploy of **this** image onto existing `asg-haystack` (`resolve-image` → Ansible `--limit haystack` → SSM `GET :8000/health` **2xx**). |
 
 CI never applies AWS. Infra CD never rebuilds Haystack. App CD never creates the ASG.
@@ -86,7 +86,7 @@ From [`haystack-fast-api-pipeline/specification/pipelines/haystack-ci.md`](../..
 
 | Artifact | When | How CD uses it |
 | --- | --- | --- |
-| Image tar `haystack-fast-api-v{version}-build{run}-{sha}.tar.gz` | Always on Packaging | Academy-friendly: download + `docker load` on the instance (or copy to ECR in-region) |
+| Image tar `haystack_recommender-image.tar.gz` | Always on Packaging | Academy-friendly: download + `docker load` on the instance (or copy to ECR in-region) |
 | GHCR `ghcr.io/<owner>/haystack_recommender:<semver>` and `:latest` | Publish on `workflow_dispatch` | Academy and paid if GHCR pull works. Release **creates** the GitHub Release; do not subscribe to `on: release` |
 | Wheel / sdist | Always | **Not** required on EC2 if the image is used |
 
@@ -174,7 +174,7 @@ Dynamic inventory, **one group** `haystack`:
 - No `ansible_host` public IP
 - RDS is **not** in inventory; SQL stays `delegate_to` a haystack instance if needed
 
-SSH PEM (`heavy-rental/ssh/haystack`) is **break-glass** only, and only after infra `sync-ssh-keys`. Deploy does not require it.
+SSH `private_key_pem` (`heavy-rental/ssh/haystack`) is the **private** key, **break-glass** only, and only after infra `sync-ssh-keys`. Everyday hop is **`hr-bastion`** then `ssh haystack` / `ssh haystack-2` (bastion holds `id_haystack` + hop key). Deploy does not require a private key on the runner.
 
 ### 5.5 AWS CLI on the Actions runner
 

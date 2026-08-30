@@ -4,7 +4,8 @@
 # =============================================================================
 # Security Report caller — summarizes this repo's existing Code Scanning
 # alerts (from Semgrep, npm audit, Trivy, CodeQL — already run by
-# integration-pipeline.yml / release-pipeline.yml). Runs no new scans.
+# Integration CI `integration-pipeline.yml`). Release does not scan.
+# Runs no new scans.
 #
 # Place both files in the React web portal repository:
 #

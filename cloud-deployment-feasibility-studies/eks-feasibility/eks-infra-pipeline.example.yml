@@ -1,0 +1,74 @@
+# STUDY STUB (fail-closed). Not live YAML.
+# Verdict:
+#   Live aws-infra-academy.yml cannot spin up EKS.
+#   A NEW Action CAN: Terraform data-source LabEksClusterRole (cluster AND node),
+#   instance types nano–large. Ansible does not CreateCluster.
+#   See EKS-FEASIBILITY.md §2.1
+# Live compose estate:
+#   heavy-rental-project-instructure-and-cloud-deploy/.github/workflows/aws-infra-academy.yml
+# Do not copy this stub into .github/workflows. Do not add aws_eks_* to terraform/academy/.
+#
+# Real file, if built: aws-eks-academy.yml
+#   (new Action, terraform/eks/, state key eks/terraform.tfstate,
+#    preflight get-role LabEksClusterRole).
+# Vocareum-only. Paid is eks-infra-paid-pipeline.example.yml (OIDC — no key fields).
+
+name: AWS EKS (Academy) — STUDY STUB
+
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: Study stub — every action exits 1
+        required: true
+        type: choice
+        default: plan
+        options:
+          - plan
+          - apply
+          - kube-apply
+          - stop
+          - destroy
+      aws_environment:
+        description: Must be academy (Vocareum)
+        required: true
+        type: environment
+        default: academy
+      confirm_destroy:
+        description: Type destroy to confirm (required when action=destroy)
+        required: false
+        type: string
+        default: ""
+      aws_access_key_id:
+        description: Vocareum AWS Details (changes every Start Lab). Empty = Environment academy
+        required: false
+        type: string
+        default: ""
+      aws_secret_access_key:
+        description: Vocareum secret access key
+        required: false
+        type: string
+        default: ""
+      aws_session_token:
+        description: Vocareum session token
+        required: false
+        type: string
+        default: ""
+
+concurrency:
+  group: aws-eks-academy-${{ github.repository }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  refuse:
+    name: EKS is not the live estate
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Fail closed
+        run: |
+          echo "::error::This is a feasibility stub. Live infra CD is aws-infra-academy.yml (VPC + four ASGs + Compose). It does not create EKS. See cloud-deployment-feasibility-studies/eks-feasibility/EKS-FEASIBILITY.md"
+          exit 1

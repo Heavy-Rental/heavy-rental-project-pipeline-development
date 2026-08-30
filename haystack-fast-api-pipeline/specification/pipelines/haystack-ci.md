@@ -10,7 +10,7 @@ This family validates and packages the service. It does not create infrastructur
 
 ```
 feature branch push  →  Fast Feedback (Integration only; sole Integration-stage run for that SHA)
-PR / push → develop  →  Integration CI (Integration reuses Fast Feedback on PR; full gates; SAST here)
+PR / push → develop  →  Integration CI (Integration reuses Fast Feedback on PR, waits if in-flight; full gates; SAST here)
 workflow_dispatch     →  Release (master + QC + image + DAST + public GHCR + GitHub Release)
 ```
 
@@ -20,7 +20,8 @@ workflow_dispatch     →  Release (master + QC + image + DAST + public GHCR + G
 assert-caller
       │
       ▼
- Integration          PR: reuse Fast Feedback for the head SHA (skip uv/layout)
+ Integration          PR: reuse Fast Feedback for the head SHA (skip uv/layout;
+                      wait if in-flight; inlined pending-run jq)
                       else: CPython 3.12 + uv lock --check + uv sync --frozen
                       + Haystack Pipeline / FastAPI create_app smoke
                       job id integration (Haystack has no environment: integration)
@@ -34,6 +35,8 @@ assert-caller
 ```
 
 Do **not** `uses:` `fast-feedback-pipeline.yml` from `haystack-ci-caller.yml`. Copy both Integration files into the Haystack app repo and call `./.github/workflows/integration-pipeline.yml`.
+
+On `pull_request`, Integration looks up `haystack-fast-feedback-caller.yml` for the head SHA (`gh run list`). A successful run skips uv/layout. An in-flight run is waited on with `gh run watch`. The pending-run `jq` filter is inlined in the `PENDING_ID` / `PENDING_URL` `jq_field` calls (same quoting as `SUCCESS_ID`). Do not assign `PENDING_FILTER` and interpolate it — that construction breaks the wait. Push to `develop` and `workflow_dispatch` always run uv/layout locally. Fast Feedback does not subscribe to `pull_request`.
 
 Release (`workflow_dispatch` of **Haystack Release Pipeline Invoke**) does **not** re-run Security Testing or CodeQL. Those stay on Integration CI. Release job graph:
 
@@ -50,7 +53,7 @@ assert-caller
  Packaging            uv build + generated uvicorn image tar (no docker push)
       │
       ▼
- DAST                 ZAP + Dastardly + Nuclei against the image
+ DAST                 ZAP (gate) + Dastardly (gate) + Nuclei (report-only) against the image
       │
       ▼
  Publish              public GHCR haystack_recommender:<semver> + :latest
@@ -67,7 +70,7 @@ Academy CD consumes a public GHCR/ECR tag or the tar. The image must accept infr
 | Lock + install | uv (`astral-sh/setup-uv`, `uv.lock`) |
 | Integration smoke | `haystack.Pipeline`, `create_app`, `build_indexing_pipeline`, `build_intake_front_pipeline` |
 | Lint | Ruff (`uv run ruff check app tests`) |
-| Tests | pytest + pytest-html (`uv run pytest tests/`) |
+| Tests | pytest (`uv run pytest tests/`). HTML report is uploaded **if** the app `addopts` wrote `reports/pytest-report.html` |
 | Python SAST | Two Semgrep passes. App: `p/python` `p/fastapi` + OWASP / audit / secrets / CWE Top 25 / Gitleaks / SQL injection / JWT / insecure-transport, plus custom ERROR rules for plaintext credentials in `.env`/YAML and Python assignments; excludes `.github/**`. GHA: `p/github-actions` plus custom inherit / hardcoded-secret rules (`secrets: inherit` ERROR except paid CD caller; explicit secrets-context maps allowed; `persist-credentials` is not a finding). Reports: `semgrep.sarif` + `semgrep-gha.sarif` (all severities); gate is ERROR-only |
 | Python SCA report | `uvx pip-audit` on `uv export` |
 | FS / CRITICAL SCA | Trivy |
@@ -124,7 +127,7 @@ Copy each pair into `Heavy-Rental/haystack-fast-api`:
 .github/workflows/security-report-pipeline.yml
 ```
 
-`DEFAULT_APP_REPOSITORY` in the reusable YAML is `Heavy-Rental/haystack-fast-api`. When the caller runs **in** the app repo, checkout is the calling repo (into `app/`). Release always checks out **`master`**.
+Checkout is the calling repository into `app/` (Fast Feedback / Integration: `github.sha`). Release always checks out **`master`** and ignores `app_ref`. Env `DEFAULT_APP_REPOSITORY` is set to `Heavy-Rental/haystack-fast-api` but is **not interpolated**; a different `app_repository` input uses `app_ref` or `DEFAULT_APP_REF`. The Release caller does not pass those inputs.
 
 The Security Report pair is a **scheduled/manual summary** of existing Code Scanning alerts (Monday 06:00 UTC + `workflow_dispatch`). It does not scan, is not a `develop` branch-protection check, and does not run on push or pull_request.
 
