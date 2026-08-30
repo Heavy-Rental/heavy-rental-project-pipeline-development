@@ -2,7 +2,7 @@
 
 - **Status:** Accepted
 - **Date:** 2026-08-17
-- **Updated:** 2026-08-26
+- **Updated:** 2026-08-30
 - **Change:** `add-portal-ci-pipeline`
 
 ## Context
@@ -15,6 +15,6 @@ Each reusable file exposes only `on: workflow_call`. `assert-caller` fails unles
 
 ## Consequences
 
-- Operators copy six YAML files into the React repo `.github/workflows/`. Callers `uses:` the sibling reusable (`./.github/workflows/integration-pipeline.yml` and peers).
+- Operators copy the six GitHub Flow YAML files plus the Security Report pair into the React repo `.github/workflows/`. Callers `uses:` the sibling reusable (`./.github/workflows/integration-pipeline.yml` and peers). The Security Report pair is scheduled/manual only (not a merge gate).
 - The authoring folder `integration_pipeline/` does not change the install filename `integration-pipeline.yml`.
 - Integration CI caller must not `uses:` `fast-feedback-pipeline.yml`. On pull_request, Integration Check reuses a successful Fast Feedback run for the PR head SHA. An in-flight run is waited on. The pending-run jq filter is inlined in `PENDING_ID` / `PENDING_URL` (same form as `SUCCESS_ID`); splitting it into a `PENDING_FILTER` variable breaks the lookup.

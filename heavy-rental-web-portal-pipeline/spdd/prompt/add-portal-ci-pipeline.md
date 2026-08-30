@@ -13,7 +13,7 @@ When reality diverges, fix this prompt first — then update the YAML.
 - Fast Feedback: Integration only, feature-branch pushes (ignore `master`/`develop`). No `pull_request` trigger. Sole Integration-stage run for a feature-branch SHA.
 - Integration CI: PR/push `develop` + `workflow_dispatch`. Jobs: Assert caller → Integration Check → (QC ∥ Security ∥ CodeQL ∥ REST Endpoint Tests) → GitHub Flow CI Gate. On `pull_request`, Integration Check reuses a successful Fast Feedback run for the head SHA (skip cache / `npm ci` / install health). An in-flight Fast Feedback run is waited on; the pending-run jq filter is inlined in `PENDING_ID` / `PENDING_URL` (same form as `SUCCESS_ID`), not a `PENDING_FILTER` variable. The CI caller must not `uses:` `fast-feedback-pipeline.yml`.
 - Release: `workflow_dispatch` only (Actions → Release → Run workflow). Jobs: Assert caller → Integration (checkout `master`) → QC → Packaging → DAST → Publish (public GHCR `heavy_rental_web_portal:<semver>` + `:latest` + GitHub Release). Do **not** use `on: release` — Publish creates the GitHub Release. SAST/CodeQL/REST tests stay on Integration CI.
-- Packaging: Node 22, `npm ci`, seed/scan `.env.production`, `tsc -b` + `vite build --mode api` (not `npm run build`), empty `VITE_API_TARGET`, `dist/` zip, nginx try_files, image tar only (no `docker push`). Scan for `sk_`, localhost, `heavy-rental-rest-api`. CD mounts `/api` from SM `REST_BASE_URL`.
+- Packaging: Node 22, `npm ci`, seed/scan `.env.production` (scan input; `--mode api` loads `.env.api`), `tsc -b` + `vite build --mode api` (not `npm run build`), empty `VITE_API_TARGET`, `dist/` zip, nginx try_files, image tar only (no `docker push`). Scan for `sk_`, localhost, `heavy-rental-rest-api`. CD mounts `/api` from SM `REST_BASE_URL`.
 - Node 22 + `npm ci`. Fast Feedback / Integration CI need no GitHub Environment. Release Packaging uses Environment `academy` only to bake `vars.VITE_STRIPE_PUBLISHABLE_KEY` (`pk_`).
 - Authoring path: `heavy-rental-web-portal-pipeline/integration_pipeline/`.
 - This family stops at artifacts. Academy CD is `deploy-pipeline/`.
@@ -33,7 +33,7 @@ Artifacts:
 
 ## A — Approach
 
-- Keep the six CI YAML files as the GitHub Flow implementation. Specs track Integration Check and Fast Feedback reuse. Security Report is a seventh pair (caller + reusable) that summarizes existing Code Scanning alerts; it is not a merge gate.
+- Keep the six GitHub Flow YAML files as the GitHub Flow implementation. Specs track Integration Check and Fast Feedback reuse. Security Report is a seventh pair (caller + reusable) that summarizes existing Code Scanning alerts; it is not a merge gate.
 - Fast Feedback, Integration CI, and Release `DEFAULT_APP_REPOSITORY`: `Heavy-Rental/heavy-rental-react-web-portal`. Installed Fast Feedback / CI callers check out the calling commit; Release always checks out `master`.
 
 ## S — Structure

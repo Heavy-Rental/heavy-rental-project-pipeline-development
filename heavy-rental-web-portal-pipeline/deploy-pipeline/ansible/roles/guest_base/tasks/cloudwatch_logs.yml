@@ -1,0 +1,104 @@
+---
+# Ship container stdout to /heavy-rental/{{ app_role }} via the Docker awslogs
+# driver (dockerd on the host uses the instance profile). No CloudWatch Agent.
+# No new IAM on Academy: if LabRole cannot CreateLogStream, keep json-file.
+- name: Probe CloudWatch Logs for this instance profile
+  ansible.builtin.shell: |
+    set +e
+    GROUP="/heavy-rental/{{ app_role }}"
+    STREAM="ansible-probe-{{ inventory_hostname }}-{{ ansible_date_time.epoch }}"
+    ERR="$(mktemp)"
+    aws logs create-log-stream \
+      --log-group-name "${GROUP}" \
+      --log-stream-name "${STREAM}" \
+      --region "{{ aws_region }}" \
+      2>"${ERR}"
+    RC=$?
+    if [ "${RC}" -eq 0 ]; then
+      aws logs delete-log-stream \
+        --log-group-name "${GROUP}" \
+        --log-stream-name "${STREAM}" \
+        --region "{{ aws_region }}" >/dev/null 2>&1
+      rm -f "${ERR}"
+      echo allowed
+      exit 0
+    fi
+    if grep -qi 'ResourceAlreadyExistsException' "${ERR}"; then
+      rm -f "${ERR}"
+      echo allowed
+      exit 0
+    fi
+    echo denied
+    cat "${ERR}" >&2
+    rm -f "${ERR}"
+    exit 0
+  args:
+    executable: /bin/bash
+  register: cw_logs_probe
+  changed_when: false
+
+- name: Remember whether Docker awslogs is allowed
+  ansible.builtin.set_fact:
+    docker_awslogs_enabled: "{{ (cw_logs_probe.stdout | trim | default('denied')) == 'allowed' }}"
+
+- name: Warn when CloudWatch Logs is denied
+  ansible.builtin.debug:
+    msg: >-
+      Instance profile cannot CreateLogStream on /heavy-rental/{{ app_role }}.
+      Leaving the json-file log driver. Academy LabRole is Vocareum-owned;
+      paid guests need logs:CreateLogStream and logs:PutLogEvents on that group.
+      {{ cw_logs_probe.stderr | default('') | trim }}
+  when: not docker_awslogs_enabled
+
+- name: Docker daemon.json for CloudWatch Logs
+  ansible.builtin.copy:
+    dest: /etc/docker/daemon.json
+    content: |
+      {
+        "log-driver": "awslogs",
+        "log-opts": {
+          "awslogs-region": "{{ aws_region }}",
+          "awslogs-group": "/heavy-rental/{{ app_role }}",
+          "awslogs-stream-prefix": "{{ app_role }}",
+          "mode": "non-blocking",
+          "max-buffer-size": "4m"
+        }
+      }
+    mode: "0644"
+  when: docker_awslogs_enabled
+  register: docker_daemon_awslogs
+
+- name: Remove awslogs daemon.json when CloudWatch Logs is denied
+  ansible.builtin.file:
+    path: /etc/docker/daemon.json
+    state: absent
+  when: not docker_awslogs_enabled
+  register: docker_daemon_revert
+
+- name: Restart Docker to apply the log driver
+  ansible.builtin.service:
+    name: docker
+    state: restarted
+  when: (docker_daemon_awslogs.changed | default(false)) or (docker_daemon_revert.changed | default(false))
+
+- name: Wait until Docker responds
+  ansible.builtin.command:
+    argv: [docker, info]
+  register: docker_info
+  retries: 10
+  delay: 2
+  until: docker_info.rc == 0
+  changed_when: false
+  when: (docker_daemon_awslogs.changed | default(false)) or (docker_daemon_revert.changed | default(false))
+
+- name: Stat existing compose file
+  ansible.builtin.stat:
+    path: "{{ compose_dir }}/compose.yml"
+  register: compose_file
+
+- name: Recreate compose stack with the new log driver
+  ansible.builtin.command:
+    argv: [docker, compose, -f, "{{ compose_dir }}/compose.yml", up, -d, --force-recreate]
+  when:
+    - (docker_daemon_awslogs.changed | default(false)) or (docker_daemon_revert.changed | default(false))
+    - compose_file.stat.exists

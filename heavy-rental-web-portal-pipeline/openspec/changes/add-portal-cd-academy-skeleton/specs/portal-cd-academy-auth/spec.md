@@ -17,8 +17,14 @@ Every AWS job on the **academy caller** SHALL use Environment `academy`. Credent
 - WHEN `assert-lab` runs
 - THEN the job fails asking to Start Lab and paste AWS Details
 
-### Requirement: Academy variables are runner and image tag only
-Environment `academy` SHALL expose Vocareum AWS secrets (or Run form keys), `AWS_REGION`, `PORTAL_IMAGE`, `IMAGE_HTTP_URL`, and variable `VITE_STRIPE_PUBLISHABLE_KEY` (`pk_` only). It SHALL NOT be the source of `REST_BASE_URL`, `VITE_*`, `VITE_API_TARGET`, Stripe `sk_` / `whsec_`, `HAYSTACK_BASE_URL`, `APP_CORS_*`, JWT, or RDS. `configure-only` MAY use stock `nginx` when `PORTAL_IMAGE` is empty. `deploy` SHALL NOT.
+#### Scenario: Caller may invoke the shared reusable
+- GIVEN `portal-cd-academy-caller.yml` calls `web-portal-cd-academy.yml`
+- WHEN permissions are declared
+- THEN `id-token: write` is present
+- AND AWS credentials still come from Vocareum form fields or Environment `academy` secrets
+
+### Requirement: Academy variables are runner, image tag, and Stripe pk_ only
+Environment `academy` SHALL expose Vocareum AWS secrets (or Run form keys), `AWS_REGION`, `PORTAL_IMAGE`, `IMAGE_HTTP_URL`, and variable `VITE_STRIPE_PUBLISHABLE_KEY` (`pk_` only). It SHALL NOT be the source of `REST_BASE_URL`, other `VITE_*`, `VITE_API_TARGET`, Stripe `sk_` / `whsec_`, `HAYSTACK_BASE_URL`, `APP_CORS_*`, JWT, or RDS. `VITE_STRIPE_PUBLISHABLE_KEY` (`pk_` only) is the exception: Release Packaging bakes it; CD overlays guest `.env` and SHALL NOT rewrite `/usr/share/nginx/html`. `configure-only` MAY use stock `nginx` when `PORTAL_IMAGE` is empty. `deploy` SHALL NOT.
 
 #### Scenario: GitHub REST_BASE_URL does not fill guest .env
 - GIVEN someone set a GitHub variable `REST_BASE_URL`

@@ -92,7 +92,6 @@ concurrency:
 
 permissions:
   contents: write
-  pull-requests: read
   # Required for github/codeql-action/analyze
   security-events: write
   actions: read

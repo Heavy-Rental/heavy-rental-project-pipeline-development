@@ -1,5 +1,7 @@
 # REASONS Canvas: portal CD skeleton
 
+**Historical (branch 1).** Compose, verify, and paid/OIDC are later changes. Do not treat fail-closed compose as current YAML.
+
 ## Role
 
 Implement Academy portal CD discover only on `HR-165`.

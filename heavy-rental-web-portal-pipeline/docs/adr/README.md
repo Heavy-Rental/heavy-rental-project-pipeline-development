@@ -10,7 +10,7 @@ Conflict order: **OpenSpec → OpenSPDD → ADR → YAML**.
 | [0005](0005-portal-ci-rest-tests-skip-clean.md) | REST endpoint tests skip cleanly until scripts exist |
 | [0006](0006-portal-ci-stops-at-packaging.md) | CI family stops at packaging |
 | [0007](0007-portal-ci-release-image-cloud-ready.md) | Release image is a static SPA; CD owns `/api` |
-| [0008](0008-portal-vite-profile-vs-infra-estate.md) | Vite `.env.production` at `vite build --mode api`; REST hosts from AWS; academy vars are not SPA config |
+| [0008](0008-portal-vite-profile-vs-infra-estate.md) | Vite `.env.production` is a Release scan input (`--mode api` loads `.env.api`); REST hosts from AWS; GitHub `VITE_*` does not reconfigure the SPA |
 
 ## CD family (`add-portal-cd-academy-*`)
 
@@ -20,4 +20,4 @@ Conflict order: **OpenSpec → OpenSPDD → ADR → YAML**.
 | [0009](0009-two-cd-actions-academy-paid.md) | Two portal CD Actions (academy / paid OIDC) |
 | [0002](0002-vocareum-keys-masked.md) | Vocareum keys from the event payload, masked |
 | [0003](0003-reuse-infra-portal-ansible.md) | Reuse infra portal Ansible (copy, do not fork) |
-| [0008](0008-portal-vite-profile-vs-infra-estate.md) | Also CD: `/api` from SM; GitHub `VITE_*` does not reconfigure the SPA |
+| [0008](0008-portal-vite-profile-vs-infra-estate.md) | Also CD: `/api` from SM; `pk_` overlay writes guest `.env` only; GitHub `VITE_*` does not reconfigure the SPA |

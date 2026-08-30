@@ -17,7 +17,9 @@
 #
 # When this runs
 # --------------
-#   workflow_dispatch only (Actions → this workflow → Run workflow)
+#   workflow_dispatch only (Actions → this workflow → Run workflow).
+#   The operator keys in run_name; that string is this workflow run's name
+#   in the Actions list. GitHub Release title and GHCR tags are unchanged.
 #
 #   Does NOT run on:
 #     - published GitHub Release (this pipeline creates that Release)
@@ -45,8 +47,15 @@
 
 name: Release
 
+run-name: ${{ inputs.run_name }}
+
 on:
   workflow_dispatch:
+    inputs:
+      run_name:
+        description: Name shown for this run in the Actions list (e.g. "Release v1.1.0").
+        required: true
+        type: string
 
 concurrency:
   group: portal-release-${{ github.workflow }}-${{ github.repository }}
@@ -54,6 +63,9 @@ concurrency:
 
 permissions:
   contents: write
+  # Nested reusable workflows cannot request more than the caller grants;
+  # omitted scopes become none.
+  pull-requests: read
   security-events: write
   actions: read
   packages: write

@@ -24,7 +24,7 @@ The Integration CI authoring path is `integration_pipeline/` (underscore), not `
 | --- | --- | --- |
 | **OpenSpec** | [`../openspec/`](../openspec/) | Observable behavior: requirements and GIVEN/WHEN/THEN scenarios |
 | **OpenSPDD** | [`../spdd/`](../spdd/) | Implementation contract: REASONS Canvas (how to write the YAML, what not to invent) |
-| **ADR** | [`../docs/adr/`](../docs/adr/) | Why: caller gate, skip-clean REST tests, SPA image / CD-owned `/api` (0007), Vite `.env.production` vs AWS/Spring REST (0008) |
+| **ADR** | [`../docs/adr/`](../docs/adr/) | Why: caller gate, skip-clean REST tests, SPA image / CD-owned `/api` (0007), Vite scan file vs `--mode api` vs AWS/Spring REST (0008) |
 
 Conflict order: **OpenSpec scenarios → OpenSPDD Safeguards → ADR → YAML**. If the YAML cannot satisfy a scenario without breaking a safeguard, stop and update the spec first.
 
@@ -49,7 +49,7 @@ As-implemented spec of Fast Feedback / Integration Check / Release YAML (PR reus
 - [`../openspec/changes/add-portal-cd-academy-deploy/`](../openspec/changes/add-portal-cd-academy-deploy/)
 - [`../openspec/changes/add-portal-cd-paid-deploy/`](../openspec/changes/add-portal-cd-paid-deploy/)
 - SPDD: [`../spdd/analysis/add-portal-cd-academy-skeleton.md`](../spdd/analysis/add-portal-cd-academy-skeleton.md), [`../spdd/analysis/add-portal-cd-academy-deploy.md`](../spdd/analysis/add-portal-cd-academy-deploy.md), [`../spdd/analysis/add-portal-cd-paid-deploy.md`](../spdd/analysis/add-portal-cd-paid-deploy.md)
-- Walkthrough: [`pipelines/portal-cd.md`](pipelines/portal-cd.md) (`configure-only` three stores)
+- Walkthrough: [`pipelines/portal-cd.md`](pipelines/portal-cd.md) (`configure-only` three stores on `academy` or `AWS_ACTUAL`)
 - Operator: [`../docs/BOOTSTRAP.md`](../docs/BOOTSTRAP.md), [`../docs/PREPARE-PORTAL-REPO.md`](../docs/PREPARE-PORTAL-REPO.md)
 - First-compose: infra `deploy-projects` (`site.yml`) or this CD (not infra `apply`)
 - CD / ALB health: `GET :80/` **200 / 301 / 302** (ALB `tg-portal` matcher `200-399`)

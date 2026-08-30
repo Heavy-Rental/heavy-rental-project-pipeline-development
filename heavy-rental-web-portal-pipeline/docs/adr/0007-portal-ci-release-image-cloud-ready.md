@@ -2,7 +2,7 @@
 
 - **Status:** Accepted
 - **Date:** 2026-08-18
-- **Amended:** 2026-08-18 — Vite `.env.production` at `vite build --mode api`; still no image `COPY .env`
+- **Amended:** 2026-08-18 — Vite `.env.production` is scanned; `vite build --mode api` loads `.env.api`; still no image `COPY .env`
 - **Amended:** 2026-08-26 — GHCR push is Publish after DAST; Packaging does not `docker push`
 - **Change:** `add-portal-ci-pipeline` (image contract)
 - **Related:** [0006](0006-portal-ci-stops-at-packaging.md), [0003](0003-reuse-infra-portal-ansible.md), [0008](0008-portal-vite-profile-vs-infra-estate.md)
@@ -22,4 +22,4 @@ Release always generates the `nginx:1.27-alpine` + Vite `dist/` Dockerfile (an a
 - The same image works on any Academy lab once CD mounts `/api`.
 - The SPA must call same-origin `/api` (or another path the guest nginx proxies). Hardcoded REST hosts fail Release.
 - Runtime `config.js` injection is not this change.
-- Sample: [`../samples/.env.production`](../samples/.env.production). Product profile is a **build** input, not an image layer (ADR 0008).
+- Sample: [`../samples/.env.production`](../samples/.env.production) (Release scan input; `--mode api` loads `.env.api`). Product profile is a **build** input, not an image layer (ADR 0008).

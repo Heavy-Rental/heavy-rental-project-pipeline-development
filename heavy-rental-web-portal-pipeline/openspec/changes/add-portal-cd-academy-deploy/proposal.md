@@ -2,7 +2,7 @@
 
 ## Why
 
-Branch 1 (`add-portal-cd-academy-skeleton`) can authenticate and see `asg-portal`. Operators still cannot load a CI nginx image or refresh `/api` from this repo. Infra `configure-only` + `PORTAL_IMAGE` is the only compose path.
+Branch 1 (`add-portal-cd-academy-skeleton`) could authenticate and see `asg-portal`. Operators still could not load a CI nginx image or refresh `/api` from this repo. At that time, infra `deploy-projects` was the only compose path (infra `apply` / `configure-only` do not compose portal).
 
 ## What Changes
 
@@ -25,7 +25,7 @@ Branch 1 (`add-portal-cd-academy-skeleton`) can authenticate and see `asg-portal
 
 ## Impact
 
-- Operators can `action=deploy` a public GHCR / ECR tag (or tar URL) onto both `asg-portal` guests.
-- `action=configure-only` rewrites guest `.env` from `heavy-rental/portal` and remounts `/api`. It does not read `.env.api` or run `npm`. GitHub academy holds Vocareum keys and `PORTAL_IMAGE` only (ADR 0008).
+- Operators can `action=deploy` a public GHCR / ECR tag (or tar URL **and** a matching compose tag) onto both `asg-portal` guests.
+- `action=configure-only` rewrites guest `.env` from `heavy-rental/portal` and remounts `/api`. It does not read `.env.api` or run `npm`. GitHub `academy` holds Vocareum keys, `PORTAL_IMAGE` / `IMAGE_HTTP_URL`, and optional `VITE_STRIPE_PUBLISHABLE_KEY` (`pk_` only — overlay writes guest `.env`; the SPA still uses the Release-baked key) (ADR 0008).
 - `action=verify` is SSM `GET /` on `:80`, not discover-only.
 - **Not in this change:** paid/OIDC, REST/Haystack/Neo4j groups, Terraform, `stop` / `destroy`.

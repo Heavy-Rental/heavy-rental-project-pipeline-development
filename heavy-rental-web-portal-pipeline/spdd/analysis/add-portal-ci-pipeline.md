@@ -38,14 +38,14 @@ Portal Fast Feedback / Integration / Release YAML already exists. Haystack and m
 
 ## Strategy
 
-Specify as-implemented behavior. Keep the six CI YAML files plus the Security Report pair as the implementation. The Security Report pair is reporting-only (not a merge gate).
+Specify as-implemented behavior. Keep the six GitHub Flow YAML files plus the Security Report pair as the implementation. The Security Report pair is reporting-only (not a merge gate).
 
 ## Success
 
-- Six CI YAML files remain the implementation; specs match job names (`Integration Check` on CI), Node 22, mock `127.0.0.1:4010`, and skip-clean REST tests. Security Report is documented as reporting-only.
+- Six GitHub Flow YAML files plus the Security Report pair remain the implementation; specs match job names (`Integration Check` on CI), Node 22, mock `127.0.0.1:4010`, and skip-clean REST tests. Security Report is documented as reporting-only.
 - Release is `workflow_dispatch` only: Integration → QC → Packaging → DAST → Publish.
 - `specification/` indexes CI and CD.
 - `PREPARE-PORTAL-REPO.md` exists.
 - ADRs 0004–0008 record CI decisions (0007 = static SPA; 0008 = Vite `.env.production` vs AWS/Spring REST); 0001–0003 remain CD.
-- Packaging seeds/scans `.env.production`, then `vite build --mode api` with empty `VITE_API_TARGET`, scans `dist/` / image for `sk_` / localhost / `heavy-rental-rest-api`, and refuses image `COPY .env`.
-- `docs/samples/.env.production` exists for operators to copy into the React repo.
+- Packaging seeds/scans `.env.production` (scan input; `--mode api` loads `.env.api`), then `vite build --mode api` with empty `VITE_API_TARGET`, scans `dist/` / image for `sk_` / localhost / `heavy-rental-rest-api`, and refuses image `COPY .env`.
+- `docs/samples/.env.production` exists for operators to copy into the React repo (Release **scan** input; `--mode api` loads `.env.api`).
