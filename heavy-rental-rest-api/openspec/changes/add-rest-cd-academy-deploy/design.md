@@ -2,7 +2,7 @@
 
 ## Context
 
-Study `REST-API-CD-FEASIBILITY.md` §8 / `IMPLEMENTATION-PLAN.md` §6. As-built: infra `apply` / `configure-only` do **not** compose REST; first-compose is infra `deploy-projects` (`site.yml`) or this app CD (`guest_base` + `rest`, Tomcat `:8080`, `1g` / `1.0`). Branch 1 discovers `asg-rest`. This change re-runs that playbook from REST CD. The REST ALB is internet-facing `:8080`.
+Study `REST-API-CD-FEASIBILITY.md` §8 / `IMPLEMENTATION-PLAN.md` §6. As-built: infra `apply` / `configure-only` do **not** compose REST; first-compose is infra `deploy-projects` (`site.yml`) or this app CD (`guest_base` + `rest`, Tomcat `:8080`, `1g` / `1.0`). Branch 1 discovers `asg-rest`. This change re-runs that playbook from REST CD. The REST ALB is internet-facing `:8080`. `APP_CORS_ALLOWED_ORIGINS` in `heavy-rental/rest` is for **direct** REST ALB browser calls; portal nginx `/api` omits `Origin` (infra ADR 0018).
 
 ## Decisions
 

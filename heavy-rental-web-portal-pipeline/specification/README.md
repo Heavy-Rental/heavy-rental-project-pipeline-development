@@ -53,6 +53,7 @@ As-implemented spec of Fast Feedback / Integration Check / Release YAML (PR reus
 - Operator: [`../docs/BOOTSTRAP.md`](../docs/BOOTSTRAP.md), [`../docs/PREPARE-PORTAL-REPO.md`](../docs/PREPARE-PORTAL-REPO.md)
 - First-compose: infra `deploy-projects` (`site.yml`) or this CD (not infra `apply`)
 - CD / ALB health: `GET :80/` **200 / 301 / 302** (ALB `tg-portal` matcher `200-399`)
+- Guest `/api`: `REST_BASE_URL` with **no trailing URI**, `Host $proxy_host`, **omit `Origin`**. CORS allow-list is REST SM for **direct** REST ALB callers (infra ADR 0018)
 - Two CD Actions: [ADR 0009](../docs/adr/0009-two-cd-actions-academy-paid.md)
 
 ## Workflows (implementation)

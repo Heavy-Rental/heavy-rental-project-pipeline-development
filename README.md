@@ -39,7 +39,7 @@ App CD `verify` uses the same **paths** as estate ALB probes: REST `GET :8080/ac
 
 Haystack compose workers are `postgres:17` + `sync-from-primary.sh` and `python:3.12-slim` + `populate-neo4j-from-haystack.sh` (wraps `populate_neo4j.py`; Haystack ADR 0011 / infra ADR 0020). They are not `python -m` on the uvicorn image. Worker failure does not fail Haystack `verify`.
 
-GHCR names (Publish after DAST): `haystack_recommender`, `heavy_rental_rest_api`, `heavy_rental_web_portal` (`:<semver>` + `:latest`). REST ALB is internet-facing `:8080`; Haystack ALB stays internal.
+GHCR names (Publish after DAST): `haystack_recommender`, `heavy_rental_rest_api`, `heavy_rental_web_portal` (`:<semver>` + `:latest`). REST ALB is internet-facing `:8080`; Haystack ALB stays internal. Portal nginx `/api` hairpins to that REST DNS and **omits `Origin`**; Spring `APP_CORS_ALLOWED_ORIGINS` is for **direct** REST ALB callers, not the same-origin hairpin.
 
 ## Families
 

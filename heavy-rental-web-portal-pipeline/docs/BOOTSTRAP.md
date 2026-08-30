@@ -1,6 +1,6 @@
 # Portal app CD (Academy + paid)
 
-This workflow discovers `asg-portal` and can re-run portal compose (branch 2). It does **not** run Terraform or create the ASG. The Release image is a **React + Vite static SPA** (`vite build --mode api` → nginx). This CD mounts nginx `/api` → `REST_BASE_URL`.
+This workflow discovers `asg-portal` and can re-run portal compose (branch 2). It does **not** run Terraform or create the ASG. The Release image is a **React + Vite static SPA** (`vite build --mode api` → nginx, `try_files` only). This CD mounts nginx `/api` → `REST_BASE_URL` (no trailing URI, `Host $proxy_host`, **omit `Origin`**).
 
 Specification index: [`../specification/README.md`](../specification/README.md). CD walkthrough: [`../specification/pipelines/portal-cd.md`](../specification/pipelines/portal-cd.md). App-repo checklist: [`PREPARE-PORTAL-REPO.md`](PREPARE-PORTAL-REPO.md). GHCR publish (dispatch Release after merge; Publish creates the GitHub Release; no `GITHUB_TOKEN` secret): [`GHCR-RELEASE.md`](GHCR-RELEASE.md). Vite scan sample: [`samples/.env.production`](samples/.env.production) (Release scans it; `--mode api` loads `.env.api`).
 
@@ -22,11 +22,11 @@ Infra `aws-infra-academy.yml` `configure-only` / `apply` runs `scripts/sync-secr
 
 | Owner | Keys | Who reads them |
 | --- | --- | --- |
-| Terraform → `heavy-rental/portal` | `REST_BASE_URL=http://<rest_alb_dns>:8080` | Portal CD nginx `/api` (not the JS bundle) |
+| Terraform → `heavy-rental/portal` | `REST_BASE_URL=http://<rest_alb_dns>:8080` | Portal CD nginx `/api` (not the JS bundle). Omit `Origin`; `Host $proxy_host`; no trailing URI |
 | Infra academy Stripe `pk_` → portal SM | `STRIPE_PUBLISHABLE_KEY`, `VITE_STRIPE_PUBLISHABLE_KEY` | Stored on the guest `.env`. The static SPA **cannot** read SM. Bake `pk_` only via academy `VITE_STRIPE_PUBLISHABLE_KEY` + new `vite build --mode api` |
-| Terraform → `heavy-rental/rest` | `HAYSTACK_BASE_URL=http://<haystack_alb_dns>:8000`, `APP_CORS_ALLOWED_ORIGINS=http://<portal_alb_dns>,http://<rest_alb_dns>:8080` (ADR 0018), SoR `POSTGRES_*` | **Spring REST** (`application-prod.properties` `${…}`). Not the React SPA |
+| Terraform → `heavy-rental/rest` | `HAYSTACK_BASE_URL=http://<haystack_alb_dns>:8000`, `APP_CORS_ALLOWED_ORIGINS=http://<portal_alb_dns>,http://<rest_alb_dns>:8080` (ADR 0018 — **direct** REST ALB callers; portal `/api` omits `Origin`), SoR `POSTGRES_*` | **Spring REST** (`application-prod.properties` `${…}`). Not the React SPA |
 | Infra academy secrets → REST SM | `STRIPE_API_KEY`, `STRIPE_WEBHOOK_SECRET`, `APP_JWT_SECRET`, optional OneMap, optional pricing vars | **Spring REST** only. Never in Vite or the nginx image |
-| Image `dist/` from `vite build --mode api` | `MODE=api` + empty `VITE_API_TARGET` / `VITE_*` backends (same-origin `/api`) | Browser JS → guest `/api` → NAT → public REST ALB → Spring REST |
+| Image `dist/` from `vite build --mode api` | `MODE=api` + empty `VITE_API_TARGET` / `VITE_*` backends (same-origin `/api`; nginx omits `Origin`) | Browser JS → guest `/api` → NAT → public REST ALB → Spring REST |
 | Portal Environment `academy` (or `AWS_ACTUAL`) | `PORTAL_IMAGE`, `IMAGE_HTTP_URL`, Vocareum keys (academy) or OIDC role (paid), optional `VITE_STRIPE_PUBLISHABLE_KEY` (`pk_`) | Which tag to pull. Packaging (academy only) bakes `pk_`. CD overlays `pk_` onto guest `.env` only — **not** the SPA bundle. Other `VITE_*` stay off these Environments |
 
 Setting a GitHub `VITE_*` variable does **not** rebuild GHCR and does **not** reconfigure the running SPA. CD may overlay `VITE_STRIPE_PUBLISHABLE_KEY` (`pk_` only) onto guest `.env`; nginx does not run Node, so the browser still uses the key **baked at Release**. That is not a Haystack-style process-env overlay.
@@ -90,5 +90,7 @@ The **runner** uses Vocareum keys. The **EC2** uses `LabRole`.
 - Run `terraform apply` from this workflow
 - Expect GHCR from a `develop` → `master` PR alone (run **Actions → Release** after merge; the pipeline creates the GitHub Release)
 - Treat a green `verify` as proof that `/api` reached REST
+- Open the REST ALB `:8080` in the address bar (open `http://<portal_alb_dns>/`)
+- Diagnose portal login **401** by widening `APP_CORS_ALLOWED_ORIGINS`. If `GET /api/auth/getBearerToken` is **403** `Invalid CORS request`, nginx forwarded `Origin` (or the address bar is not exactly `http://<portal_alb_dns>`). Redeploy portal so `/api/` omits `Origin`. Do not diagnose by clicking/resending `getBearerToken` in Firefox DevTools (`Origin` is often `null`)
 
 Release `workflow_dispatch` **Packaging** uploads `heavy_rental_web_portal-image.tar.gz`. **Publish** pushes `ghcr.io/<owner>/heavy_rental_web_portal:<x.y.z>` and `:latest` and creates the GitHub Release (zip + DAST assets, not the tar).

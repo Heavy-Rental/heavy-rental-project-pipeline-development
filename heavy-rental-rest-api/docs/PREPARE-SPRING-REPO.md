@@ -28,7 +28,7 @@ Generated image (app Dockerfile is ignored):
 
 ```dockerfile
 # Runtime env from docker -e / compose env_file (do not ENV/ARG these):
-#   POSTGRES_*, SPRING_DATASOURCE_*, HAYSTACK_BASE_URL, STRIPE_*, APP_JWT_SECRET
+#   POSTGRES_*, SPRING_DATASOURCE_*, HAYSTACK_BASE_URL, STRIPE_*, APP_JWT_SECRET, APP_CORS_ALLOWED_ORIGINS
 FROM tomcat:10.1-jdk21-temurin
 COPY target/*.war /usr/local/tomcat/webapps/ROOT.war
 EXPOSE 8080
@@ -180,7 +180,7 @@ The guest (`LabRole`) reads `heavy-rental/rest`. Release QC Postgres is never co
 | `POSTGRES_PASSWORD` / `POSTGRES_PORT` | written |
 | `HAYSTACK_BASE_URL` | written (internal Haystack ALB). Estate no longer uses `HAYSTACK_URL` |
 | `APP_JWT_SECRET` (≥ 32 characters) | written — Environment secret, else reuse SM, else infra generates once |
-| `APP_CORS_ALLOWED_ORIGINS` | written `http://<portal_alb_dns>,http://<rest_alb_dns>:8080` (infra ADR 0018). Portal `/api` is same-origin; the REST origin is for browsers that call the public REST ALB directly |
+| `APP_CORS_ALLOWED_ORIGINS` | written `http://<portal_alb_dns>,http://<rest_alb_dns>:8080` (infra ADR 0018) for **direct** REST ALB browser calls. Portal `/api` is same-origin and nginx **omits `Origin`**; that hop does not use this list. If nginx forwards `Origin` and the address bar is not exactly the portal origin, `GET /api/auth/getBearerToken` is 403 `Invalid CORS request` and the SPA login helper POSTs that body as the interim JWT → login **401** |
 | `STRIPE_API_KEY` / `STRIPE_WEBHOOK_SECRET` / `STRIPE_PUBLISHABLE_KEY` | written |
 | `ONEMAP_EMAIL` / `ONEMAP_PASSWORD` | written only if both infra Environment secrets are set |
 | `DYNAMIC_PRICING_ENABLED` / `PRICING_DEFAULT_DISTANCE_KM` / `PRICING_ORIGIN_POSTAL_CODE` / `PRICING_DISTANCE_LOOKUP_ENABLED` | written if set on infra Environment vars; REST CD Environment (`academy` or `AWS_ACTUAL`) vars overlay when non-empty |

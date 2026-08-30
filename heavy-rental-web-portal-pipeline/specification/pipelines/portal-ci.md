@@ -67,7 +67,7 @@ assert-caller
                       + GitHub Release on master
 ```
 
-The nginx image is a React + npm + Vite static SPA (ADR 0007 / 0008). Packaging uses Environment `academy` so academy `VITE_STRIPE_PUBLISHABLE_KEY` (`pk_` only) is baked. Spring login and `/api` work after CD mounts REST ALB. No baked `REST_BASE_URL` or `http://heavy-rental-rest-api:8080`. Fast Feedback and Integration CI do not set `environment:`.
+The nginx image is a React + npm + Vite static SPA (ADR 0007 / 0008). Packaging uses Environment `academy` so academy `VITE_STRIPE_PUBLISHABLE_KEY` (`pk_` only) is baked. Release nginx is `try_files` only. Spring login and `/api` work after CD mounts `REST_BASE_URL` (no trailing URI, `Host $proxy_host`, **omit `Origin`**). No baked `REST_BASE_URL` or `http://heavy-rental-rest-api:8080`. Fast Feedback and Integration CI do not set `environment:`.
 
 ## Node / Vite tools
 

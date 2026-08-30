@@ -13,6 +13,7 @@ Implement Academy REST CD compose (branch 2) in `deploy-pipeline/`.
 - No stock Tomcat when image fields are empty
 - No `${{ inputs.aws_* }}` in `env:`
 - Do not fail verify solely because Haystack is down
+- Do not overlay GitHub CORS onto guest `.env`. `APP_CORS_ALLOWED_ORIGINS` stays SM (`heavy-rental/rest`) for **direct** REST ALB callers. Portal `/api` omits `Origin`
 
 ## Output
 

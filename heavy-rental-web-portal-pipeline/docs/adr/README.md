@@ -19,5 +19,5 @@ Conflict order: **OpenSpec scenarios → OpenSPDD Safeguards → ADR → YAML**.
 | [0001](0001-portal-cd-academy-only.md) | Portal app CD academy caller is Vocareum-only (paid is 0009) |
 | [0009](0009-two-cd-actions-academy-paid.md) | Two portal CD Actions (academy / paid OIDC) |
 | [0002](0002-vocareum-keys-masked.md) | Vocareum keys from the event payload, masked |
-| [0003](0003-reuse-infra-portal-ansible.md) | Reuse infra portal Ansible (copy, do not fork) |
-| [0008](0008-portal-vite-profile-vs-infra-estate.md) | Also CD: `/api` from SM; `pk_` overlay writes guest `.env` only; GitHub `VITE_*` does not reconfigure the SPA |
+| [0003](0003-reuse-infra-portal-ansible.md) | Reuse infra portal Ansible (copy, do not fork); `/api` omits `Origin` |
+| [0008](0008-portal-vite-profile-vs-infra-estate.md) | Also CD: `/api` from SM (omit `Origin`); `pk_` overlay writes guest `.env` only; GitHub `VITE_*` does not reconfigure the SPA |

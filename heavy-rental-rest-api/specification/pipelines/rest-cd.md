@@ -4,7 +4,7 @@
 **Authoring tree:** `heavy-rental-rest-api/deploy-pipeline/`  
 **Consumes:** public GHCR/ECR tag or Release image tar (`heavy_rental_rest_api-image.tar.gz`) from the CI family ([`rest-ci.md`](rest-ci.md))
 
-This family discovers `asg-rest` and can re-run REST compose. It does **not** run Terraform or create the ASG. Infra `apply` + `sync-secrets` must already have created the guests and `heavy-rental/rest`. First-compose is infra `deploy-projects` (`site.yml`) or this CD (`action=deploy`); infra `apply` / `configure-only` do **not** compose REST. The Release image is env-only (ADR 0007); CD maps SM → `.env` and must not expect JDBC URLs inside the image.
+This family discovers `asg-rest` and can re-run REST compose. It does **not** run Terraform or create the ASG. Infra `apply` + `sync-secrets` must already have created the guests and `heavy-rental/rest`. First-compose is infra `deploy-projects` (`site.yml`) or this CD (`action=deploy`); infra `apply` / `configure-only` do **not** compose REST. The Release image is env-only (ADR 0007); CD maps SM → `.env` and must not expect JDBC URLs inside the image. `APP_CORS_ALLOWED_ORIGINS` is SM for **direct** REST ALB browser calls; portal nginx `/api` omits `Origin`.
 
 Operator checklist: [`../../docs/PREPARE-SPRING-REPO.md`](../../docs/PREPARE-SPRING-REPO.md). Everyday operate: [`../../docs/BOOTSTRAP.md`](../../docs/BOOTSTRAP.md).
 
@@ -57,7 +57,7 @@ Assert Environment academy | Assert Environment AWS_ACTUAL
 
 Job `name:` values: `Assert Environment academy` / `Assert Environment AWS_ACTUAL` (callers), then `Assert AWS profile`, `Discover asg-rest`, `Resolve CI image`, `Compose playbook on asg-rest`, `Health GET :8080/actuator/health`. Paid CD **does** use `secrets: inherit` so Environment `AWS_ACTUAL` is visible to the reusable jobs (OIDC / Environment secrets). The academy caller does **not** inherit (Vocareum keys come from the event payload or explicit inputs). The CI-family “no `secrets: inherit`” rule does not apply here. The academy caller still sets `id-token: write` so it can `uses:` the shared reusable; Academy authenticates with Vocareum keys, not GitHub OIDC.
 
-Paid Ansible SSM uses `heavy-rental-ssm-<account>-actual` (not the tfstate bucket). Academy keeps the tfstate bucket for SSM transfer. REST ALB is internet-facing :8080 (infra ADR 0018); guests stay private. ALB `tg-rest` waits for `GET <instance>:8080/actuator/health` **2xx**.
+Paid Ansible SSM uses `heavy-rental-ssm-<account>-actual` (not the tfstate bucket). Academy keeps the tfstate bucket for SSM transfer. REST ALB is internet-facing :8080 (infra ADR 0018); guests stay private. `APP_CORS_ALLOWED_ORIGINS` is for **direct** REST ALB browser calls; portal nginx `/api` omits `Origin`. ALB `tg-rest` waits for `GET <instance>:8080/actuator/health` **2xx**.
 
 ## Environment `academy`
 
