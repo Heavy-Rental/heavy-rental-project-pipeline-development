@@ -16,6 +16,7 @@ Implement Academy portal CD compose (branch 2) in `deploy-pipeline/`.
 - configure-only may use stock `nginx`; deploy must not
 - No `${{ inputs.aws_* }}` in `env:`
 - Do not fail verify solely because `/api` is down
+- Guest nginx `/api` MUST omit `Origin` (`proxy_set_header Origin ""`), keep `Host $proxy_host`, and MUST NOT add a trailing URI on `proxy_pass`. Do not depend on Spring `APP_CORS_ALLOWED_ORIGINS` for the hairpin
 
 ## Output
 

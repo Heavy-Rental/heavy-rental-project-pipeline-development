@@ -20,7 +20,7 @@ Use this table instead of the original study body when the two disagree.
 | Paid GitHub Environment | `paid` | **`AWS_ACTUAL`** (S3 / SSM suffix `-actual`) |
 | Infra Actions | One process or Environment pick | Two Actions, separate job graphs: `aws-infra-academy.yml` (`academy` + Vocareum), `aws-infra-paid.yml` (`AWS_ACTUAL` + OIDC) |
 | REST ALB | Internal; no public 8080 | **Internet-facing :8080** in public subnets; `asg-rest` stays private (infra ADR 0018). Haystack ALB, Bolt NLB, and RDS stay internal |
-| Portal → REST | nginx `/api` → internal REST ALB | nginx `/api` → `REST_BASE_URL=http://<rest_alb_dns>:8080` (public REST DNS; NAT hairpin). `sg-portal` egress TCP 8080 to `0.0.0.0/0`. Browser may also call REST directly (CORS includes portal + REST ALB) |
+| Portal → REST | nginx `/api` → internal REST ALB | nginx `/api` → `REST_BASE_URL=http://<rest_alb_dns>:8080` (public REST DNS; NAT hairpin; **omit `Origin`**). `sg-portal` egress TCP 8080 to `0.0.0.0/0`. Browser may also call REST directly (CORS allow-list is for that path, not portal `/api`) |
 | App CD paid callers | Later / not delivered | **Delivered:** `*-cd-paid-caller.yml` for Haystack, REST, and portal (same reusable as academy) |
 | Release trigger | `develop`→`master` PR or published GitHub Release | **`workflow_dispatch` only.** Publish **creates** the GitHub Release |
 | GHCR image names | hyphenated repo names | `haystack_recommender`, `heavy_rental_rest_api`, `heavy_rental_web_portal` (`:<semver>` + `:latest`) |
@@ -32,7 +32,7 @@ Use this table instead of the original study body when the two disagree.
 | Jump / SSH | SSM only; optional management SG; “never a lone `aws_instance`” | **`hr-bastion`** is the one standalone EC2 (public subnet, no ALB). App SGs allow `:22` only from `sg-bastion`. Everyday Ansible is still SSM. `stop` uses `stop-instances` on the bastion. `private_key_pem` is the **private** key; bastion gets hop + role private keys; app guests get the public line only |
 | Infra Terraform | Four ASGs + ALBs + RDS | Same **plus** `aws_instance.bastion`, `sg-bastion`, shell `heavy-rental/ssh/bastion`, paid `hr-paid-bastion` |
 | Infra `apply` compose | First-compose all four groups | `apply` / `configure-only` run **`configure.yml`** (Docker + **Neo4j only**). Portal / REST / Haystack first-compose is a later infra **`deploy-projects`** (`site.yml`) or app CD |
-| CORS | Portal ALB origin only | `APP_CORS_ALLOWED_ORIGINS` = portal origin **and** `http://<rest_alb_dns>:8080` |
+| CORS | Portal ALB origin only | `APP_CORS_ALLOWED_ORIGINS` = portal origin **and** `http://<rest_alb_dns>:8080` for **direct** REST ALB callers. Portal `/api` omits `Origin` |
 | REST ALB health | `GET /` (Spring 401) | `tg-rest` waits for `GET <instance>:8080/actuator/health` matcher **`200-299`** (2xx) |
 | Haystack ALB health | `GET /` or `/docs` | `tg-haystack` waits for `GET <instance>:8000/health` matcher **`200-299`** (2xx) |
 | Haystack sync/populate workers | `uv run python -m` on the uvicorn image | **`postgres:17` + `sync-from-primary.sh`** and **`python:3.12-slim` + `populate-neo4j-from-haystack.sh`** (wraps `populate_neo4j.py`; infra ADR 0020 / Haystack ADR 0011) |

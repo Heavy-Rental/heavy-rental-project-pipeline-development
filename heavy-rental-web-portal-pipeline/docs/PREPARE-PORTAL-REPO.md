@@ -20,11 +20,11 @@ This is a **React + npm + Vite** SPA. Spring REST ([heavy-rental-spring-rest-api
 | App | Release / CD contract |
 | --- | --- |
 | Node **22**, `package-lock.json`, Vite `tsc -b` + `vite build --mode api` | `dist/index.html` + hashed JS/CSS |
-| Static SPA | `nginx:1.27-alpine` serving `dist/` (try_files only). CD **replaces** `default.conf` with `/api` → `REST_BASE_URL` |
+| Static SPA | `nginx:1.27-alpine` serving `dist/` (try_files only). CD **replaces** `default.conf` with `/api` → `REST_BASE_URL` (no trailing URI, `Host $proxy_host`, omit `Origin`) |
 | App `Dockerfile` ignored | Release **always** generates the nginx + Vite `dist/` image. A Node/Vite-preview Dockerfile is not used for GHCR/CD |
-| Same-origin `/api` + Spring login | Release `tsc -b` + **`vite build --mode api`** (not `npm run build`). Process env empties `VITE_API_TARGET` (do not bake `http://heavy-rental-rest-api:8080`). CD mounts `/api` → SM `REST_BASE_URL` |
+| Same-origin `/api` + Spring login | Release `tsc -b` + **`vite build --mode api`** (not `npm run build`). Process env empties `VITE_API_TARGET` (do not bake `http://heavy-rental-rest-api:8080`). CD mounts `/api` → SM `REST_BASE_URL` and **omits `Origin`** so Spring CorsFilter is not on that hop |
 
-Packaging seeds/scans `.env.production` (scan input only), then `tsc -b` + `vite build --mode api` (empty `VITE_API_TARGET`). `--mode api` loads `.env.api`, not `.env.production`. It scans `dist/` and the image for `sk_`, lab hosts, and `heavy-rental-rest-api`. Stripe `pk_` is allowed. Generated nginx has no `proxy_pass` host and does **not** `COPY` `.env`. After `action=deploy`, the browser uses same-origin `/api` against Spring REST.
+Packaging seeds/scans `.env.production` (scan input only), then `tsc -b` + `vite build --mode api` (empty `VITE_API_TARGET`). `--mode api` loads `.env.api`, not `.env.production`. It scans `dist/` and the image for `sk_`, lab hosts, and `heavy-rental-rest-api`. Stripe `pk_` is allowed. Generated nginx has no `proxy_pass` host and does **not** `COPY` `.env`. After `action=deploy`, the browser uses same-origin `/api` against Spring REST; guest nginx omits `Origin`.
 
 Operator checklist: [`samples/.env.production`](samples/.env.production). Copy it to the React repo root as `.env.production` so Packaging scans your values instead of generated empty-backend defaults. Create Environment **`academy`** before the first Release — Packaging uses `environment: academy` to bake `VITE_STRIPE_PUBLISHABLE_KEY` (`pk_` only).
 
@@ -138,7 +138,7 @@ Create Environment **`AWS_ACTUAL`**. Variable `AWS_ROLE_TO_ASSUME` (OIDC). **No*
 This CD does **not** create the ASG. Before any `deploy`:
 
 1. Infra `action=apply` created `asg-portal` (public ALB `:80`). Infra `apply` / `configure-only` do **not** compose portal. First compose is infra `deploy-projects` (`site.yml`) or this CD `action=deploy`.
-2. Infra `aws-infra-academy.yml` `sync-secrets` filled **`heavy-rental/portal`** with `REST_BASE_URL=http://<rest_alb_dns>:8080` and Stripe `pk_`. REST SM separately gets `HAYSTACK_BASE_URL`, `APP_CORS_ALLOWED_ORIGINS=http://<portal_alb_dns>,http://<rest_alb_dns>:8080` (ADR 0018), `sk_` / `whsec_`, JWT, RDS. Guest nginx `/api` hairpins to that public REST DNS via NAT.
+2. Infra `aws-infra-academy.yml` `sync-secrets` filled **`heavy-rental/portal`** with `REST_BASE_URL=http://<rest_alb_dns>:8080` and Stripe `pk_`. REST SM separately gets `HAYSTACK_BASE_URL`, `APP_CORS_ALLOWED_ORIGINS=http://<portal_alb_dns>,http://<rest_alb_dns>:8080` (ADR 0018 — **direct** REST ALB callers), `sk_` / `whsec_`, JWT, RDS. Guest nginx `/api` hairpins to that public REST DNS via NAT and **omits `Origin`**. Open the **portal** ALB `:80` (`http://<portal_alb_dns>/`), not REST `:8080`.
 3. Guests are InService and SSM Online (Start Lab if the session ended). Desired=0 → infra, not this CD.
 
 ---
@@ -165,3 +165,5 @@ Same sequence as [`BOOTSTRAP.md`](BOOTSTRAP.md) “Every run”:
 - Run `terraform apply` from this workflow
 - Expect GHCR from a `develop` → `master` PR alone (run **Actions → Release** after merge; the pipeline creates the GitHub Release)
 - Treat a green `verify` as proof that `/api` reached REST
+- Open the REST ALB `:8080` in the address bar (open `http://<portal_alb_dns>/`)
+- Diagnose portal login **401** by widening `APP_CORS_ALLOWED_ORIGINS`. If `GET /api/auth/getBearerToken` is **403** `Invalid CORS request`, nginx forwarded `Origin` (or the address bar is not exactly `http://<portal_alb_dns>`). Redeploy portal so `/api/` omits `Origin`

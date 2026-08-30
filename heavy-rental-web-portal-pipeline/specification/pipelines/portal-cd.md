@@ -4,7 +4,7 @@
 **Authoring tree:** `heavy-rental-web-portal-pipeline/deploy-pipeline/`  
 **Consumes:** public GHCR/ECR tag or Release image tar (`heavy_rental_web_portal-image.tar.gz`) from the CI family ([`portal-ci.md`](portal-ci.md))
 
-This family discovers `asg-portal` and can re-run portal compose. It does **not** run Terraform or create the ASG. Infra `aws-infra-academy.yml` `apply` + `sync-secrets` must already have created the guests and `heavy-rental/portal` (`REST_BASE_URL=http://<rest_alb>:8080` + Stripe `pk_`). First-compose is infra `deploy-projects` (`site.yml`) or this CD (`action=deploy`); infra `apply` / `configure-only` do **not** compose portal. The Release image is a React/Vite static SPA (ADR 0007 / 0008); this CD mounts nginx `/api` → `REST_BASE_URL` over the image `default.conf`. GitHub `VITE_*` does not overlay the bundle. CD may write Environment `VITE_STRIPE_PUBLISHABLE_KEY` (`pk_` only) onto guest `.env`; the browser still uses the key baked at Release. Spring REST owns Haystack, CORS, JWT, RDS, and Stripe `sk_`.
+This family discovers `asg-portal` and can re-run portal compose. It does **not** run Terraform or create the ASG. Infra `aws-infra-academy.yml` `apply` + `sync-secrets` must already have created the guests and `heavy-rental/portal` (`REST_BASE_URL=http://<rest_alb>:8080` + Stripe `pk_`). First-compose is infra `deploy-projects` (`site.yml`) or this CD (`action=deploy`); infra `apply` / `configure-only` do **not** compose portal. The Release image is a React/Vite static SPA (ADR 0007 / 0008); this CD mounts nginx `/api` → `REST_BASE_URL` over the image `default.conf` (no trailing URI, `Host $proxy_host`, **omit `Origin`**). GitHub `VITE_*` does not overlay the bundle. CD may write Environment `VITE_STRIPE_PUBLISHABLE_KEY` (`pk_` only) onto guest `.env`; the browser still uses the key baked at Release. Spring REST owns Haystack, JWT, RDS, Stripe `sk_`, and **CORS for direct REST ALB callers** (`APP_CORS_ALLOWED_ORIGINS`). The portal `/api` hairpin does not use that list.
 
 Operator checklist: [`../../docs/PREPARE-PORTAL-REPO.md`](../../docs/PREPARE-PORTAL-REPO.md). Everyday operate: [`../../docs/BOOTSTRAP.md`](../../docs/BOOTSTRAP.md).
 
@@ -57,7 +57,7 @@ Assert Environment academy | Assert Environment AWS_ACTUAL
 
 Job `name:` values: `Assert Environment academy` / `Assert Environment AWS_ACTUAL` (callers), then `Assert AWS profile`, `Discover asg-portal`, `Resolve CI image`, `Compose playbook on asg-portal`, `Health GET /`. Neither caller uses `secrets: inherit` (Semgrep `yaml.github-actions.security.secrets-inherit`). Paid CD authenticates with GitHub OIDC (`vars.AWS_ROLE_TO_ASSUME` + `id-token: write`); repository secrets are not required on that path. The academy caller still sets `id-token: write` so it can `uses:` the shared reusable; Academy authenticates with Vocareum keys, not GitHub OIDC.
 
-Paid Ansible SSM uses `heavy-rental-ssm-<account>-actual` (not the tfstate bucket). Academy keeps the tfstate bucket for SSM transfer. `REST_BASE_URL` is the **internet-facing** REST ALB (`http://<rest_alb_dns>:8080`, infra ADR 0018). Guest nginx hairpins to that public DNS via NAT; a green `verify` (`GET /`) does **not** prove `/api` reached Spring. Infra `apply` must include `sg-portal` egress TCP 8080 to `0.0.0.0/0` or `/api` **504**s.
+Paid Ansible SSM uses `heavy-rental-ssm-<account>-actual` (not the tfstate bucket). Academy keeps the tfstate bucket for SSM transfer. `REST_BASE_URL` is the **internet-facing** REST ALB (`http://<rest_alb_dns>:8080`, infra ADR 0018). Guest nginx hairpins to that public DNS via NAT and **omits `Origin`** so Spring CORS is not on that hop. A green `verify` (`GET /`) does **not** prove `/api` reached Spring. Infra `apply` must include `sg-portal` egress TCP 8080 to `0.0.0.0/0` or `/api` **504**s. If nginx forwards `Origin` and the address bar is not exactly `http://<portal_alb_dns>`, `GET /api/auth/getBearerToken` is 403 `Invalid CORS request` and login is 401.
 
 ## Environment `academy`
 
@@ -97,7 +97,7 @@ Paid caller declares **no** Vocareum key inputs. It fails if Environment is not 
 | Guest `/opt/heavy-rental/.env` | Yes — SM then Environment overlay | **Required** `REST_BASE_URL`. Environment `pk_` overlays SM when set. Browser still uses the key **baked at Release** |
 | App Vite dotenv | **No** | Release only. `.env.production` is scanned; `--mode api` loads `.env.api`. `MODE=api` is a build flag |
 
-Infra `aws-infra-academy.yml` `sync-secrets` must have filled `heavy-rental/portal` first. Changing the REST host is infra then this `configure-only`. Changing SPA login/`MODE` or Stripe `pk_` in JS is a new Release image (`vite build --mode api`, Packaging Environment `academy`) + `action=deploy`. Guest `/api` then reaches Spring REST on the ALB. CD `pk_` overlay does not rewrite the bundle.
+Infra `aws-infra-academy.yml` `sync-secrets` must have filled `heavy-rental/portal` first. Changing the REST host is infra then this `configure-only`. Changing SPA login/`MODE` or Stripe `pk_` in JS is a new Release image (`vite build --mode api`, Packaging Environment `academy`) + `action=deploy`. Guest `/api` then reaches Spring REST on the ALB (omit `Origin`). CD `pk_` overlay does not rewrite the bundle.
 
 ## Install into the application repo
 

@@ -6,6 +6,7 @@
 - **Amended:** 2026-08-26 — build command is `vite build --mode api` (not `npm run build`)
 - **Amended:** 2026-08-29 — `APP_CORS_ALLOWED_ORIGINS` includes portal **and** public REST ALB origins (infra ADR 0018); portal `/api` hairpins via NAT
 - **Amended:** 2026-08-30 — `.env.production` is a Release scan input (`--mode api` loads `.env.api`); CD `pk_` overlay applies on `academy` or `AWS_ACTUAL` and does not reconfigure the SPA
+- **Amended:** 2026-08-30 — portal nginx `/api` omits `Origin`; `APP_CORS_ALLOWED_ORIGINS` is for **direct** REST ALB browser calls (infra ADR 0018), not the same-origin hairpin
 - **Change:** `add-portal-ci-pipeline` / `add-portal-cd-academy-deploy` (env ownership)
 - **Related:** [0007](0007-portal-ci-release-image-cloud-ready.md), [0003](0003-reuse-infra-portal-ansible.md)
 - **Infra ground truth:** `aws-infra-academy.yml` → `scripts/sync-secrets.sh`
@@ -21,13 +22,13 @@ Spring REST already consumes the estate keys the portal must **not** bake: `POST
 
 | Owner | Keys |
 | --- | --- |
-| Terraform ALBs via `sync-secrets` | `REST_BASE_URL=http://<rest_alb_dns>:8080` → portal SM (CD nginx `/api`; public DNS, NAT hairpin). `HAYSTACK_BASE_URL` and `APP_CORS_ALLOWED_ORIGINS=http://<portal_alb_dns>,http://<rest_alb_dns>:8080` → **REST SM only** |
+| Terraform ALBs via `sync-secrets` | `REST_BASE_URL=http://<rest_alb_dns>:8080` → portal SM (CD nginx `/api`; public DNS, NAT hairpin; **omit `Origin`**). `HAYSTACK_BASE_URL` and `APP_CORS_ALLOWED_ORIGINS=http://<portal_alb_dns>,http://<rest_alb_dns>:8080` → **REST SM only** (direct REST ALB callers; not the portal `/api` hop) |
 | Infra Environment `academy` secrets | Stripe trio, JWT, optional OneMap. Portal SM gets `pk_` only. `sk_` / `whsec_` stay on REST |
 | Release `vite build --mode api` | `MODE=api` (Spring login). Empty `VITE_API_TARGET` (same-origin `/api`). Optional Stripe `pk_` from `.env.api` / build env. `.env.production` is scanned; `--mode api` loads `.env.api` unless process env wins |
 | Portal Environment `academy` or `AWS_ACTUAL` | Vocareum keys (academy only) or OIDC role (`AWS_ACTUAL`); `PORTAL_IMAGE` / `IMAGE_HTTP_URL`; **`VITE_STRIPE_PUBLISHABLE_KEY`** (`pk_` only). Release Packaging (`environment: academy`) bakes it into `vite build --mode api`. CD overlays the same name onto guest `.env` (does **not** rewrite `dist/`). Other `VITE_*` stay off these Environments |
 | Never in the React bundle or nginx image | `REST_BASE_URL`, Haystack URL, RDS, JWT, Stripe `sk_` / `whsec_`, OneMap, CORS, AWS keys |
 
-Portal CD overlays **nginx `/api`**, not the Vite bundle. Setting a GitHub `VITE_*` variable does not rebuild GHCR. CD overlay of `VITE_STRIPE_PUBLISHABLE_KEY` writes guest `.env` only; the browser still uses the key baked at Release.
+Portal CD overlays **nginx `/api`**, not the Vite bundle. `/api` is same-origin; nginx omits `Origin` so Spring CORS is not on that hop. Setting a GitHub `VITE_*` variable does not rebuild GHCR. CD overlay of `VITE_STRIPE_PUBLISHABLE_KEY` writes guest `.env` only; the browser still uses the key baked at Release.
 
 ### `configure-only` stores
 

@@ -1,6 +1,6 @@
 # REST app CD (Academy + paid)
 
-This workflow discovers `asg-rest` and can re-run REST compose (branch 2). It does **not** run Terraform or create the ASG. The Release image is env-only (ADR 0007); this CD injects `heavy-rental/rest` and must not expect JDBC inside the image.
+This workflow discovers `asg-rest` and can re-run REST compose (branch 2). It does **not** run Terraform or create the ASG. The Release image is env-only (ADR 0007); this CD injects `heavy-rental/rest` and must not expect JDBC inside the image. Infra `sync-secrets` writes `APP_CORS_ALLOWED_ORIGINS` for **direct** REST ALB browser calls. Portal nginx `/api` omits `Origin`; do not treat portal login **401** after `Invalid CORS request` as a REST CORS overlay problem.
 
 Specification index: [`../specification/README.md`](../specification/README.md). CD walkthrough: [`../specification/pipelines/rest-cd.md`](../specification/pipelines/rest-cd.md).
 
@@ -30,7 +30,7 @@ Do **not** point this workflow at CI Environment `integration`. Infra must alrea
 
 ## GitHub Environment `AWS_ACTUAL` (paid)
 
-Create Environment **`AWS_ACTUAL`**. Variable `AWS_ROLE_TO_ASSUME` (OIDC). Same `REST_IMAGE` / pricing vars. **No** `AWS_ACCESS_KEY_ID`. Run **REST API CD (paid)** after infra **AWS infrastructure (paid)** `apply`. Guests use `hr-paid-rest`. Ansible SSM uses `heavy-rental-ssm-<account>-actual`. REST ALB is internet-facing `:8080`.
+Create Environment **`AWS_ACTUAL`**. Variable `AWS_ROLE_TO_ASSUME` (OIDC). Same `REST_IMAGE` / pricing vars. **No** `AWS_ACCESS_KEY_ID`. Run **REST API CD (paid)** after infra **AWS infrastructure (paid)** `apply`. Guests use `hr-paid-rest`. Ansible SSM uses `heavy-rental-ssm-<account>-actual`. REST ALB is internet-facing `:8080`. CORS allow-list is for **direct** REST ALB callers; portal `/api` omits `Origin`.
 
 ## Every run
 

@@ -7,7 +7,7 @@ This file is a **design record**. Living specs win: estate [`../../heavy-rental-
 | Study body (original) | As-built |
 | --- | --- |
 | GitHub Environment `paid` | Environment **`AWS_ACTUAL`**, state / SSM suffix `-actual` ([infra ADR 0017](../../heavy-rental-project-instructure-and-cloud-deploy/docs/adr/0017-two-actions-academy-paid.md)) |
-| REST ALB internal / no public 8080 | REST ALB **internet-facing :8080** in public subnets; `asg-rest` stays private ([infra ADR 0018](../../heavy-rental-project-instructure-and-cloud-deploy/docs/adr/0018-public-rest-alb.md)). Haystack ALB, Bolt NLB, RDS stay internal. Portal nginx `/api` hairpins to the public REST DNS via NAT (`sg-portal` egress TCP 8080 to `0.0.0.0/0`) |
+| REST ALB internal / no public 8080 | REST ALB **internet-facing :8080** in public subnets; `asg-rest` stays private ([infra ADR 0018](../../heavy-rental-project-instructure-and-cloud-deploy/docs/adr/0018-public-rest-alb.md)). Haystack ALB, Bolt NLB, RDS stay internal. Portal nginx `/api` hairpins to the public REST DNS via NAT (`sg-portal` egress TCP 8080 to `0.0.0.0/0`) and **omits `Origin`** |
 | One workflow / Environment pick | Two Actions, separate job graphs ([infra ADR 0019](../../heavy-rental-project-instructure-and-cloud-deploy/docs/adr/0019-separate-job-graphs.md)): `aws-infra-academy.yml` + `aws-infra-paid.yml` |
 | GHCR hyphenated names | `ghcr.io/<owner>/haystack_recommender`, `heavy_rental_rest_api`, `heavy_rental_web_portal` |
 | Release on `develop`→`master` or published GitHub Release | **`workflow_dispatch` only**; Publish creates the GitHub Release |
@@ -16,7 +16,7 @@ This file is a **design record**. Living specs win: estate [`../../heavy-rental-
 | NAT instance in some sketches | **Two NAT Gateways** (one per public AZ) |
 | S3 + DynamoDB lock | S3 **`use_lockfile=true`** |
 | Infra `apply` first-compose | `apply` / `configure-only` → **`configure.yml`** (Docker + Neo4j only). Portal / REST / Haystack first-compose is later **`deploy-projects`** (`site.yml`) or app CD |
-| CORS portal-only | `APP_CORS_ALLOWED_ORIGINS` = portal origin **and** `http://<rest_alb_dns>:8080` |
+| CORS portal-only | `APP_CORS_ALLOWED_ORIGINS` = portal origin **and** `http://<rest_alb_dns>:8080` for **direct** REST ALB callers. Portal nginx `/api` omits `Origin` |
 | GitHub Environment `paid` in §8.1 | Live paid Environment is **`AWS_ACTUAL`** |
 | REST / Haystack ALB health `GET /` | `tg-rest`: `GET <instance>:8080/actuator/health` matcher **`200-299`**. `tg-haystack`: `GET <instance>:8000/health` matcher **`200-299`**. |
 | Portal CI has no Environments / no Stripe | Fast Feedback / Integration CI have none. **Release Packaging** uses Environment **`academy`** for Stripe `pk_` only |
@@ -226,7 +226,7 @@ REST also documents a **read-replica** compose variant. Academy Multi-AZ is a **
 
 A later deploy project loads those images (ECR copy or `docker load` of the tar). It does not rebuild from source on EC2.
 
-Haystack **app** CD (live, academy + paid callers): [`../haystack-fast-api-pipeline/deploy-pipeline/`](../haystack-fast-api-pipeline/deploy-pipeline/) — study [`haystack-CD-feasibility/HAYSTACK-CD-FEASIBILITY.md`](haystack-CD-feasibility/HAYSTACK-CD-FEASIBILITY.md). REST **app** CD (live): [`../heavy-rental-rest-api/deploy-pipeline/`](../heavy-rental-rest-api/deploy-pipeline/) — study [`rest-api-CD-feasibility/REST-API-CD-FEASIBILITY.md`](rest-api-CD-feasibility/REST-API-CD-FEASIBILITY.md). Portal **app** CD (live): [`../heavy-rental-web-portal-pipeline/deploy-pipeline/`](../heavy-rental-web-portal-pipeline/deploy-pipeline/) — study [`web-portal-CD-feasibility/WEB-PORTAL-CD-FEASIBILITY.md`](web-portal-CD-feasibility/WEB-PORTAL-CD-FEASIBILITY.md) (public portal ALB :80; nginx `/api` → `REST_BASE_URL` on the **internet-facing** REST ALB :8080). Each discovers its ASG via the AWS API — they do not create EC2.
+Haystack **app** CD (live, academy + paid callers): [`../haystack-fast-api-pipeline/deploy-pipeline/`](../haystack-fast-api-pipeline/deploy-pipeline/) — study [`haystack-CD-feasibility/HAYSTACK-CD-FEASIBILITY.md`](haystack-CD-feasibility/HAYSTACK-CD-FEASIBILITY.md). REST **app** CD (live): [`../heavy-rental-rest-api/deploy-pipeline/`](../heavy-rental-rest-api/deploy-pipeline/) — study [`rest-api-CD-feasibility/REST-API-CD-FEASIBILITY.md`](rest-api-CD-feasibility/REST-API-CD-FEASIBILITY.md). Portal **app** CD (live): [`../heavy-rental-web-portal-pipeline/deploy-pipeline/`](../heavy-rental-web-portal-pipeline/deploy-pipeline/) — study [`web-portal-CD-feasibility/WEB-PORTAL-CD-FEASIBILITY.md`](web-portal-CD-feasibility/WEB-PORTAL-CD-FEASIBILITY.md) (public portal ALB :80; nginx `/api` → `REST_BASE_URL` on the **internet-facing** REST ALB :8080; omit `Origin`). Each discovers its ASG via the AWS API — they do not create EC2.
 
 ---
 
@@ -324,7 +324,7 @@ Original study: neither Spring Boot REST nor Haystack may be reached from the in
 | Dedicated **internet-facing** ALB for REST | **No** | **Yes** — `hr-alb-rest` :8080 in public subnets (ADR 0018) |
 | Dedicated **internet-facing** ALB for Haystack | **No** | **No** — Haystack ALB stays internal |
 | Instance SG 8080 or 8000 from `0.0.0.0/0` | **No** | **No** on the **guest**. REST **ALB** SG allows 8080 from `0.0.0.0/0` |
-| Browser / mobile calling REST | **No** (portal `/api` only) | **Yes, allowed** — CORS includes portal + REST ALB DNS. Portal nginx `/api` still proxies (hairpin via NAT to the public REST DNS; `sg-portal` egress TCP 8080 to `0.0.0.0/0`) |
+| Browser / mobile calling REST | **No** (portal `/api` only) | **Yes, allowed** — CORS includes portal + REST ALB DNS for **direct** REST ALB callers. Portal nginx `/api` still proxies (hairpin via NAT; omit `Origin`; `sg-portal` egress TCP 8080 to `0.0.0.0/0`) |
 | Browser / mobile calling Haystack | **No** | **No** — REST calls Haystack on the internal Haystack ALB |
 | Dedicated Haystack ALB (`scheme=internal`, `tg-haystack` :8000) | **Yes** | **Yes** |
 | SSM port-forward for a student demo | **Yes** | **Yes** |
@@ -632,7 +632,7 @@ When the compose playbook starts containers, it **must** set `mem_limit` / `cpus
 | | `t3.medium` ~4 GiB if pgvector | optional pgvector | `512m` | `0.5` | Do **not** fit pgvector on `t3.small` |
 | `asg-neo4j` | `t3.large` ~8 GiB | `neo4j:5` | `4g` | `1.5` | `NEO4J_HEAP_INITIAL_SIZE` / `MAX` **512m–1G**; pagecache ≤ 2g |
 
-Haystack **app CD** re-runs compose on `asg-haystack` with the **same** haystack-row limits when it loads a new CI image. Portal **app CD** re-runs compose on `asg-portal` with the **same** nginx-row limits (`256m` / `0.5`) and must keep the `/api` → `REST_BASE_URL` proxy.
+Haystack **app CD** re-runs compose on `asg-haystack` with the **same** haystack-row limits when it loads a new CI image. Portal **app CD** re-runs compose on `asg-portal` with the **same** nginx-row limits (`256m` / `0.5`) and must keep the `/api` → `REST_BASE_URL` proxy (no trailing URI, `Host $proxy_host`, omit `Origin`).
 
 ### 6.5 What Academy must not build
 
@@ -707,7 +707,7 @@ Browser  →  public portal ALB :80/:443
                                                   →  RDS Haystack :5432 (haystack, Multi-AZ)
                                                   →  Bolt NLB :7687     (asg-neo4j ×2; not a cluster)
 
-Browser / mobile MAY also call REST ALB :8080 directly (CORS).
+Browser / mobile MAY also call REST ALB :8080 directly (Spring CORS allow-list). Portal `/api` omits `Origin` and does not use that list.
 Haystack is never public.
 ```
 
@@ -1803,7 +1803,7 @@ REST also gets Stripe `sk_` + `whsec_` + `pk_`. Neo4j secret is user/password on
 | Secret id (Terraform shell) | Required JSON fields (`sync-secrets`) | Who reads |
 | --- | --- | --- |
 | `heavy-rental/portal` | `REST_BASE_URL`, `STRIPE_PUBLISHABLE_KEY`, `VITE_STRIPE_PUBLISHABLE_KEY` (same `pk_`) | `asg-portal` / portal app CD (nginx `/api`, not baked into the CI image) |
-| `heavy-rental/rest` | `POSTGRES_HOST` / `POSTGRES_HOSTNAME`, `POSTGRES_DATABASE` / `POSTGRES_DB`, `POSTGRES_USERNAME` / `POSTGRES_USER`, `POSTGRES_PORT`, `POSTGRES_PASSWORD`, `POSTGRES_URL` / `SPRING_DATASOURCE_*`, `HAYSTACK_BASE_URL`, `APP_CORS_ALLOWED_ORIGINS` (`http://<portal_alb>,http://<rest_alb>:8080`), Stripe trio, `APP_JWT_SECRET` | `asg-rest` / REST app CD (env on the Tomcat image; not baked in CI) |
+| `heavy-rental/rest` | `POSTGRES_HOST` / `POSTGRES_HOSTNAME`, `POSTGRES_DATABASE` / `POSTGRES_DB`, `POSTGRES_USERNAME` / `POSTGRES_USER`, `POSTGRES_PORT`, `POSTGRES_PASSWORD`, `POSTGRES_URL` / `SPRING_DATASOURCE_*`, `HAYSTACK_BASE_URL`, `APP_CORS_ALLOWED_ORIGINS` (`http://<portal_alb>,http://<rest_alb>:8080` — **direct** REST ALB callers; portal `/api` omits `Origin`), Stripe trio, `APP_JWT_SECRET` | `asg-rest` / REST app CD (env on the Tomcat image; not baked in CI) |
 | `heavy-rental/haystack` | Haystack RDS `POSTGRES_*` / `DATABASE_URL`, `SOURCE_*` (SoR RDS), `TARGET_*` (Haystack RDS), `FLEET_BACKEND=sql`, `NEO4J_BACKEND=bolt`, `NEO4J_URI` / user / password, optional `LLM_API_KEY` | `asg-haystack` / Haystack app CD (same image; env not baked in CI) |
 | `heavy-rental/neo4j` | `NEO4J_USER`, `NEO4J_PASSWORD` | `asg-neo4j` (infra/`configure-only` only) |
 
@@ -1848,8 +1848,8 @@ App CD later:         discover ASG → same playbook, one group (portal | rest |
 
 | Group | Secret | Compose | Limits |
 | --- | --- | --- | --- |
-| `portal` | `heavy-rental/portal` (`REST_BASE_URL`, `pk_` only) | nginx :80; write `/api` → `REST_BASE_URL` (CI image has SPA `try_files` only). Fail if URL empty. Health `GET /`. Do not fail solely because `/api` is down. | `256m` / `0.5` |
-| `rest` | `heavy-rental/rest` (Postgres, `HAYSTACK_BASE_URL`, Stripe trio) | Tomcat :8080. Health wait `GET :8080/actuator/health` **2xx** (ALB `tg-rest` matcher `200-299`). Not `/` (401). No Bolt. | `1g` / `1.0` |
+| `portal` | `heavy-rental/portal` (`REST_BASE_URL`, `pk_` only) | nginx :80; write `/api` → `REST_BASE_URL` (no trailing URI, `Host $proxy_host`, omit `Origin`). CI image has SPA `try_files` only. Fail if URL empty. Health `GET /`. Do not fail solely because `/api` is down. | `256m` / `0.5` |
+| `rest` | `heavy-rental/rest` (Postgres, `HAYSTACK_BASE_URL`, `APP_CORS_ALLOWED_ORIGINS` for **direct** REST ALB callers, Stripe trio) | Tomcat :8080. Health wait `GET :8080/actuator/health` **2xx** (ALB `tg-rest` matcher `200-299`). Not `/` (401). No Bolt. | `1g` / `1.0` |
 | `haystack` | `heavy-rental/haystack` (Haystack RDS Postgres, `NEO4J_URI` = Bolt NLB) | uvicorn :8000 + `postgres-haystack-sync` + `neo4j-populate`. **Must not** start `neo4j`. Health wait `GET :8000/health` **2xx** (ALB `tg-haystack` matcher `200-299`). | `768m` / `1.0` + two workers `256m` / `0.25` |
 | `neo4j` | `heavy-rental/neo4j` | **Only** `neo4j:5`, `/data` on EBS, Bolt on each guest. NLB fronts them. App CD does not run this group. | `4g` / `1.5`, heap 512m–1G |
 

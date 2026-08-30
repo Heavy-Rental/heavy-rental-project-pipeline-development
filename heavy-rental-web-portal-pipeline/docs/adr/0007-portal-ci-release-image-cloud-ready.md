@@ -4,12 +4,13 @@
 - **Date:** 2026-08-18
 - **Amended:** 2026-08-18 — Vite `.env.production` is scanned; `vite build --mode api` loads `.env.api`; still no image `COPY .env`
 - **Amended:** 2026-08-26 — GHCR push is Publish after DAST; Packaging does not `docker push`
+- **Amended:** 2026-08-30 — guest `/api` omits `Origin` (infra ADR 0018); Release nginx stays try_files-only
 - **Change:** `add-portal-ci-pipeline` (image contract)
 - **Related:** [0006](0006-portal-ci-stops-at-packaging.md), [0003](0003-reuse-infra-portal-ansible.md), [0008](0008-portal-vite-profile-vs-infra-estate.md)
 
 ## Context
 
-Vite inlines `import.meta.env.VITE_*` at `vite build --mode api`. Academy compose does not give the SPA a Spring-style `.env`. Guest Ansible writes nginx `location /api/` → `REST_BASE_URL` from `heavy-rental/portal` and **mounts** that file over the image `default.conf`.
+Vite inlines `import.meta.env.VITE_*` at `vite build --mode api`. Academy compose does not give the SPA a Spring-style `.env`. Guest Ansible writes nginx `location /api/` → `REST_BASE_URL` from `heavy-rental/portal` (no trailing URI, `Host $proxy_host`, omit `Origin`) and **mounts** that file over the image `default.conf`.
 
 Baking `http://localhost:8080` or a lab ALB into the JS, or baking `REST_BASE_URL` into the image nginx, would pin every tag to one estate.
 

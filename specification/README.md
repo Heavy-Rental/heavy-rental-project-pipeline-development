@@ -39,6 +39,7 @@ Conflict order: **OpenSpec scenarios → OpenSPDD Safeguards → ADR → YAML**.
 | App CD callers | Haystack, REST, portal: Environment `academy` (Vocareum) and `AWS_ACTUAL` (OIDC). Mobile: none |
 | First-compose | Infra `deploy-projects` (`site.yml`) or app CD `action=deploy`. Infra `apply` / `configure-only` do **not** compose the three apps |
 | REST ALB | Internet-facing `:8080`. Haystack ALB, Bolt NLB, and RDS stay internal |
+| Portal `/api` | Same-origin on the portal ALB. Guest nginx `proxy_pass`es `REST_BASE_URL` with **no trailing URI**, `Host $proxy_host`, and **omits `Origin`**. `APP_CORS_ALLOWED_ORIGINS` is for **direct** REST ALB browser calls only (infra ADR 0018) |
 | ALB / CD health | REST `GET :8080/actuator/health` **2xx**; Haystack `GET :8000/health` **2xx**; portal ALB `GET :80/` matcher `200-399`, app CD `verify` accepts **200 / 301 / 302** |
 | Haystack workers | `postgres:17` + `sync-from-primary.sh` and `python:3.12-slim` + `populate-neo4j-from-haystack.sh` (wraps `populate_neo4j.py`; Haystack ADR 0011 / infra ADR 0020). Not uvicorn `-m`. Worker failure does not fail `verify` |
 | Portal Stripe | Release Packaging Environment `academy` bakes `pk_` only. `sk_` never lands on the portal |

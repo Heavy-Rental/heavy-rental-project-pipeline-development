@@ -13,6 +13,7 @@ This file is a **design record**. Living specs: [`../../heavy-rental-rest-api/sp
 | GHCR not pushed on develop→master PR | Release is **`workflow_dispatch` only**; Publish always pushes public GHCR on success |
 | REST Release secrets `REST_API_CLOUD_DB_*` | QC uses `REST_API_DB_*` (local Docker Postgres). CD does not read those names |
 | Infra `apply` first-composes REST | Infra **`apply` / `configure-only`** run `configure.yml` (Docker + Neo4j only). First-compose is infra **`deploy-projects`** (`site.yml`) or this app CD |
+| CORS portal-only | `APP_CORS_ALLOWED_ORIGINS` = portal origin **and** `http://<rest_alb_dns>:8080` for **direct** REST ALB callers. Portal nginx `/api` omits `Origin` (infra ADR 0018) |
 
 **Status:** Study + as-built table. Example workflows are stubs.
 
@@ -30,7 +31,7 @@ This file is a **design record**. Living specs: [`../../heavy-rental-rest-api/sp
 
 **Re-run the guest compose playbook** on an **already created** `asg-rest` EC2 with the **Tomcat + WAR image** REST CI Release already built. Infra Terraform created the instance. First-compose is infra **`deploy-projects`** (`site.yml`) or this app CD. This pipeline is a **later, manual** compose run (new image only). No new EC2.
 
-The Academy workflow (branch 1 discover + branch 2 compose) is in [`../../heavy-rental-rest-api/deploy-pipeline/`](../../heavy-rental-rest-api/deploy-pipeline/). Infra `apply` / `configure-only` do **not** compose REST. This CD **re-runs** `guest_base` + `rest` for a new image or a secret refresh. See [`IMPLEMENTATION-PLAN.md`](IMPLEMENTATION-PLAN.md). The REST ALB is internet-facing `:8080`.
+The Academy workflow (branch 1 discover + branch 2 compose) is in [`../../heavy-rental-rest-api/deploy-pipeline/`](../../heavy-rental-rest-api/deploy-pipeline/). Infra `apply` / `configure-only` do **not** compose REST. This CD **re-runs** `guest_base` + `rest` for a new image or a secret refresh. See [`IMPLEMENTATION-PLAN.md`](IMPLEMENTATION-PLAN.md). The REST ALB is internet-facing `:8080`. `APP_CORS_ALLOWED_ORIGINS` is for **direct** REST ALB browser calls; portal nginx `/api` omits `Origin`.
 
 ### Non-goals
 

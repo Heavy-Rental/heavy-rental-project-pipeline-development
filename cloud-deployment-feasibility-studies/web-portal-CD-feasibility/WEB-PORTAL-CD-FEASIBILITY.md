@@ -7,20 +7,20 @@ This file is a **design record**. Living specs: [`../../heavy-rental-web-portal-
 | Study body (original) | As-built |
 | --- | --- |
 | GitHub Environment `paid` | **`AWS_ACTUAL`** (portal ADR 0009; infra ADR 0017) |
-| `REST_BASE_URL` = internal REST ALB | **`http://<rest_alb_dns>:8080`** (internet-facing REST ALB, ADR 0018). nginx `/api` hairpins via NAT |
+| `REST_BASE_URL` = internal REST ALB | **`http://<rest_alb_dns>:8080`** (internet-facing REST ALB, ADR 0018). nginx `/api` hairpins via NAT and **omits `Origin`** |
 | Paid portal CD later | **Delivered:** `portal-cd-paid-caller.yml` |
 | GHCR `heavy-rental-web-portal` | **`ghcr.io/<owner>/heavy_rental_web_portal:<semver>`** + `:latest` |
 | GHCR only off PR / published Release | Release is **`workflow_dispatch` only**; Publish always pushes public GHCR on success |
 | Infra `apply` first-composes portal | Infra **`apply` / `configure-only`** run `configure.yml` (Docker + Neo4j only). First-compose is infra **`deploy-projects`** (`site.yml`) or this app CD |
 | Portal CI has no Environments / no Stripe | Fast Feedback / Integration CI have none. **Release Packaging** uses Environment **`academy`** for Stripe `pk_` only |
 
-Portal ALB stays the only public **:80**. REST has its own public **:8080**. nginx `/api` still proxies (NAT hairpin from private portal guests).
+Portal ALB stays the only public **:80**. REST has its own public **:8080**. nginx `/api` still proxies (NAT hairpin from private portal guests) and **omits `Origin`**.
 
 **Status:** Study + as-built table. Example workflows are stubs.
 
 **Destinations:** same two AWS accounts as [`../AWS-INFRASTRUCTURE-FEASIBILITY.md`](../AWS-INFRASTRUCTURE-FEASIBILITY.md) — **Academy** (Vocareum) and **Paid**. Separate GitHub Environments (`academy`, `AWS_ACTUAL`), separate callers. One run must never touch the other.
 
-**This CD is manually triggered after the cloud estate is already up.** It does **not** create the VPC, `asg-portal`, the public portal ALB, or RDS. If `asg-portal` is missing, the run **fails** and the operator runs infra CD `action=apply` first. Live Academy workflow (discover **and** compose) is in `heavy-rental-web-portal-pipeline/deploy-pipeline/`. Infra **`apply`** / **`configure-only`** do **not** compose the portal (`configure.yml` is Docker + Neo4j only). First-compose is infra **`deploy-projects`** (`site.yml`) or this app CD. The REST ALB is internet-facing :8080; nginx `/api` proxies to `REST_BASE_URL`.
+**This CD is manually triggered after the cloud estate is already up.** It does **not** create the VPC, `asg-portal`, the public portal ALB, or RDS. If `asg-portal` is missing, the run **fails** and the operator runs infra CD `action=apply` first. Live Academy workflow (discover **and** compose) is in `heavy-rental-web-portal-pipeline/deploy-pipeline/`. Infra **`apply`** / **`configure-only`** do **not** compose the portal (`configure.yml` is Docker + Neo4j only). First-compose is infra **`deploy-projects`** (`site.yml`) or this app CD. The REST ALB is internet-facing :8080; nginx `/api` proxies to `REST_BASE_URL` and **omits `Origin`**.
 
 **The hard problem is not “how to start nginx.”** It is **how the runner learns which EC2s to deploy to** (private app subnets, no public IP, IPs change after Start Lab) **and** how a **static Vite SPA** talks to REST (`REST_BASE_URL=http://<rest_alb_dns>:8080`, internet-facing) via nginx `/api` without baking that URL into the public image.
 
@@ -34,7 +34,7 @@ Decide how **GitHub Actions** can **re-run the guest compose playbook** on an **
 
 The Academy workflow (branch 1 discover + branch 2 compose) is in [`../../heavy-rental-web-portal-pipeline/deploy-pipeline/`](../../heavy-rental-web-portal-pipeline/deploy-pipeline/). This CD **runs** `guest_base` + `portal` for a new image or a secret refresh. See [`IMPLEMENTATION-PLAN.md`](IMPLEMENTATION-PLAN.md).
 
-Portal is the **only public :80** ALB target. The browser talks to the public portal ALB. nginx on `asg-portal` proxies `/api` to the **internet-facing** REST ALB `:8080` (public DNS; private guests hairpin via the same-AZ NAT Gateway — infra `sg-portal` egress TCP 8080 to `0.0.0.0/0`). A Vite **dev server does not run in AWS**.
+Portal is the **only public :80** ALB target. The browser talks to the public portal ALB. nginx on `asg-portal` proxies `/api` to the **internet-facing** REST ALB `:8080` (public DNS; private guests hairpin via the same-AZ NAT Gateway — infra `sg-portal` egress TCP 8080 to `0.0.0.0/0`) and **omits `Origin`**. A Vite **dev server does not run in AWS**.
 
 ### Non-goals
 
@@ -97,7 +97,7 @@ From [`../../heavy-rental-web-portal-pipeline/release-pipeline/release-pipeline.
 
 Image contract: **nginx:1.27-alpine** serving Vite `dist/` on **`:80`**, SPA `try_files $uri $uri/ /index.html`, hashed `/assets/` cached. Build does **not** start a Node/Vite process, REST, or Stripe. Release **must not** inline `VITE_*` lab URLs or `sk_` into `dist/` (ADR 0007). Stripe `pk_` is allowed.
 
-Release **always** generates nginx + Vite `dist/` (an app `Dockerfile` is moved aside; ADR 0007). The generated guest `nginx-default.conf.j2` includes SPA `try_files` **and** `location /api/` (see §5.6). Do not treat “nginx-spa.conf when the app has no Dockerfile” as current Packaging.
+Release **always** generates nginx + Vite `dist/` (an app `Dockerfile` is moved aside; ADR 0007). Packaging nginx is SPA `try_files` **only** (no `/api` in the image). Guest Ansible `nginx-default.conf.j2` (infra `site.yml` / this CD) adds `location /api/` (no trailing URI, `Host $proxy_host`, omit `Origin` — see §5.6). Do not treat “nginx-spa.conf when the app has no Dockerfile” as current Packaging.
 
 Specs: [`../../heavy-rental-web-portal-pipeline/specification/`](../../heavy-rental-web-portal-pipeline/specification/).
 
@@ -131,7 +131,7 @@ Portal instances have **no public IP** (they sit behind the public ALB). IDs and
 | Auto Scaling group name | Stable handle (`asg-portal`) |
 | Instance IDs that are **InService** and **SSM Online** | Ansible / SSM target |
 | Public portal ALB DNS | Operator-facing URL after verify (the **one** public name). Do not print instance IPs |
-| Internet-facing REST ALB DNS | Comes from `REST_BASE_URL` in `heavy-rental/portal`. Used by nginx `/api` (NAT hairpin), not baked into the Vite bundle |
+| Internet-facing REST ALB DNS | Comes from `REST_BASE_URL` in `heavy-rental/portal`. Used by nginx `/api` (NAT hairpin; omit `Origin`), not baked into the Vite bundle |
 | Confirmation `heavy-rental/portal` exists | `REST_BASE_URL` + `STRIPE_PUBLISHABLE_KEY` already there |
 
 The runner does **not** need instance public IPs, SSH PEMs (everyday path is SSM), or Vocareum keys on the **instance**.
@@ -260,10 +260,10 @@ Browser  →  public portal ALB :80/:443
 | Static Vite SPA interfaces the **public** ALB | **Yes** | Browser loads `index.html` + hashed assets from `tg-portal` :80 |
 | Something on the portal host talks to the **internet-facing** REST ALB | **Yes** | nginx on `asg-portal` `proxy_pass`es `/api` to `REST_BASE_URL` (public REST DNS via NAT hairpin) |
 | A **Vite server** in AWS talks to REST | **No** | CI ships static `dist/` on nginx. `vite` / `npm run dev` is local only |
-| Browser `fetch()` to the REST ALB DNS | **As-built: allowed** | ADR 0018 CORS includes portal + REST ALB. Do **not** bake that DNS into a Vite `VITE_*` bundle; prefer same-origin `/api` |
+| Browser `fetch()` to the REST ALB DNS | **As-built: allowed** | ADR 0018 CORS includes portal + REST ALB for **direct** REST ALB callers. Do **not** bake that DNS into a Vite `VITE_*` bundle. The SPA uses same-origin `/api`; nginx omits `Origin` |
 | REST on the **portal** ALB so the SPA can call it | **No** | Portal listener stays :80. REST has its **own** internet-facing ALB :8080 |
 
-**Why CD must add the proxy.** Packaging generates SPA `try_files` only (no `/api` in the image). App CD (and infra first-compose) writes the guest `nginx-default.conf.j2`. **As-built:** `proxy_pass` has **no** trailing URI (keeps `/api` for Spring `/auth/login`). `Host` is `$proxy_host` (REST ALB host), not the portal `$host`. A trailing `/` on `proxy_pass` would 401 `/auth/login`.
+**Why CD must add the proxy.** Packaging generates SPA `try_files` only (no `/api` in the image). App CD (and infra first-compose) writes the guest `nginx-default.conf.j2`. **As-built:** `proxy_pass` has **no** trailing URI (keeps `/api` for Spring `/api/auth/login`). `Host` is `$proxy_host` (REST ALB host), not the portal `$host`. A trailing `/` on `proxy_pass` would 401 `/auth/login`. **`Origin` is omitted** (`proxy_set_header Origin ""`) so Spring CorsFilter does not 403 `Invalid CORS request` on same-origin `fetch()` (the SPA login helper would then POST that body as the interim JWT and `/api/auth/login` would 401).
 
 ```
 # REST_BASE_URL from heavy-rental/portal (REST ALB, e.g. http://<rest-alb-dns>:8080)
@@ -271,8 +271,10 @@ location /api/ {
   proxy_pass         ${REST_BASE_URL};
   proxy_http_version 1.1;
   proxy_set_header   Host $proxy_host;
+  proxy_set_header   Authorization $http_authorization;
   proxy_set_header   X-Forwarded-For $proxy_add_x_forwarded_for;
   proxy_set_header   X-Forwarded-Proto $scheme;
+  proxy_set_header   Origin "";
 }
 ```
 

@@ -3,7 +3,7 @@
 ## ADDED Requirements
 
 ### Requirement: Re-run infra portal compose via SSM
-On `action=deploy` or `action=configure-only`, after discover succeeds, the workflow SHALL run Ansible over `amazon.aws.aws_ssm` against `asg-portal` only. The playbook SHALL apply `guest_base` then `portal`. It SHALL use `--limit portal`. It SHALL write nginx `location /api/` from `REST_BASE_URL` in `heavy-rental/portal` (Terraform REST ALB via infra `sync-secrets`). It SHALL refuse `STRIPE_API_KEY`, `STRIPE_WEBHOOK_SECRET`, and PEM material on the portal `.env`. It SHALL NOT overlay GitHub `VITE_*` into the image or rewrite `/usr/share/nginx/html`. Environment `VITE_STRIPE_PUBLISHABLE_KEY` (`pk_` only) MAY be written onto guest `.env` after SM (see below) and SHALL NOT change the image `dist/`. Compose limits SHALL stay `256m` / `0.5`.
+On `action=deploy` or `action=configure-only`, after discover succeeds, the workflow SHALL run Ansible over `amazon.aws.aws_ssm` against `asg-portal` only. The playbook SHALL apply `guest_base` then `portal`. It SHALL use `--limit portal`. It SHALL write nginx `location /api/` from `REST_BASE_URL` in `heavy-rental/portal` (Terraform REST ALB via infra `sync-secrets`): `proxy_pass` with **no trailing URI**, `Host $proxy_host`, and **`Origin` omitted** (`proxy_set_header Origin ""`). The hairpin SHALL NOT depend on Spring `APP_CORS_ALLOWED_ORIGINS`. It SHALL refuse `STRIPE_API_KEY`, `STRIPE_WEBHOOK_SECRET`, and PEM material on the portal `.env`. It SHALL NOT overlay GitHub `VITE_*` into the image or rewrite `/usr/share/nginx/html`. Environment `VITE_STRIPE_PUBLISHABLE_KEY` (`pk_` only) MAY be written onto guest `.env` after SM (see below) and SHALL NOT change the image `dist/`. Compose limits SHALL stay `256m` / `0.5`.
 
 #### Scenario: Deploy applies the resolved image
 - GIVEN `action=deploy` and resolve-image succeeded
@@ -16,6 +16,13 @@ On `action=deploy` or `action=configure-only`, after discover succeeds, the work
 - WHEN ansible-portal runs
 - THEN it uses Environment `PORTAL_IMAGE` or stock `nginx`
 - AND it rewrites `.env` and `/api` from `heavy-rental/portal`
+
+#### Scenario: nginx /api omits Origin
+- GIVEN `REST_BASE_URL` is `http://rest.example:8080`
+- WHEN the portal role writes `nginx-default.conf`
+- THEN `location /api/` `proxy_pass`es that URL with no trailing URI
+- AND it sets `Host` to `$proxy_host`
+- AND it contains `proxy_set_header Origin ""`
 
 #### Scenario: REST_BASE_URL missing
 - GIVEN `heavy-rental/portal` has no `REST_BASE_URL=https?://…`

@@ -2,7 +2,7 @@
 
 **Status:** Contract. Live playbooks are in `heavy-rental-project-instructure-and-cloud-deploy` (`ansible/`) and each app family's `deploy-pipeline/ansible/`. Example YAML **in this folder** stays fail-closed. As-built index: [`README.md`](README.md).
 
-**As-built:** paid GitHub Environment is **`AWS_ACTUAL`**. REST ALB is **internet-facing :8080**; portal nginx `/api` uses `REST_BASE_URL=http://<rest_alb_dns>:8080`. GHCR tags are `haystack_recommender`, `heavy_rental_rest_api`, `heavy_rental_web_portal`. App CD paid callers are delivered. Infra `apply` / `configure-only` run `configure.yml` (Docker + Neo4j on **app** guests); first-compose of portal / REST / Haystack is `deploy-projects` (`site.yml`) or app CD. **`hr-bastion` is in inventory but is not a compose host** (hop + role **private** keys only). ALB `tg-rest` / CD verify: `GET :8080/actuator/health` **2xx**. `tg-haystack` / CD verify: `GET :8000/health` **2xx**. Ansible SSM compose is **not** an EKS deploy path ([`eks-feasibility/EKS-FEASIBILITY.md`](eks-feasibility/EKS-FEASIBILITY.md)).
+**As-built:** paid GitHub Environment is **`AWS_ACTUAL`**. REST ALB is **internet-facing :8080**; portal nginx `/api` uses `REST_BASE_URL=http://<rest_alb_dns>:8080` (no trailing URI, `Host $proxy_host`, omit `Origin`). GHCR tags are `haystack_recommender`, `heavy_rental_rest_api`, `heavy_rental_web_portal`. App CD paid callers are delivered. Infra `apply` / `configure-only` run `configure.yml` (Docker + Neo4j on **app** guests); first-compose of portal / REST / Haystack is `deploy-projects` (`site.yml`) or app CD. **`hr-bastion` is in inventory but is not a compose host** (hop + role **private** keys only). ALB `tg-rest` / CD verify: `GET :8080/actuator/health` **2xx**. `tg-haystack` / CD verify: `GET :8000/health` **2xx**. Ansible SSM compose is **not** an EKS deploy path ([`eks-feasibility/EKS-FEASIBILITY.md`](eks-feasibility/EKS-FEASIBILITY.md)).
 
 **Sources:** [`AWS-INFRASTRUCTURE-FEASIBILITY.md`](AWS-INFRASTRUCTURE-FEASIBILITY.md) §7.1a, §6.0c, §6.4a, §6.6; Haystack / REST / portal CD studies (same guest playbook, one group).
 
@@ -109,7 +109,7 @@ Instance still needs outbound HTTPS (same-AZ NAT Gateway or S3 endpoint). Live `
 ### 4.1 `portal` (`asg-portal`)
 
 1. Read `heavy-rental/portal` → `REST_BASE_URL` + `STRIPE_PUBLISHABLE_KEY` + `VITE_STRIPE_PUBLISHABLE_KEY` (same `pk_`). Never `STRIPE_API_KEY`.
-2. Write nginx `location /api/` → `REST_BASE_URL` (CI image has SPA `try_files` only). Fail if `REST_BASE_URL` is empty.
+2. Write nginx `location /api/` → `REST_BASE_URL` (no trailing URI, `Host $proxy_host`, omit `Origin`). CI image has SPA `try_files` only. Fail if `REST_BASE_URL` is empty.
 3. Compose **one** nginx on **:80**, `mem_limit: 256m`, `cpus: 0.5`.
 4. Health: `GET /` on `:80`. App CD `verify` accepts **200 / 301 / 302**; ALB `tg-portal` matcher is **200-399**. Do not fail solely because `/api` (REST) is down.
 
@@ -155,7 +155,7 @@ Run via `delegate_to` a **rest** or **haystack** instance (those SGs can reach `
 
 | Pipeline | Inventory group | Extra vs first compose |
 | --- | --- | --- |
-| Portal CD (`deploy-pipeline/ansible/`) | `portal` | New nginx + `dist/` image; keep `/api` proxy |
+| Portal CD (`deploy-pipeline/ansible/`) | `portal` | New nginx + `dist/` image; keep `/api` proxy (omit `Origin`) |
 | REST CD (`deploy-pipeline/ansible/`) | `rest` | New Tomcat image; refresh `.env` from `heavy-rental/rest` |
 | Haystack CD (`deploy-pipeline/ansible/`) | `haystack` | New uvicorn image; same `postgres:17` / `python:3.12-slim` workers (ADR 0011); still no neo4j |
 

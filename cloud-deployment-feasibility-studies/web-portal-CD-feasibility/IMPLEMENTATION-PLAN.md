@@ -19,7 +19,7 @@ Conflict order if that repo uses OpenSpec: OpenSpec scenarios → OpenSPDD Safeg
 Manually deploy a **CI-built nginx + Vite `dist/` image** onto the **existing** `asg-portal` (desired=2, both InService) without Terraform and without rebuilding the SPA.
 
 - Browser → public portal ALB `:80` → nginx + `dist/`.
-- nginx `location /api/` → `REST_BASE_URL` from `heavy-rental/portal` (`http://<rest_alb_dns>:8080`, internet-facing REST ALB).
+- nginx `location /api/` → `REST_BASE_URL` from `heavy-rental/portal` (`http://<rest_alb_dns>:8080`, internet-facing REST ALB). Omit `Origin`; `Host $proxy_host`; no trailing URI.
 - No Vite server in AWS. No `sk_` / `whsec_` on the portal.
 
 **Non-goals of this original Academy plan:** `terraform apply`; `npm run build` / `docker build`; REST / Haystack / Neo4j deploy; `stop` / `destroy` (infra CD); instance IDs on the Run form. Paid / OIDC is **delivered** (`portal-cd-paid-caller.yml`, Environment `AWS_ACTUAL`) — not a current non-goal.
@@ -109,12 +109,12 @@ Start Lab → Run workflow → `assert-lab` + `discover-targets` green. No image
    - Private GHCR: **fail** (copy to ECR or use a tar). Do not put a PAT on the guest.
    - Prefer a **new tag** (`compose up` does not `--pull always`).
 2. Runner: Ansible **14.3.1**, `amazon.aws` **>=11.3.0,<12**, `boto3/botocore>=1.35.0`, Session Manager plugin. Connection **`amazon.aws.aws_ssm`**. S3 bucket for the plugin = lab state bucket (same as infra).
-3. **`ansible-playbook … --limit portal`:** `guest_base` + `portal` only. `/api` → `REST_BASE_URL`. §6.4a `256m` / `0.5`. Fail if `REST_BASE_URL` empty. Refuse `STRIPE_API_KEY` / `STRIPE_WEBHOOK_SECRET` / PEM on the portal `.env`.
+3. **`ansible-playbook … --limit portal`:** `guest_base` + `portal` only. `/api` → `REST_BASE_URL` (no trailing URI, `Host $proxy_host`, omit `Origin`). §6.4a `256m` / `0.5`. Fail if `REST_BASE_URL` empty. Refuse `STRIPE_API_KEY` / `STRIPE_WEBHOOK_SECRET` / PEM on the portal `.env`.
 4. **`verify`:** SSM `GET /` on `:80` (200–302). Do **not** fail solely because `/api` (REST) is down. Summary may print **public** portal ALB DNS only.
 
 ### Done when (branch 2)
 
-`action=deploy` with a public GHCR or ECR tag updates **both** `asg-portal` guests. Public ALB `:80` serves the new SPA. `/api` still proxies to `REST_BASE_URL` (public REST ALB :8080, NAT hairpin). `verify` is green if nginx answers (`GET /`); it does **not** prove `/api` reached Spring. **Shipped** in `deploy-pipeline/` (`web-portal-cd-academy.yml` + `ansible/`).
+`action=deploy` with a public GHCR or ECR tag updates **both** `asg-portal` guests. Public ALB `:80` serves the new SPA. `/api` still proxies to `REST_BASE_URL` (public REST ALB :8080, NAT hairpin; omit `Origin`). `verify` is green if nginx answers (`GET /`); it does **not** prove `/api` reached Spring. **Shipped** in `deploy-pipeline/` (`web-portal-cd-academy.yml` + `ansible/`).
 
 ---
 

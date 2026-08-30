@@ -2,6 +2,7 @@
 
 - **Status:** Accepted
 - **Date:** 2026-08-17
+- **Amended:** 2026-08-30 — guest nginx `/api` omits `Origin` (`proxy_set_header Origin ""`); keep identical to infra ADR 0018
 - **Branch:** portal CD branch 2 (`add-portal-cd-academy-deploy`)
 
 ## Context
@@ -12,7 +13,7 @@ The portal pipeline is copied into the React repo. A git submodule of the whole 
 
 ## Decision
 
-Copy estate `ansible/roles/guest_base` and `ansible/roles/portal` into `deploy-pipeline/ansible/`. Add a portal-only inventory (`asg-portal` only) and `playbooks/portal.yml`. Keep compose limits, `/api` proxy, and Stripe/PEM refusal identical to infra. `guest_base` maps `heavy-rental/portal` JSON to `/opt/heavy-rental/.env`. The portal role requires `REST_BASE_URL` on that file and does not read the React checkout `.env.api`.
+Copy estate `ansible/roles/guest_base` and `ansible/roles/portal` into `deploy-pipeline/ansible/`. Add a portal-only inventory (`asg-portal` only) and `playbooks/portal.yml`. Keep compose limits, `/api` proxy (**no trailing URI**, `Host $proxy_host`, **omit `Origin`**), and Stripe/PEM refusal identical to infra. `guest_base` maps `heavy-rental/portal` JSON to `/opt/heavy-rental/.env`. The portal role requires `REST_BASE_URL` on that file and does not read the React checkout `.env.api`.
 
 Do not rewrite those roles. When estate compose or `guest_base` CloudWatch `daemon.json` (Docker Engine `awslogs` log-opts, not ECS `awslogs-stream-prefix`) changes, copy again.
 

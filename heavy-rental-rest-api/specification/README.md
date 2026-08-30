@@ -52,6 +52,7 @@ As-implemented spec of Fast Feedback / Integration Check / Release YAML (PR reus
 - Operator: [`../docs/BOOTSTRAP.md`](../docs/BOOTSTRAP.md), [`../docs/PREPARE-SPRING-REPO.md`](../docs/PREPARE-SPRING-REPO.md)
 - First-compose: infra `deploy-projects` (`site.yml`) or this CD (not infra `apply`)
 - CD / ALB health: `GET :8080/actuator/health` **2xx** (`tg-rest` matcher `200-299`; not `GET /`). REST ALB is internet-facing `:8080`
+- `APP_CORS_ALLOWED_ORIGINS` is SM for **direct** REST ALB browser calls. Portal nginx `/api` omits `Origin` and does not use that list (infra ADR 0018)
 - Two CD Actions: [ADR 0008](../docs/adr/0008-two-cd-actions-academy-paid.md)
 
 ## Workflows (implementation)

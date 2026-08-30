@@ -2,7 +2,7 @@
 
 ## Context
 
-Study `WEB-PORTAL-CD-FEASIBILITY.md` §8 / `IMPLEMENTATION-PLAN.md` §6. As-built: infra `apply` / `configure-only` do **not** compose portal; first-compose is infra `deploy-projects` (`site.yml`) or this app CD (`guest_base` + `portal`, `/api` → `REST_BASE_URL`). Branch 1 discovers `asg-portal`. This change re-runs that playbook from portal CD. The REST ALB is internet-facing `:8080`.
+Study `WEB-PORTAL-CD-FEASIBILITY.md` §8 / `IMPLEMENTATION-PLAN.md` §6. As-built: infra `apply` / `configure-only` do **not** compose portal; first-compose is infra `deploy-projects` (`site.yml`) or this app CD (`guest_base` + `portal`, `/api` → `REST_BASE_URL` with no trailing URI, `Host $proxy_host`, omit `Origin`). Branch 1 discovers `asg-portal`. This change re-runs that playbook from portal CD. The REST ALB is internet-facing `:8080`.
 
 ## Decisions
 
@@ -11,7 +11,7 @@ Study `WEB-PORTAL-CD-FEASIBILITY.md` §8 / `IMPLEMENTATION-PLAN.md` §6. As-buil
 3. **Public GHCR or ECR or tar.** Unauthenticated GHCR probe: 401/403 → fail (copy to ECR or use `image_http_url` **and** a matching tag). Guest `LabRole` logs in to ECR. No PAT on the guest.
 4. **SSM plugin bucket** is the lab state bucket `heavy-rental-tfstate-${ACCOUNT}-academy` (same as infra).
 5. **Verify** is SSM `curl http://127.0.0.1/` (200–302) on every InService + SSM Online guest. Do not fail solely because `/api` is down.
-6. **No SPA overlay.** `/api` is SM `REST_BASE_URL` (AWS). GitHub `VITE_*` does not reconfigure the React bundle (ADR 0008). CD overlay of `VITE_STRIPE_PUBLISHABLE_KEY` (`pk_` only) writes guest `.env` only.
+6. **No SPA overlay.** `/api` is SM `REST_BASE_URL` (AWS). nginx omits `Origin` on that location (infra ADR 0018). GitHub `VITE_*` does not reconfigure the React bundle (ADR 0008). CD overlay of `VITE_STRIPE_PUBLISHABLE_KEY` (`pk_` only) writes guest `.env` only.
 7. **Three stores for configure-only / deploy.** GitHub `academy` or `AWS_ACTUAL` = runner auth + `PORTAL_IMAGE` / `IMAGE_HTTP_URL` + `VITE_STRIPE_PUBLISHABLE_KEY`. Guest `/opt/heavy-rental/.env` = SM `heavy-rental/portal` then optional Environment `pk_` overlay (`REST_BASE_URL` required). App Vite dotenv = Release only — CD does not read `.env.api` / `.env.production`.
 
 ## Risks
