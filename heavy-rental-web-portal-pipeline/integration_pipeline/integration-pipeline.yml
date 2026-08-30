@@ -58,7 +58,7 @@
 #
 # Authoring copy lives in this tree. Install into the portal repo as
 #   .github/workflows/integration-pipeline.yml
-# There is no .github/workflows/web-portal-ci.yml mirror in this repo.
+# A `.github/workflows/web-portal-ci.yml` copy in pipeline-development (if present) can lag.
 #
 # Local validation (from pipeline-development repo root, in the devcontainer):
 #   actionlint heavy-rental-web-portal-pipeline/integration_pipeline/integration-pipeline.yml

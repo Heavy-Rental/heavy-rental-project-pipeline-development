@@ -60,12 +60,13 @@ Infra CD  action=stop | destroy
 `hr-bastion` skips this section. `sync-ssh-keys` installs hop + role **private** keys (`private_key_pem`, not the `.pub`) and Host aliases; Ansible does not install Docker there.
 
 1. Reach the instance via SSM (`LabInstanceProfile` / paid instance profile).
-2. Install Amazon `docker`. Try `docker-compose-plugin`; if `docker compose version` fails, install Compose v2 from GitHub (AL2023 has no Docker CE repo).
+2. Install Amazon `docker`. Try `docker-compose-plugin`; if `docker compose version` fails, install Compose v2 from GitHub (AL2023 has no Docker CE repo). Drop `/etc/docker/daemon.json` if dockerd cannot start with it (a leftover ECS-only `awslogs-stream-prefix` bricks the unit). Start Docker.
 3. `aws secretsmanager get-secret-value` of **that role’s** app secret only.
 4. Map JSON → `.env`; `chmod 600`.
 5. Do **not** copy GitHub `secrets.*` onto the guest. Do **not** fetch `sk_` or PEMs onto `asg-portal`.
 6. Load or pull the **CI** image (see **§3.1**). Do not `docker build`, `npm run build`, or `mvn package`.
-7. `docker compose up` with §6.4a `mem_limit` / `cpus`, `restart: unless-stopped`, no `replicas > 1`. Leave 256–512 MiB for OS + SSM + Docker.
+7. Probe `logs:CreateLogStream` on `/heavy-rental/{role}`. If allowed, write `/etc/docker/daemon.json` with Docker Engine `awslogs` (`awslogs-region`, `awslogs-group`, `tag` — **not** ECS `awslogs-stream-prefix`) and restart Docker. If denied, or if dockerd rejects the file, keep `json-file` and continue the play.
+8. `docker compose up` with §6.4a `mem_limit` / `cpus`, `restart: unless-stopped`, no `replicas > 1`. Leave 256–512 MiB for OS + SSM + Docker.
 
 ### 3.1 Image source is configured on the GitHub Actions workflow
 
@@ -110,7 +111,7 @@ Instance still needs outbound HTTPS (same-AZ NAT Gateway or S3 endpoint). Live `
 1. Read `heavy-rental/portal` → `REST_BASE_URL` + `STRIPE_PUBLISHABLE_KEY` + `VITE_STRIPE_PUBLISHABLE_KEY` (same `pk_`). Never `STRIPE_API_KEY`.
 2. Write nginx `location /api/` → `REST_BASE_URL` (CI image has SPA `try_files` only). Fail if `REST_BASE_URL` is empty.
 3. Compose **one** nginx on **:80**, `mem_limit: 256m`, `cpus: 0.5`.
-4. Health: `GET /` on `:80`. Do not fail solely because `/api` (REST) is down.
+4. Health: `GET /` on `:80`. App CD `verify` accepts **200 / 301 / 302**; ALB `tg-portal` matcher is **200-399**. Do not fail solely because `/api` (REST) is down.
 
 ### 4.2 `rest` (`asg-rest`)
 

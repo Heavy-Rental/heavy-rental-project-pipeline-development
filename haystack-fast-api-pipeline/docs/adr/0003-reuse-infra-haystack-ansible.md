@@ -15,4 +15,4 @@ Copy estate `guest_base` and `haystack` into `deploy-pipeline/ansible/`. Invento
 ## Consequences
 
 - CD can run without checking out the infra repo.
-- Copy again when estate compose changes.
+- Copy again when estate compose or `guest_base` CloudWatch `daemon.json` (Docker Engine `awslogs` log-opts, not ECS `awslogs-stream-prefix`) changes.

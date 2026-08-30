@@ -97,7 +97,7 @@ From [`../../heavy-rental-web-portal-pipeline/release-pipeline/release-pipeline.
 
 Image contract: **nginx:1.27-alpine** serving Vite `dist/` on **`:80`**, SPA `try_files $uri $uri/ /index.html`, hashed `/assets/` cached. Build does **not** start a Node/Vite process, REST, or Stripe. Release **must not** inline `VITE_*` lab URLs or `sk_` into `dist/` (ADR 0007). Stripe `pk_` is allowed.
 
-CI-generated `nginx-spa.conf` (used when the app repo has no Dockerfile) has **SPA routing only**. It does **not** include `location /api`. App CD / infra first-compose **must** add that proxy on the guest (volume mount). See §5.6.
+Release **always** generates nginx + Vite `dist/` (an app `Dockerfile` is moved aside; ADR 0007). The generated guest `nginx-default.conf.j2` includes SPA `try_files` **and** `location /api/` (see §5.6). Do not treat “nginx-spa.conf when the app has no Dockerfile” as current Packaging.
 
 Specs: [`../../heavy-rental-web-portal-pipeline/specification/`](../../heavy-rental-web-portal-pipeline/specification/).
 
@@ -170,7 +170,7 @@ Gives `REST_BASE_URL` and `STRIPE_PUBLISHABLE_KEY`. It does **not** replace ASG 
 | --- | --- | --- |
 | `action` | Yes | `deploy` / `configure-only` / `verify` |
 | `aws_environment` | Yes | `academy` or `AWS_ACTUAL` |
-| `image_ref` | Optional | GHCR/ECR tag, or an `https://…` tar URL. Empty = latest Release tar / `:latest` |
+| `image_ref` | Optional | GHCR/ECR **tag** only (not an HTTP tar URL). Empty is **not** `:latest`. `deploy` fails unless `PORTAL_IMAGE` / `image_ref` or a tar URL **and** matching tag is set. Stock nginx is forbidden on deploy. |
 | `image_http_url` | Optional | HTTPS URL of the CI `.tar.gz`. Empty = Environment `IMAGE_HTTP_URL`. Ansible `get_url` + `docker load` on the guest |
 | `aws_access_key_id` / `aws_secret_access_key` / `aws_session_token` | Academy only | Vocareum AWS Details (change every Start Lab). Empty = Environment `academy`. **Do not add these on paid.** |
 
@@ -263,29 +263,20 @@ Browser  →  public portal ALB :80/:443
 | Browser `fetch()` to the REST ALB DNS | **As-built: allowed** | ADR 0018 CORS includes portal + REST ALB. Do **not** bake that DNS into a Vite `VITE_*` bundle; prefer same-origin `/api` |
 | REST on the **portal** ALB so the SPA can call it | **No** | Portal listener stays :80. REST has its **own** internet-facing ALB :8080 |
 
-**Why CD must add the proxy.** CI `nginx-spa.conf` is:
-
-```
-listen 80;
-root /usr/share/nginx/html;
-location / { try_files $uri $uri/ /index.html; }
-location /assets/ { … immutable cache … }
-```
-
-No `/api`. App CD (and infra first-compose) writes a guest snippet, for example:
+**Why CD must add the proxy.** Packaging generates SPA `try_files` only (no `/api` in the image). App CD (and infra first-compose) writes the guest `nginx-default.conf.j2`. **As-built:** `proxy_pass` has **no** trailing URI (keeps `/api` for Spring `/auth/login`). `Host` is `$proxy_host` (REST ALB host), not the portal `$host`. A trailing `/` on `proxy_pass` would 401 `/auth/login`.
 
 ```
 # REST_BASE_URL from heavy-rental/portal (REST ALB, e.g. http://<rest-alb-dns>:8080)
 location /api/ {
-  proxy_pass         ${REST_BASE_URL}/;
+  proxy_pass         ${REST_BASE_URL};
   proxy_http_version 1.1;
-  proxy_set_header   Host $host;
+  proxy_set_header   Host $proxy_host;
   proxy_set_header   X-Forwarded-For $proxy_add_x_forwarded_for;
   proxy_set_header   X-Forwarded-Proto $scheme;
 }
 ```
 
-Mount that file over `/etc/nginx/conf.d/default.conf` (or `include` it) so a new CI image does not wipe the proxy. Fail compose if `REST_BASE_URL` is empty.
+Mount that file over `/etc/nginx/conf.d/default.conf` so a new CI image does not wipe the proxy. Fail compose if `REST_BASE_URL` is empty.
 
 **`VITE_*` is bake-time.** Do not bake `REST_BASE_URL` into the public image. The browser calls **same-origin** `/api/...`. Optional later: a runtime `config.json` written from `STRIPE_PUBLISHABLE_KEY` (`pk_…` only) if the SPA must read Stripe in the browser. **Never** `sk_` or `whsec_`.
 
@@ -308,9 +299,9 @@ Guest (LabRole)             → get-secret-value + docker load / ecr pull / HTTP
 
 AWS keys **do not** push GHCR (`GITHUB_TOKEN` / CI). On **Academy**, the three keys may be pasted on the form; **never** on paid, on the EC2, or in Secrets Manager. Infra Terraform **creates** the `heavy-rental/portal` shell; `sync-secrets` **must** write `REST_BASE_URL` + `pk_` before this CD runs. Fail if `describe-secret` misses the id.
 
-Do **not** put `sk_` or `whsec_` in the image, in `heavy-rental/portal`, or in a Vite bundle. Those stay on `heavy-rental/rest`. Portal **CI** has no Stripe secrets. CD must **not** bake `REST_BASE_URL` into a public GHCR tag.
+Do **not** put `sk_` or `whsec_` in the image, in `heavy-rental/portal`, or in a Vite bundle. Those stay on `heavy-rental/rest`. Fast Feedback / Integration CI have no Stripe secrets. **Release Packaging** uses Environment `academy` to bake Stripe `pk_` (`VITE_STRIPE_PUBLISHABLE_KEY`). CD must **not** bake `REST_BASE_URL` into a public GHCR tag.
 
-Inventory: AWS study **§6.0c** and **§8.7**. Portal CI uses **no** `academy`/`paid` secrets.
+Inventory: AWS study **§6.0c** and **§8.7**. Fast Feedback / Integration CI use **no** CD Environment secrets (`academy` / `AWS_ACTUAL`).
 
 ---
 
@@ -359,8 +350,8 @@ Actions → Run workflow  (action + environment; optional image_ref)
 
 **Enough from this study + AWS study to configure GitHub:**
 
-- Environments `academy` / `paid` (same copy as infra CD)
-- Copy example YAML into the CD repo
+- Environments `academy` / **`AWS_ACTUAL`** (same names as infra CD)
+- Copy **live** YAML from [`../../heavy-rental-web-portal-pipeline/deploy-pipeline/`](../../heavy-rental-web-portal-pipeline/deploy-pipeline/) — not the fail-closed stubs in this folder
 - Dispatch only after infra is up
 - Do not type instance IDs
 - Confirm `heavy-rental/portal` has `REST_BASE_URL` and `pk_…` only

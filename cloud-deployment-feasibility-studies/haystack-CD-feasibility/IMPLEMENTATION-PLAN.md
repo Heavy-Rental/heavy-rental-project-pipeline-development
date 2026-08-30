@@ -10,7 +10,7 @@ Academy branches 1–2 **and** paid Haystack CD are **delivered** (`add-haystack
 
 **Status:** Infra branches 1–3 exist. Haystack CD **branch 1** (discover), **branch 2** (compose), and **paid caller** are in `deploy-pipeline/`.
 
-Conflict order if that repo uses OpenSpec: OpenSpec → OpenSPDD → ADR → YAML / Ansible.
+Conflict order if that repo uses OpenSpec: OpenSpec scenarios → OpenSPDD Safeguards → ADR → YAML / Ansible.
 
 ---
 
@@ -24,7 +24,7 @@ Manually deploy a **CI-built uvicorn image** onto the **existing** `asg-haystack
 - Compose **uvicorn + postgres-haystack-sync + neo4j-populate**. **Must not** start a `neo4j` container.
 - No `uv build` / `docker build` on the guest.
 
-**Non-goals:** `terraform apply`; Ruff/pytest/`uv build`/`docker build`; portal / REST / `asg-neo4j` deploy; starting Neo4j on this host; `stop` / `destroy` (infra CD); paid / OIDC; instance IDs on the Run form; putting `LLM_API_KEY` in CI or in the image.
+**Non-goals of this original Academy plan:** `terraform apply`; Ruff/pytest/`uv build`/`docker build`; portal / REST / `asg-neo4j` deploy; starting Neo4j on this host; `stop` / `destroy` (infra CD); instance IDs on the Run form; putting `LLM_API_KEY` in CI or in the image. Paid / OIDC is **delivered** (`haystack-cd-paid-caller.yml`, Environment `AWS_ACTUAL`) — not a current non-goal.
 
 ---
 
@@ -75,7 +75,7 @@ develop
 ### Tasks
 
 1. OpenSpec (if used): haystack-cd-academy-auth, haystack-cd-discover, haystack-cd-scope (no terraform, no portal / rest / neo4j group).
-2. Copy example YAML → `haystack-cd-academy.yml` (caller + reusable in `deploy-pipeline/`).
+2. Author live YAML in `haystack-fast-api-pipeline/deploy-pipeline/` (caller + reusable). Do not copy the fail-closed stub in this folder.
 3. Inputs: `action` (`deploy` / `configure-only` / `verify`), `aws_environment` (must be `academy`), optional `image_ref` / `image_http_url`, three Vocareum keys (optional if Environment set).
 4. Resolve keys like infra / portal / REST CD (`$GITHUB_EVENT_PATH`, mask, Environment fallback). Refuse Environment ≠ `academy`.
 5. **`assert-lab`:** `sts get-caller-identity`. Output lab state bucket name for later SSM (`heavy-rental-tfstate-${ACCOUNT}-academy`).
@@ -131,7 +131,7 @@ Start Lab → Run workflow → `assert-lab` + `discover-targets` green. No image
 
 Infra **`apply`** / **`configure-only`** do **not** compose Haystack. First-compose is infra **`deploy-projects`** or this app CD. After that, use this app CD for image rolls.
 
-The live app repo is **not** ready to deploy (no Release/CD on `develop`, no GHCR image, sidecar modules missing). See [`PREPARE-HAYSTACK-REPO.md`](../../haystack-fast-api-pipeline/docs/PREPARE-HAYSTACK-REPO.md).
+App-repo readiness is inventory, not this plan’s contract. [`PREPARE-HAYSTACK-REPO.md`](../../haystack-fast-api-pipeline/docs/PREPARE-HAYSTACK-REPO.md) is a **2026-08-17 snapshot** (“not ready” then). Compose workers no longer need app sidecar packages (ADR 0011).
 
 ---
 

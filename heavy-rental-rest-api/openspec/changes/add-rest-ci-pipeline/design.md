@@ -29,7 +29,7 @@ The Spring REST API already has reusable-caller Fast Feedback, Integration CI, a
 4. **QC package is not deploy.** Integration CI uploads WAR as build verification.
 5. **Release Packaging** rebuilds the WAR, stages versioned + stable names, builds `tomcat:10.1-jdk21-temurin` + `ROOT.war`, and uploads the tar. The image is env-driven (ADR 0007): no baked `POSTGRES_*` / `SPRING_DATASOURCE_*` / `HAYSTACK_*` / Stripe / JWT. `spring-datasource.env` is a workflow artifact only (no password) and is not copied into the image. SAST/CodeQL are not Release jobs.
 6. **DAST then Publish.** DAST loads the tar (ZAP + Dastardly gates, Nuclei report-only, combined PDF). Publish pushes GHCR and creates the GitHub Release. The caller is `workflow_dispatch` only; it must not use `on: release`.
-7. **CI family stops at packaging / GHCR.** Compose lives in the CD family.
+7. **CI family does not compose onto guests.** Release still DAST + Publish (GHCR). Compose lives in the CD family.
 8. **QC Environments are hardcoded** (`integration` / `production`). Callers pass `github_environment`; the reusable jobs do not read that input.
 9. **Semgrep is two passes.** Application packs exclude `.github/**`. GHA pass allows secrets-context maps and forbids `secrets: inherit` except the paid CD caller.
 

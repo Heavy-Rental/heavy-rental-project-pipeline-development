@@ -27,7 +27,7 @@ on:
         type: environment
         default: academy
       image_ref:
-        description: Optional GHCR/ECR tag or https tar URL (empty = latest Release tar or :latest)
+        description: Optional GHCR/ECR tag (not an HTTP URL). Empty is not :latest; deploy fails without a tag.
         required: false
         type: string
         default: ""

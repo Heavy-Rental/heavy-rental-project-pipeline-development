@@ -1,6 +1,6 @@
 # Architecture Decision Records (mobile CI)
 
-Conflict order: **OpenSpec → OpenSPDD → ADR → YAML**.
+Conflict order: **OpenSpec scenarios → OpenSPDD Safeguards → ADR → YAML**.
 
 This project has **no Academy CD**. All ADRs belong to `add-mobile-ci-pipeline`.
 

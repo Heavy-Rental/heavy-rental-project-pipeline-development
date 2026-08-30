@@ -2,8 +2,8 @@
 # Heavy Rental — Security Report Pipeline (reusable)
 # =============================================================================
 # Purpose: summarize the calling repository's EXISTING GitHub Code Scanning
-# alerts (populated by Semgrep, npm audit, Trivy, and CodeQL in
-# integration-pipeline.yml / release-pipeline.yml) into a readable report.
+# alerts (populated by Semgrep, npm audit, Trivy, and CodeQL on
+# Integration CI — not Release DAST) into a readable report.
 # This is a reporting layer only — it does not run any new scans.
 #
 # Outputs:

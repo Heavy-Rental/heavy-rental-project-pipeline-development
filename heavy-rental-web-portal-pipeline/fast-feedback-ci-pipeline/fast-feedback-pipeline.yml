@@ -31,8 +31,8 @@
 # The caller invokes this workflow with:
 #   uses: ./.github/workflows/fast-feedback-pipeline.yml
 #
-# Authoring copy lives in this tree. There is no
-# .github/workflows/web-portal-fast-feedback.yml mirror in this repo.
+# Authoring copy lives in this tree. Copy this file into the portal app repo.
+# A `.github/workflows/` copy in pipeline-development (if present) can lag.
 # =============================================================================
 
 name: Web Portal Fast Feedback CI

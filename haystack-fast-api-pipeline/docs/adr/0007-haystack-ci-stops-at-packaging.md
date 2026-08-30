@@ -1,4 +1,4 @@
-# ADR 0007: Haystack CI family stops at packaging
+# ADR 0007: Haystack CI family does not compose onto guests
 
 - **Status:** Accepted
 - **Date:** 2026-08-17

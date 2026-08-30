@@ -17,7 +17,7 @@ When reality diverges, fix this prompt first — then update the YAML.
 - Integration QC secrets: `REST_API_DB_*` as Repository secrets, forwarded by the caller explicit map; QC also uses Environment `integration`.
 - Release QC secrets: same `REST_API_DB_*` names, forwarded by the Release caller explicit map; QC also uses Environment `production`. `REST_API_DB_URL` is derived.
 - Specs live under `heavy-rental-rest-api/`.
-- This family stops at packaging. Academy CD is `deploy-pipeline/`. The Security Report pair is a scheduled/manual Code Scanning summary (Monday 06:00 UTC); it is not a merge gate.
+- This family does **not** compose onto guests (Academy CD is `deploy-pipeline/`). Release still runs Packaging → DAST → Publish. The Security Report pair is a scheduled/manual Code Scanning summary (Monday 06:00 UTC); it is not a merge gate.
 
 ## E — Entities
 

@@ -25,7 +25,7 @@ Copy-pasting those YAML files unchanged would install the **wrong toolchain** (J
 - `haystack-ci-security`: Semgrep app + GHA (two passes) + pip-audit report + Trivy + SARIF
 - `haystack-ci-codeql`: CodeQL python
 - `haystack-ci-release`: `uv build` versioned wheel/sdist plus Docker image tar, DAST, then Publish (public GHCR + GitHub Release)
-- `haystack-ci-scope`: this family stops at packaging; it does not provision infrastructure, deploy, or operate
+- `haystack-ci-scope`: this family does not provision infrastructure, compose onto guests, or operate; Release still DAST + Publish
 
 ### Modified Capabilities
 

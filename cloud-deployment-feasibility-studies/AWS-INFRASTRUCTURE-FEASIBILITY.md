@@ -1099,7 +1099,7 @@ Not new products and not new IAM: **encrypt RDS and EBS at rest** if the console
 
 ## 6P. Recommended architecture (Paid AWS)
 
-System design principles: **§6.6**. Trade-offs: **§6.7**. Well-Architected: **§6.8**. Guidelines: **§6.9**. Fallacies: **§6.10**. Adherence: **§6.11**. This section is the paid **topology**. Same compose mapping and **same three subnet tiers**. **A different AWS account, Terraform state, GitHub Environment (`paid`), and workflow** (`aws-infra-paid.yml`). Do not share a VPC or state with Academy.
+System design principles: **§6.6**. Trade-offs: **§6.7**. Well-Architected: **§6.8**. Guidelines: **§6.9**. Fallacies: **§6.10**. Adherence: **§6.11**. This section is the paid **topology**. Same compose mapping and **same three subnet tiers**. **A different AWS account, Terraform state, GitHub Environment (`AWS_ACTUAL`), and workflow** (`aws-infra-paid.yml`). Do not share a VPC or state with Academy.
 
 Auth is **GitHub OIDC** → IAM role `github-actions-infra`. No Vocareum keys. The account **may** create IAM roles and instance profiles.
 
@@ -1115,15 +1115,15 @@ Two AZs of **subnets**. Same default as Academy: **two Multi-AZ RDS**, **two Neo
          │                                                                  │
          │   public subnets (2 AZs)                                         │
          │   ┌───────────────────────────────────────────────────────────┐  │
-         │   │ Public ALB  portal only   HTTPS :443  (HTTP → 443)        │  │
-         │   │ NO /api  NO /haystack  NO 5432  NO 7687                   │  │
+         │   │ Public ALB  portal :80/:443                               │  │
+         │   │ internet-facing REST ALB :8080  (guests private)          │  │
+         │   │ NO /haystack  NO 5432  NO 7687 on the portal listener     │  │
          │   └──────────────────────────┬────────────────────────────────┘  │
-         │                              │ target HTTP :80                   │
+         │                              │ target HTTP :80 / :8080           │
          │   private APP subnets (2 AZs)                                    │
          │   ┌──────────────────────────┴────────────────────────────────┐  │
-         │   │ ASG portal          Internal ALB REST :8080               │  │
-         │   │                     Internal ALB Haystack :8000           │  │
-         │   │ ASG rest ────────────────────────────────► ASG haystack   │  │
+         │   │ ASG portal          Internal ALB Haystack :8000           │  │
+         │   │ ASG rest (no public IP) ─────────────────► ASG haystack   │  │
          │   │ (sync/populate on haystack; no Neo4j)                     │  │
          │   └──────────────┬─────────────────────────────┬──────────────┘  │
          │                  │ JDBC                        │ Bolt / JDBC     │
@@ -1173,7 +1173,7 @@ GitHub Environment **`AWS_ACTUAL`**: `AWS_ROLE_TO_ASSUME`, `AWS_REGION`, app pas
 | Subnet tiers | Public / app / data | **Same** |
 | RDS | Two Multi-AZ (`heavy_rental` + `haystack`) | Same two writers. May enlarge class. Still **same data subnet group** |
 | Neo4j | `neo4j:5` ×2 + internal Bolt NLB | Same default. Optional Marketplace **AMI in our data-subnet ASG** (not the vendor CFT) |
-| Egress | One NAT **instance** `t3.nano` in AZ-0 | NAT **Gateway** (per-AZ) or endpoints |
+| Egress | **Two NAT Gateways** (one per public AZ; as-built ADR 0010) | Same, or extra endpoints |
 | Public ALB | HTTP :80 typical | HTTPS :443 |
 | Instance class | ≤ `large` | Larger classes allowed |
 | ECS / EKS | Allowed, not default | Still not the default |
@@ -1220,8 +1220,8 @@ Same example CIDRs as §6.2 (`10.0.0.0/24` public … `10.0.20.0/24` data). Diff
 
 ```
   Maintainer configures GitHub Environments
-       academy  (Vocareum AWS keys + app secrets)
-       paid     (app secrets + AWS_ROLE_TO_ASSUME; no Vocareum keys)
+       academy     (Vocareum AWS keys + app secrets)
+       AWS_ACTUAL  (app secrets + AWS_ROLE_TO_ASSUME; no Vocareum keys)
            │
            ├──────────────────────────────┐
            ▼                              ▼
@@ -1233,7 +1233,7 @@ Same example CIDRs as §6.2 (`10.0.0.0/24` public … `10.0.20.0/24` data). Diff
 
 - **CI** = existing haystack / REST / portal **Release** pipelines. Output is the **Docker image** (and tar). Out of scope for VPC create.
 - **CD** = `aws-infra-academy.yml` and `aws-infra-paid.yml`. This feasibility study is **only** CD.
-- GitHub Environments are **per repository**. The maintainer **copies** `academy` and `paid` onto the CD repo: same Environment names, same secret **names**, same values (or the CD-specific AWS keys / OIDC vars). CI may use a subset (e.g. no Vocareum keys if it never calls AWS).
+- GitHub Environments are **per repository**. The maintainer **copies** `academy` and `AWS_ACTUAL` onto the CD repo: same Environment names, same secret **names**, same values (or the CD-specific AWS keys / OIDC vars). CI may use a subset (e.g. no Vocareum keys if it never calls AWS).
 - CD **must not** invent different secret names. `sync-secrets` expects the same keys listed in §6.0c.
 - Do not add `terraform apply` to `haystack-fast-api-pipeline/`. Do not put Academy and paid in one workflow.
 
@@ -1340,7 +1340,7 @@ Nothing in the **lab** VPC is created except by `aws-infra-academy.yml` (plus Vo
            └─ job: ansible           get-secret-value on each ASG + compose up (neo4j group ≠ haystack)
 ```
 
-Copy-ready Academy workflow: [`aws-infra-pipeline.example.yml`](aws-infra-pipeline.example.yml).
+Academy stub (fail-closed, incomplete action list): [`aws-infra-pipeline.example.yml`](aws-infra-pipeline.example.yml). Live Action: `heavy-rental-project-instructure-and-cloud-deploy/.github/workflows/aws-infra-academy.yml`. Do not copy the stub.
 
 #### Why Environment secrets beat typing keys on Run workflow
 
@@ -1495,7 +1495,7 @@ jobs:
 
 **Retrieval contract (paid):** jobs MUST use `environment: AWS_ACTUAL` and `vars.AWS_ROLE_TO_ASSUME`. They MUST NOT reference `secrets.AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, or `AWS_SESSION_TOKEN`. App passwords still come from Environment `AWS_ACTUAL` **secrets** into **`sync-secrets`**, then instances read Secrets Manager.
 
-Enable Environment protection (required reviewers) on `paid` before the first apply.
+Enable Environment protection (required reviewers) on `AWS_ACTUAL` before the first apply.
 
 #### What the paid pipeline may do that Academy must not
 
@@ -1517,7 +1517,7 @@ Enable Environment protection (required reviewers) on `paid` before the first ap
 - Mix CDK and Terraform on the same VPC
 - Place RDS or Neo4j in public or app subnets (paid extras stay in the **data** tier)
 
-Copy-ready paid workflow: [`aws-infra-paid-pipeline.example.yml`](aws-infra-paid-pipeline.example.yml).
+Paid stub (fail-closed): [`aws-infra-paid-pipeline.example.yml`](aws-infra-paid-pipeline.example.yml). Live Action: `heavy-rental-project-instructure-and-cloud-deploy/.github/workflows/aws-infra-paid.yml`. Do not copy the stub.
 
 ### 7.2c Maintainer CD checklist — what this study is enough for
 
@@ -1529,7 +1529,7 @@ Copy-ready paid workflow: [`aws-infra-paid-pipeline.example.yml`](aws-infra-paid
 | Set Vocareum keys on `academy` (form or Environment fallback) | §7.2a |
 | Set `AWS_ROLE_TO_ASSUME` + `AWS_REGION` on `AWS_ACTUAL` (OIDC; no Vocareum keys) | §7.2b |
 | Set app secrets: `SPRING_DATASOURCE_PASSWORD`, `NEO4J_PASSWORD`, Stripe trio | §6.0c |
-| Copy example YAML → `.github/workflows/aws-infra-academy.yml` / `aws-infra-paid.yml` | This folder |
+| Copy **live** YAML from the infra project (not the fail-closed stubs in this folder) | `heavy-rental-project-instructure-and-cloud-deploy/.github/workflows/` |
 | Dispatch `plan` / `apply` / `configure-only` / `deploy-projects` / `stop` / `destroy` | Job graph, §7.2d |
 | Keep isolation: two files, two states, no key mix | §7.2 |
 | Know the target architecture | §6–§6P |
@@ -1685,10 +1685,10 @@ App CD auth: academy three keys on Environment only (§8.7)
 
 **GitHub (CD repo)**
 
-- Copy Environments **`academy`** and **`paid`** onto the CD repo (GitHub does not share Environments across repos).
+- Copy Environments **`academy`** and **`AWS_ACTUAL`** onto the CD repo (GitHub does not share Environments across repos).
 - **`academy`:** fallback secrets `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_SESSION_TOKEN` (or paste them on Run workflow — they change every Start Lab). Also `SPRING_DATASOURCE_PASSWORD`, `NEO4J_PASSWORD`, Stripe trio. Variable: `AWS_REGION`. **Vocareum only.**
-- **`paid`:** variables `AWS_ROLE_TO_ASSUME` + `AWS_REGION`. Same **app** secrets. **No** Vocareum access keys. Admin has already created GitHub OIDC + role `github-actions-infra`.
-- Copy [`aws-infra-pipeline.example.yml`](aws-infra-pipeline.example.yml) → `.github/workflows/aws-infra-academy.yml` and [`aws-infra-paid-pipeline.example.yml`](aws-infra-paid-pipeline.example.yml) → `aws-infra-paid.yml`.
+- **`AWS_ACTUAL`:** variables `AWS_ROLE_TO_ASSUME` + `AWS_REGION`. Same **app** secrets. **No** Vocareum access keys. Admin has already created GitHub OIDC + role `github-actions-infra`.
+- Copy **live** Actions from `heavy-rental-project-instructure-and-cloud-deploy/.github/workflows/` (`aws-infra-academy.yml`, `aws-infra-paid.yml`). The `*.example.yml` files in this folder are fail-closed stubs.
 - Portal **app** CD (Academy compose): `heavy-rental-web-portal-pipeline/deploy-pipeline/`. REST **app** CD (Academy compose): `heavy-rental-rest-api/deploy-pipeline/`. Haystack **app** CD (Academy compose): `haystack-fast-api-pipeline/deploy-pipeline/`. They do **not** create the estate.
 - Optional: Environment variable `IMAGE_HTTP_URL` (HTTPS tar). **Academy** may paste Vocareum keys on the Run form; **paid must not**.
 

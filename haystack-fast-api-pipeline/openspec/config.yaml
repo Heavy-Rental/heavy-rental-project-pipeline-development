@@ -26,4 +26,4 @@ context: |
   Packaging tar is haystack_recommender-image.tar.gz. Publish is workflow_dispatch
   only. First-compose is infra deploy-projects or app CD (not infra apply).
   Compose workers are postgres:17 + sync-from-primary.sh and python:3.12-slim +
-  populate_neo4j.py (ADR 0011), not uvicorn python -m.
+  populate-neo4j-from-haystack.sh (wraps populate_neo4j.py; ADR 0011), not uvicorn python -m.
