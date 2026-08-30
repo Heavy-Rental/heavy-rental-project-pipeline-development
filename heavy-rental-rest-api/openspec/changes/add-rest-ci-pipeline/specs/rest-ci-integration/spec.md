@@ -79,9 +79,9 @@ Integration SHALL NOT start Postgres and SHALL NOT read `REST_API_DB_*` or `REST
 - THEN no `postgres` container was started by this job
 
 ### Requirement: Fingerprint artifact
-When layout checks run, Integration SHALL upload `pom.xml` as a short-lived fingerprint artifact.
+Integration SHALL upload `pom.xml` as a short-lived fingerprint artifact after checkout. On Integration CI this SHALL still run when Fast Feedback reuse skipped Maven/layout.
 
 #### Scenario: Fingerprint uploaded
-- GIVEN layout checks passed
+- GIVEN Integration checked out the application
 - WHEN Integration finishes
 - THEN an artifact containing `pom.xml` is uploaded

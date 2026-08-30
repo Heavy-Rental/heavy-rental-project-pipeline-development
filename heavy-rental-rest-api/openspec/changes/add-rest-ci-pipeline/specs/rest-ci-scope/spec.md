@@ -44,7 +44,7 @@ The scheduled Security Report pair SHALL summarize existing Code Scanning alerts
 - AND no Ansible or GHCR push ran
 
 ### Requirement: CI database secrets are not guest config
-Quality Control Docker Postgres secrets (`REST_API_DB_*`) SHALL NOT be documented or used as the guest `heavy-rental/rest` secret. Integration CI SHALL require those names as Repository secrets (caller explicit map) and MAY also store them on Environment `integration`. Release SHALL read the same names from Environment `production` only (no caller map). Release SHALL NOT require `REST_API_CLOUD_DB_*`.
+Quality Control Docker Postgres secrets (`REST_API_DB_*`) SHALL NOT be documented or used as the guest `heavy-rental/rest` secret. Integration CI and Release SHALL require those names as Repository secrets (caller explicit maps) and MAY also store them on Environment `integration` / `production`. Release SHALL NOT require `REST_API_CLOUD_DB_*`.
 
 #### Scenario: Names stay separate
 - GIVEN a reader of this family's specification
@@ -52,5 +52,5 @@ Quality Control Docker Postgres secrets (`REST_API_DB_*`) SHALL NOT be documente
 - THEN guest compose is described as Academy CD + `heavy-rental/rest`
 - AND `REST_API_DB_*` is described as local Docker QC only
 - AND Integration CI lists Repository secrets for the caller map
-- AND Release lists Environment `production`
+- AND Release lists Repository secrets for the caller map (Environment `production` is optional isolation on the QC job)
 - AND `REST_API_CLOUD_DB_*` is not listed as a required GitHub secret

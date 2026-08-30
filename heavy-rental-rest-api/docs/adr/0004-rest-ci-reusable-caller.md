@@ -2,7 +2,7 @@
 
 - **Status:** Accepted
 - **Date:** 2026-08-17
-- **Updated:** 2026-08-26
+- **Updated:** 2026-08-30
 - **Change:** `add-rest-ci-pipeline`
 
 ## Context
@@ -15,6 +15,6 @@ Each reusable file exposes only `on: workflow_call`. `assert-caller` fails unles
 
 ## Consequences
 
-- Operators copy six YAML files into the Spring repo `.github/workflows/`. Callers `uses:` the sibling reusable (`./.github/workflows/integration-pipeline.yml` and peers).
-- Integration CI caller passes `REST_API_DB_*` via an explicit `secrets:` map from Repository secrets. Release caller does not pass a map (QC reads Environment `production`). Neither uses `secrets: inherit`. `environment:` on a `uses:` job is invalid.
-- Integration CI caller must not `uses:` `fast-feedback-pipeline.yml`. On pull_request, Integration Check reuses a successful Fast Feedback run for the PR head SHA.
+- Operators copy the six GitHub Flow YAML files plus the Security Report pair into the Spring repo `.github/workflows/`. Callers `uses:` the sibling reusable (`./.github/workflows/integration-pipeline.yml` and peers).
+- Integration CI and Release callers both pass `REST_API_DB_*` via an explicit `secrets:` map from Repository secrets. QC jobs still use `environment: integration` / `environment: production`. Neither uses `secrets: inherit`. `environment:` on a `uses:` job is invalid.
+- Integration CI caller must not `uses:` `fast-feedback-pipeline.yml`. On pull_request, Integration Check reuses a successful Fast Feedback run for the PR head SHA (waits if that run is still in flight).

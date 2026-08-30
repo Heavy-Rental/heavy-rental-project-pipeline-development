@@ -10,6 +10,6 @@ No workflow in this repo can see `asg-rest` after infra apply.
 
 Auth + discover only. Compose is the next branch.
 
-## Success
+## Success (branch 1, historical)
 
-`assert-lab` + `discover-targets` green after Start Lab. `deploy` fails closed.
+`assert-lab` + `discover-targets` green after Start Lab. On this branch `deploy` failed closed. Compose is delivered in [`add-rest-cd-academy-deploy`](add-rest-cd-academy-deploy.md); do not treat fail-closed as current YAML.

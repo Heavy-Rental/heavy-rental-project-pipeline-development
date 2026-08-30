@@ -14,4 +14,4 @@ Read form values with `jq` from `$GITHUB_EVENT_PATH`, `::add-mask::`, then Envir
 
 ## Consequences
 
-- Branch 2 still needs these keys on the **runner** (form or Environment) to call AWS. They are not installed on the REST EC2 (`LabRole`).
+- Academy CD still needs these keys on the **runner** (form or Environment) to call AWS. They are not installed on the REST EC2 (`LabRole`).

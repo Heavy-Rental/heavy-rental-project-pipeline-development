@@ -2,6 +2,7 @@
 
 - **Status:** Accepted
 - **Date:** 2026-08-18
+- **Updated:** 2026-08-30
 - **Change:** `add-rest-ci-pipeline` (image contract)
 - **Related:** [0005](0005-rest-ci-secret-environments.md), [0006](0006-rest-ci-stops-at-packaging.md)
 
@@ -17,4 +18,4 @@ Release Packaging **always generates** `tomcat:10.1-jdk21-temurin` + `ROOT.war` 
 
 - The same image tag works on Docker Desktop (`docker run -p 8080:8080 -e …`), compose, or any Academy lab once env is injected.
 - An app `java -jar` Dockerfile is moved aside; it is not pushed to GHCR.
-- Release QC uses `REST_API_DB_*` on Environment `production` for local Docker only. Guest RDS stays in `heavy-rental/rest`.
+- Release QC uses `REST_API_DB_*` from the Release caller map (Repository secrets) plus Environment `production` for local Docker only. Guest RDS stays in `heavy-rental/rest`.

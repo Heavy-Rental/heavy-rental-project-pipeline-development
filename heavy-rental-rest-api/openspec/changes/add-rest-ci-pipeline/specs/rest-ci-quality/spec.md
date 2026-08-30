@@ -23,7 +23,7 @@ On the Integration CI reusable workflow, Quality Control SHALL hardcode `environ
 - THEN the job fails before starting Postgres
 
 ### Requirement: Release uses Environment production
-On the Release reusable workflow, Quality Control SHALL hardcode `environment: production` (the `github_environment` workflow_call input is unused) and SHALL require `REST_API_DB_NAME`, `REST_API_DB_USER`, `REST_API_DB_PASSWORD`, and `REST_API_DB_PORT`. It SHALL NOT require `REST_API_DB_URL` or `REST_API_CLOUD_DB_*`.
+On the Release reusable workflow, Quality Control SHALL hardcode `environment: production` (the `github_environment` workflow_call input is unused) and SHALL require secrets `REST_API_DB_NAME`, `REST_API_DB_USER`, `REST_API_DB_PASSWORD`, and `REST_API_DB_PORT`. Those values SHALL come from the caller explicit secrets map and/or Environment `production`. Repository secrets are required for the caller map because a `uses:` job cannot read Environment secrets. It SHALL NOT require `REST_API_DB_URL` or `REST_API_CLOUD_DB_*`.
 
 #### Scenario: Missing production secret fails
 - GIVEN any of `REST_API_DB_NAME`, `REST_API_DB_USER`, `REST_API_DB_PASSWORD`, `REST_API_DB_PORT` is empty

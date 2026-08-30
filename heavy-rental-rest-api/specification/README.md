@@ -6,7 +6,7 @@ The Spring **product** specification is **not** here. It lives in the applicatio
 
 https://github.com/Heavy-Rental/heavy-rental-spring-rest-api
 
-Infrastructure setup (VPC, ASGs, RDS) is **not** specified here. It belongs to the infra project. This tree authors **CI + Release packaging** and **Academy + paid app CD**.
+Infrastructure setup (VPC, ASGs, RDS) is **not** specified here. It belongs to the infra project. This tree authors **CI + Release packaging**, a scheduled **Security Report**, and **Academy + paid app CD**.
 
 ## Pipeline boundaries
 
@@ -24,7 +24,7 @@ Infrastructure setup (VPC, ASGs, RDS) is **not** specified here. It belongs to t
 | --- | --- | --- |
 | **OpenSpec** | [`../openspec/`](../openspec/) | Observable behavior: requirements and GIVEN/WHEN/THEN scenarios |
 | **OpenSPDD** | [`../spdd/`](../spdd/) | Implementation contract: REASONS Canvas (how to write the YAML, what not to invent) |
-| **ADR** | [`../docs/adr/`](../docs/adr/) | Why: caller gate, Environment secrets split, env-driven Tomcat image (0007), two CD Actions (0008), masked keys |
+| **ADR** | [`../docs/adr/`](../docs/adr/) | Why: caller gate, both CI callers forward Repository `REST_API_DB_*` (0005), env-driven Tomcat image (0007), two CD Actions (0008), masked keys |
 
 Conflict order: **OpenSpec scenarios → OpenSPDD Safeguards → ADR → YAML**. If the YAML cannot satisfy a scenario without breaking a safeguard, stop and update the spec first.
 
@@ -32,7 +32,7 @@ Conflict order: **OpenSpec scenarios → OpenSPDD Safeguards → ADR → YAML**.
 
 ### CI family — [`../openspec/changes/add-rest-ci-pipeline/`](../openspec/changes/add-rest-ci-pipeline/)
 
-As-implemented spec of Fast Feedback / Integration Check / Release YAML (PR reuses Fast Feedback; Integration caller passes `REST_API_DB_*`). Fast Feedback `DEFAULT_APP_REPOSITORY` is `SA62-team1/...` (act); Integration CI and Release are `Heavy-Rental/...`. Security Report is a scheduled/manual Code Scanning summary, not a merge gate.
+As-implemented spec of Fast Feedback / Integration Check / Release YAML (PR reuses Fast Feedback and waits if in-flight; both callers pass `REST_API_DB_*` from Repository secrets). Fast Feedback `DEFAULT_APP_REPOSITORY` is `SA62-team1/...` (act); Integration CI and Release are `Heavy-Rental/...`. Security Report is a scheduled/manual Code Scanning summary (Monday 06:00 UTC), not a merge gate.
 
 - Proposal: [`proposal.md`](../openspec/changes/add-rest-ci-pipeline/proposal.md)
 - Design: [`design.md`](../openspec/changes/add-rest-ci-pipeline/design.md)

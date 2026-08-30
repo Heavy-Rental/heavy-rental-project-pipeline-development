@@ -1,11 +1,11 @@
 # Prepare heavy-rental-spring-rest-api for Academy and paid CD
 
 **App repo:** [Heavy-Rental/heavy-rental-spring-rest-api](https://github.com/Heavy-Rental/heavy-rental-spring-rest-api)  
-**Release CI:** `release-pipeline/` (already copied into the app repo `.github/workflows/` on `develop`)  
-**App CD:** `deploy-pipeline/` (this tree — **not** in the app repo yet)  
+**Release CI:** `release-pipeline/` in this tree (copy into the app repo `.github/workflows/`)  
+**App CD:** `deploy-pipeline/` (this tree — copy when ready)  
 **Estate:** infra `apply` + `sync-secrets` must have created `asg-rest` and `heavy-rental/rest`
 
-This file is the operator checklist. It does not apply Terraform or push images.
+This file is the operator checklist. It does not apply Terraform or push images. It is not a live inventory of the application repo.
 
 Specification: [`../specification/README.md`](../specification/README.md). CD walkthrough: [`../specification/pipelines/rest-cd.md`](../specification/pipelines/rest-cd.md).
 
@@ -51,22 +51,41 @@ The Release caller is dispatch-only. Do not add `on: release` — this workflow 
 
 Academy guests pull **public** GHCR with no token. If GHCR is private, `docker load` the tar (`image_http_url` / `IMAGE_HTTP_URL`) or copy the image to ECR.
 
-Fast Feedback `DEFAULT_APP_REPOSITORY: SA62-team1/…` is only for local `act`. Integration CI and Release default to `Heavy-Rental/heavy-rental-spring-rest-api`. When Fast Feedback or Integration CI runs **in** `heavy-rental-spring-rest-api`, checkout is the calling commit. When Release runs **in** `heavy-rental-spring-rest-api`, checkout is still **`master`** (into `app/`), not the calling SHA. That is correct.
+Fast Feedback `DEFAULT_APP_REPOSITORY: SA62-team1/…` is only for local `act`. Integration CI and Release default to `Heavy-Rental/heavy-rental-spring-rest-api`. When Fast Feedback or Integration CI runs **in** `heavy-rental-spring-rest-api`, checkout is the calling commit. On pull_request, Integration Check reuses a successful Fast Feedback run for the PR head SHA instead of repeating Maven/layout. If Fast Feedback is still queued or in progress, Integration Check waits for that run (`gh run watch`). When Release runs **in** `heavy-rental-spring-rest-api`, checkout is still **`master`** (into `app/`), not the calling SHA. That is correct.
 
 ---
 
 ## 2. Already on the app repo vs still to copy
 
-On app `develop` today:
+Typical app `develop` (checklist, not live inventory):
 
-- Present: `rest-api-release-caller.yml`, `release-pipeline.yml`, Fast Feedback, Integration
-- **Missing:** `deploy-pipeline/` (both CD callers, reusable workflow, `resolve-aws-profile`, `ansible/`)
+- Present or pending: Fast Feedback, Integration CI, Release, Security Report (copy the six GitHub Flow YAML files plus the Security Report pair from this tree)
+- **Missing until you copy:** `deploy-pipeline/` (both CD callers, reusable workflow, `resolve-aws-profile`, `ansible/`)
+
+Copy into the Spring repo `.github/workflows/`:
+
+```
+rest-api-fast-feedback-caller.yml
+fast-feedback-pipeline.yml
+rest-api-ci-caller.yml
+integration-pipeline.yml
+rest-api-release-caller.yml
+release-pipeline.yml
+rest-api-security-report-caller.yml
+security-report-pipeline.yml
+```
+
+The Security Report pair is scheduled/manual only (Monday 06:00 UTC + `workflow_dispatch`). Do not add it to `develop` branch protection.
+
+Branch protection on `develop` must require **Integration Check** (not **Integration**). Fast Feedback still publishes a check named **Integration**.
+
+Do **not** copy `specification/`.
 
 ---
 
 ## 3. Produce a pullable image
 
-1. Integration CI: put `REST_API_DB_NAME` / `USER` / `PASSWORD` / `PORT` on **Repository secrets** (the caller explicit map cannot see Environment secrets). Optionally also on Environment `integration`. Release QC: Environment **`production`** has the same four names. Dummy local values are enough. Those names are **not** CD and **not** what the guest reads. Do not add `REST_API_CLOUD_DB_*`. `REST_API_DB_URL` is not a secret.
+1. Integration CI **and** Release: put `REST_API_DB_NAME` / `USER` / `PASSWORD` / `PORT` on **Repository secrets** (both callers’ explicit maps cannot see Environment secrets). Optionally also on Environment `integration` (Integration QC) and Environment **`production`** (Release QC). Dummy local values are enough. Those names are **not** CD and **not** what the guest reads. Do not add `REST_API_CLOUD_DB_*`. `REST_API_DB_URL` is not a secret.
 2. Merge to `master`, then run **Actions → Release → Run workflow**. That checks out `master`, runs DAST, pushes public GHCR, and creates the GitHub Release.
 3. Org Packages → `heavy_rental_rest_api` → visibility **Public**. Private GHCR fails CD on purpose (no PAT on the guest).
 4. Record the tag, for example `ghcr.io/heavy-rental/heavy_rental_rest_api:1.0.0` (or `:latest`). Prefer a **new** version tag each deploy (`compose up` is not `--pull always`).
@@ -161,10 +180,10 @@ The guest (`LabRole`) reads `heavy-rental/rest`. Release QC Postgres is never co
 | `POSTGRES_PASSWORD` / `POSTGRES_PORT` | written |
 | `HAYSTACK_BASE_URL` | written (internal Haystack ALB). Estate no longer uses `HAYSTACK_URL` |
 | `APP_JWT_SECRET` (≥ 32 characters) | written — Environment secret, else reuse SM, else infra generates once |
-| `APP_CORS_ALLOWED_ORIGINS` | written `http://<portal_alb_dns>` (Terraform public portal ALB). Portal `/api` is same-origin so browsers may not need it |
+| `APP_CORS_ALLOWED_ORIGINS` | written `http://<portal_alb_dns>,http://<rest_alb_dns>:8080` (infra ADR 0018). Portal `/api` is same-origin; the REST origin is for browsers that call the public REST ALB directly |
 | `STRIPE_API_KEY` / `STRIPE_WEBHOOK_SECRET` / `STRIPE_PUBLISHABLE_KEY` | written |
 | `ONEMAP_EMAIL` / `ONEMAP_PASSWORD` | written only if both infra Environment secrets are set |
-| `DYNAMIC_PRICING_ENABLED` / `PRICING_DEFAULT_DISTANCE_KM` / `PRICING_ORIGIN_POSTAL_CODE` / `PRICING_DISTANCE_LOOKUP_ENABLED` | written if set on infra Environment vars; REST CD `academy` vars overlay when non-empty |
+| `DYNAMIC_PRICING_ENABLED` / `PRICING_DEFAULT_DISTANCE_KM` / `PRICING_ORIGIN_POSTAL_CODE` / `PRICING_DISTANCE_LOOKUP_ENABLED` | written if set on infra Environment vars; REST CD Environment (`academy` or `AWS_ACTUAL`) vars overlay when non-empty |
 
 Re-run infra `configure-only` or REST CD `configure-only` so guests get a new `.env` including `APP_JWT_SECRET`.
 
